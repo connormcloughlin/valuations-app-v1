@@ -278,6 +278,133 @@ const mockInsurerBrokers = [
   }
 ];
 
+// Add mock risk templates
+const mockRiskTemplates = [
+  {
+    id: 'template-1',
+    name: 'INVENTORY',
+    description: 'Detailed inventory of all household items',
+    icon: 'clipboard-list',
+    sections: [
+      {
+        id: 'section-1',
+        name: 'Living Areas',
+        categories: [
+          { id: 'cat-1', name: 'Furniture' },
+          { id: 'cat-2', name: 'Electronics' },
+          { id: 'cat-3', name: 'Decor Items' }
+        ]
+      },
+      {
+        id: 'section-2',
+        name: 'Kitchen',
+        categories: [
+          { id: 'cat-4', name: 'Appliances' },
+          { id: 'cat-5', name: 'Cookware' },
+          { id: 'cat-6', name: 'Dinnerware' }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'template-2',
+    name: 'DOMESTIC RISK',
+    description: 'Residential property risk assessment',
+    icon: 'home',
+    sections: [
+      {
+        id: 'section-3',
+        name: 'Security',
+        categories: [
+          { id: 'cat-7', name: 'Access Control' },
+          { id: 'cat-8', name: 'Alarm Systems' },
+          { id: 'cat-9', name: 'Perimeter Security' }
+        ]
+      },
+      {
+        id: 'section-4',
+        name: 'Safety',
+        categories: [
+          { id: 'cat-10', name: 'Fire Protection' },
+          { id: 'cat-11', name: 'Electrical Systems' },
+          { id: 'cat-12', name: 'Structural Elements' }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'template-3',
+    name: 'BUILDING',
+    description: 'Building structure assessment',
+    icon: 'office-building',
+    sections: [
+      {
+        id: 'section-5',
+        name: 'Structure',
+        categories: [
+          { id: 'cat-13', name: 'Foundation' },
+          { id: 'cat-14', name: 'Walls' },
+          { id: 'cat-15', name: 'Roof' }
+        ]
+      },
+      {
+        id: 'section-6',
+        name: 'Systems',
+        categories: [
+          { id: 'cat-16', name: 'Plumbing' },
+          { id: 'cat-17', name: 'Electrical' },
+          { id: 'cat-18', name: 'HVAC' }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'template-4',
+    name: 'CONTENTS',
+    description: 'Contents valuation and assessment',
+    icon: 'sofa',
+    sections: [
+      {
+        id: 'section-7',
+        name: 'Valuables',
+        categories: [
+          { id: 'cat-19', name: 'Jewellery' },
+          { id: 'cat-20', name: 'Art' },
+          { id: 'cat-21', name: 'Collectibles' }
+        ]
+      },
+      {
+        id: 'section-8',
+        name: 'Household Items',
+        categories: [
+          { id: 'cat-22', name: 'Furniture' },
+          { id: 'cat-23', name: 'Electronics' },
+          { id: 'cat-24', name: 'Clothing' }
+        ]
+      }
+    ]
+  }
+];
+
+// Add mock items for categories
+const mockTemplateItems = {
+  'cat-1': [
+    { id: 'item-1', name: 'Sofa', description: 'Living room sofa', defaultValue: 1500 },
+    { id: 'item-2', name: 'Coffee Table', description: 'Center table', defaultValue: 500 },
+    { id: 'item-3', name: 'TV Stand', description: 'Entertainment unit', defaultValue: 800 }
+  ],
+  'cat-4': [
+    { id: 'item-4', name: 'Refrigerator', description: 'Kitchen fridge', defaultValue: 1200 },
+    { id: 'item-5', name: 'Microwave', description: 'Countertop microwave', defaultValue: 150 },
+    { id: 'item-6', name: 'Dishwasher', description: 'Built-in dishwasher', defaultValue: 900 }
+  ],
+  'cat-7': [
+    { id: 'item-7', name: 'Entry Gate', description: 'Main gate security', defaultValue: 0 },
+    { id: 'item-8', name: 'Door Locks', description: 'Security door locks', defaultValue: 0 },
+    { id: 'item-9', name: 'Intercom', description: 'Intercom system', defaultValue: 0 }
+  ]
+};
+
 const mockContentsValuations = [
   {
     id: 1,
@@ -334,6 +461,58 @@ const mockApi = {
   get: async (url) => {
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Handle risk-templates endpoints
+    if (url.includes('/risk-templates')) {
+      // Get all risk templates - Make sure we return data property in response for consistency
+      if (url === '/risk-templates') {
+        return mockRiskTemplates;
+      }
+      
+      // Get template sections with categories
+      if (url.match(/\/risk-templates\/[\w-]+\/sections$/)) {
+        const templateId = url.split('/risk-templates/')[1].split('/sections')[0];
+        const template = mockRiskTemplates.find(t => t.id === templateId);
+        if (template) {
+          return template.sections;
+        }
+        return [];
+      }
+      
+      // Get categories for a section
+      if (url.match(/\/risk-templates\/[\w-]+\/sections\/[\w-]+\/categories$/)) {
+        const parts = url.split('/');
+        const templateId = parts[2];
+        const sectionId = parts[4];
+        
+        const template = mockRiskTemplates.find(t => t.id === templateId);
+        if (template) {
+          const section = template.sections.find(s => s.id === sectionId);
+          if (section) {
+            return section.categories;
+          }
+        }
+        return [];
+      }
+      
+      // Get items for a category
+      if (url.match(/\/risk-templates\/[\w-]+\/sections\/[\w-]+\/categories\/[\w-]+\/items$/)) {
+        const parts = url.split('/');
+        const categoryId = parts[6];
+        
+        return mockTemplateItems[categoryId] || [];
+      }
+      
+      // Get specific risk template
+      const templateId = url.split('/risk-templates/')[1];
+      const template = mockRiskTemplates.find(t => t.id === templateId);
+      return template || null;
+    }
+    
+    // Handle orders/{id}/risk-templates endpoint
+    if (url.match(/\/orders\/[\w-]+\/risk-templates$/)) {
+      return mockRiskTemplates;
+    }
     
     if (url.includes('/customers')) {
       if (url.includes('/orders')) {
@@ -657,6 +836,14 @@ export const contentsValuationApi = {
   addItem: (id, categoryId, item) => mockApi.post(`/contents-valuations/${id}/categories/${categoryId}/items`, item),
   updateItem: (id, categoryId, itemId, item) => mockApi.put(`/contents-valuations/${id}/categories/${categoryId}/items/${itemId}`, item),
   deleteItem: (id, categoryId, itemId) => mockApi.delete(`/contents-valuations/${id}/categories/${categoryId}/items/${itemId}`)
+};
+
+// Export the mock risk templates for direct testing
+export const __testHelpers = {
+  getMockRiskTemplates: () => mockRiskTemplates,
+  testGetRiskTemplates: async () => {
+    return await mockApi.get('/risk-templates');
+  }
 };
 
 export default api; 

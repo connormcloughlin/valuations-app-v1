@@ -1,7 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Button, Container, Row, Col, Card, Alert, Spinner, Modal, Table, InputGroup } from 'react-bootstrap';
-import { orderApi, customerApi, propertyApi, insurerBrokerApi } from '../services/api';
+import { orderApi, customerApi, propertyApi, insurerBrokerApi, __testHelpers } from '../services/api';
+import riskTemplateApi from '../services/riskTemplateApi';
+
+// Immediately run a test of the mock API
+(async () => {
+  try {
+    console.log('======= INITIALIZATION TEST ========');
+    console.log('DIRECT TEST - Mock risk templates:', __testHelpers.getMockRiskTemplates());
+    const mockApiResponse = await __testHelpers.testGetRiskTemplates();
+    console.log('DIRECT TEST - Mock API response:', mockApiResponse);
+    console.log('======= END INITIALIZATION TEST ======');
+  } catch (err) {
+    console.error('DIRECT TEST - Error testing mock API:', err);
+  }
+})();
 
 const NewOrder = () => {
   const navigate = useNavigate();
@@ -17,13 +31,15 @@ const NewOrder = () => {
     insurerReference: '',
     brokerId: '',
     insurerId: '',
-    notes: ''
+    notes: '',
+    riskTemplates: []
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [properties, setProperties] = useState([]);
   const [insurerBrokers, setInsurerBrokers] = useState([]);
+  const [riskTemplates, setRiskTemplates] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
   const [showNewInsurerBrokerModal, setShowNewInsurerBrokerModal] = useState(false);
@@ -43,6 +59,17 @@ const NewOrder = () => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [filteredCustomers, setFilteredCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+  // Wrap staticTemplates in useMemo to avoid recreation on each render
+  const staticTemplates = useMemo(() => [
+    { id: 'static-1', name: 'INVENTORY', description: 'Detailed inventory of household items' },
+    { id: 'static-2', name: 'DOMESTIC RISK', description: 'Residential property risk assessment' },
+    { id: 'static-3', name: 'BUILDING', description: 'Building structure assessment' },
+    { id: 'static-4', name: 'CONTENTS', description: 'Contents valuation' }
+  ], []);
+
+  // Add state to track if templates are loading
+  const [templatesLoading, setTemplatesLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -78,6 +105,118 @@ const NewOrder = () => {
       setFilteredCustomers(customers);
     }
   }, [customerSearch, customers]);
+
+  useEffect(() => {
+    // Prevent multiple API calls
+    let isMounted = true;
+    
+    const fetchRiskTemplates = async () => {
+      // Skip if already loading
+      if (templatesLoading) return;
+      
+      try {
+        // Set loading state to prevent duplicate calls
+        setTemplatesLoading(true);
+        console.log('====== FETCHING RISK TEMPLATES ======');
+        console.log('Fetching risk templates from API at:', `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/risk-templates`);
+        
+        // Try to get templates from the API
+        const templates = await riskTemplateApi.getAll();
+        console.log('====== RECEIVED TEMPLATES ======');
+        console.log('API Response Type:', Array.isArray(templates) ? 'Array' : typeof templates);
+        console.log('Template Count:', templates ? templates.length : 0);
+        console.log('Fetched risk templates from API:', templates);
+        
+        // Only update state if component is still mounted
+        if (isMounted) {
+          if (templates && templates.length > 0) {
+            console.log('====== SETTING TEMPLATES FROM API ======');
+            console.log('Setting templates from API:', templates);
+            setRiskTemplates(templates);
+          } else {
+            // API returned empty data, use static templates as fallback
+            console.log('====== FALLING BACK TO STATIC TEMPLATES ======');
+            console.log('No templates from API, using static templates as fallback');
+            setRiskTemplates(staticTemplates);
+          }
+        }
+      } catch (err) {
+        console.error('====== API ERROR ======');
+        console.error('Failed to fetch risk templates:', err);
+        console.error('Error details:', err.message);
+        console.error('Stack:', err.stack);
+        // Use static templates on error
+        if (isMounted) {
+          console.log('Error fetching templates, using static templates as fallback');
+          setRiskTemplates(staticTemplates);
+        }
+      } finally {
+        // Reset loading state
+        if (isMounted) {
+          console.log('====== TEMPLATES LOADING COMPLETE ======');
+          setTemplatesLoading(false);
+        }
+      }
+    };
+
+    // Only fetch if we don't already have templates and aren't currently loading
+    if (riskTemplates.length === 0 && !templatesLoading) {
+      console.log('====== STARTING TEMPLATE FETCH ======');
+      fetchRiskTemplates();
+    } else {
+      console.log('====== SKIPPING TEMPLATE FETCH ======');
+      console.log('Templates already loaded or loading in progress');
+      console.log('Current template count:', riskTemplates.length);
+      console.log('Loading state:', templatesLoading);
+    }
+    
+    // Cleanup function to prevent state updates if unmounted
+    return () => {
+      isMounted = false;
+    };
+  }, [staticTemplates, riskTemplates.length, templatesLoading]);
+
+  useEffect(() => {
+    console.log('====== TEMPLATES STATE UPDATED ======');
+    console.log('Risk templates state updated:', riskTemplates);
+    
+    // Debug each template to verify the structure
+    if (riskTemplates && riskTemplates.length > 0) {
+      console.log(`Loaded ${riskTemplates.length} templates`);
+      riskTemplates.forEach((template, index) => {
+        console.log(`====== TEMPLATE ${index + 1} ======`);
+        console.log('Full template object:', template);
+        console.log('Template properties:', Object.keys(template).join(', '));
+        console.log(`Display name:`, template.templatename || template.name || `Template ${index + 1}`);
+        console.log(`ID:`, template.risktemplateid || template.id || `template-${index}`);
+      });
+    } else {
+      console.log('====== NO TEMPLATES AVAILABLE ======');
+    }
+  }, [riskTemplates]);
+
+  // FOR TESTING: Force some templates to be available if API fails  
+  useEffect(() => {
+    // If after 3 seconds we still don't have templates, add some test ones
+    const timer = setTimeout(() => {
+      if (riskTemplates.length === 0 && !templatesLoading) {
+        console.log('====== ADDING TEST TEMPLATES ======');
+        console.log('API templates not loaded after timeout, adding test templates');
+        
+        const testTemplates = [
+          { risktemplateid: 'test-1', templatename: 'RESIDENTIAL BUILDING VALUATION', description: 'For residential properties' },
+          { risktemplateid: 'test-2', templatename: 'INVENTORY', description: 'Detailed inventory assessment' },
+          { risktemplateid: 'test-3', templatename: 'VEHICLE INSPECTION', description: 'Vehicle condition assessment' },
+          { risktemplateid: 'test-4', templatename: 'DOMESTIC RISK', description: 'Home risk assessment' },
+          { risktemplateid: 'test-5', templatename: 'HIGH SECURITY SURVEY', description: 'Advanced security assessment' }
+        ];
+        
+        setRiskTemplates(testTemplates);
+      }
+    }, 3000);
+    
+    return () => clearTimeout(timer);
+  }, [riskTemplates.length, templatesLoading]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -156,6 +295,15 @@ const NewOrder = () => {
       customerId: customer.id
     }));
     setShowCustomerModal(false);
+  };
+
+  const handleRiskTemplateChange = (e) => {
+    const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+    console.log('Selected template options:', selectedOptions);
+    setFormData(prev => ({
+      ...prev,
+      riskTemplates: selectedOptions
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -250,17 +398,70 @@ const NewOrder = () => {
             <Row>
               <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Valuation Type</Form.Label>
+                  <Form.Label>Assessment Types</Form.Label>
+                  <div className="mb-2">
+                    <small className="text-muted">
+                      {riskTemplates.length} templates available
+                    </small>
+                    {templatesLoading && (
+                      <span className="ms-2">
+                        <Spinner animation="border" size="sm" role="status" />
+                        <small className="ms-1 text-primary">Loading templates...</small>
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* React Bootstrap Form.Select */}
                   <Form.Select
-                    name="type"
-                    value={formData.type}
-                    onChange={handleChange}
+                    name="riskTemplates"
+                    value={formData.riskTemplates}
+                    onChange={handleRiskTemplateChange}
                     required
+                    multiple
+                    size={4}
+                    style={{ 
+                      color: '#000', 
+                      backgroundColor: '#fff',
+                      border: '1px solid #ced4da',
+                      borderRadius: '0.25rem',
+                      padding: '0.375rem 0.75rem',
+                      fontSize: '1rem',
+                      lineHeight: '1.5'
+                    }}
+                    className="mb-3"
+                    disabled={templatesLoading}
                   >
-                    <option value="building">Building Valuation</option>
-                    <option value="contents">Contents Valuation</option>
-                    <option value="both">Both Building and Contents</option>
+                    {/* Remove all hardcoded options */}
+                    
+                    {/* Render risk templates directly */}
+                    {riskTemplates && riskTemplates.length > 0 ? (
+                      riskTemplates.map((template, index) => {
+                        // Use the 'templatename' property from the API response
+                        const displayName = template.templatename || template.name || `Template ${index + 1}`;
+                        const templateId = template.risktemplateid || template.id || `template-${index}`;
+                        
+                        return (
+                          <option 
+                            key={templateId} 
+                            value={templateId}
+                            style={{ 
+                              padding: '10px', 
+                              color: '#000',
+                              fontWeight: 'bold',
+                              backgroundColor: index % 2 === 0 ? '#fff' : '#f8f9fa',
+                            }}
+                          >
+                            {displayName}
+                          </option>
+                        );
+                      })
+                    ) : (
+                      <option disabled>{templatesLoading ? 'Loading assessment types...' : 'No assessment types available'}</option>
+                    )}
                   </Form.Select>
+                  <Form.Text className="text-muted">
+                    Hold Ctrl (or Cmd on Mac) to select multiple assessment types
+                  </Form.Text>
                 </Form.Group>
               </Col>
               <Col md={6}>
