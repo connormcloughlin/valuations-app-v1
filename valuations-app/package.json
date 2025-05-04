@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "@azure/msal-browser": "^4.11.0",
+    "@azure/msal-react": "^3.0.10",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/material": "^7.0.2",
+    "@mui/x-data-grid": "^8.1.0",
+    "@react-native-async-storage/async-storage": "^1.24.0",
+    "expo-network": "^7.0.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-native-safe-area-context": "^4.12.0"
+  },
+  "name": "valuations-app",
+  "description": "A comprehensive web and mobile application for managing household content valuations, appointments, and inventory.",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
