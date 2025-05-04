@@ -2,7 +2,8 @@ import axios from 'axios';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { msalConfig } from '../authConfig';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// Update the URL to point to your new backend server
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 // Create MSAL instance
 const msalInstance = new PublicClientApplication(msalConfig);

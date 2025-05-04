@@ -74,6 +74,39 @@ The application uses several configuration files that contain sensitive informat
 
 **Important:** Never commit the real configuration files or `.env` files to the repository. These files are included in `.gitignore` to prevent accidental exposure of secrets.
 
+### Using an External Backend Server
+
+If you need to point the application to an external backend server, you'll need to modify the following files:
+
+#### Web Application
+Update the `API_BASE_URL` variable in `valuations-app/web/src/services/api.js` to point to your external backend server:
+```javascript
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+```
+
+Alternatively, create a `.env` file in the web directory with:
+```
+REACT_APP_API_URL=http://localhost:5000/api
+```
+
+#### Mobile Applications
+Update the `BASE_URL` in both:
+- `valuations-app/mobile/api/index.js`
+- `valuations-app/mobile-tablet/api/index.js`
+
+Example:
+```javascript
+const API_CONFIG = {
+  BASE_URL: Platform.OS === 'ios' 
+    ? 'http://localhost:5000/api' 
+    : 'http://10.0.2.2:5000/api', // For Android emulator
+  // ...
+};
+```
+
+#### API Compatibility
+Make sure your external backend server implements the same API endpoints and authentication mechanisms as expected by the frontend applications.
+
 ### Running the Application
 
 #### Backend

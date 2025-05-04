@@ -3,10 +3,10 @@ import { Platform } from 'react-native';
 
 // API configuration
 const API_CONFIG = {
-  // Use localhost for iOS simulator, 10.0.2.2 for Android emulator
+  // Updated URLs for the new backend server
   BASE_URL: Platform.OS === 'ios' 
-    ? 'http://localhost:3000/api' 
-    : 'http://10.0.2.2:3000/api',
+    ? 'http://localhost:5000/api' 
+    : 'http://10.0.2.2:5000/api', // Use 10.0.2.2 for Android emulator to access host's localhost
   TIMEOUT: 10000,
   HEADERS: {
     'Content-Type': 'application/json',
