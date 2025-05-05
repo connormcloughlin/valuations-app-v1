@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, ScrollView, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Button, Card, List, Divider } from 'react-native-paper';
-import { router, Stack } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { logNavigation } from '../../utils/logger';
+import api from '../../api';
+import ConnectionStatus from '../../components/ConnectionStatus';
+import connectionUtils from '../../utils/connectionUtils';
 
-// Define types for our category structure
-interface Subcategory {
-  name: string;
-}
-
+// Define types for our data structures
 interface Category {
   id: string;
+  rawId?: string;
   title: string;
   subcategories?: string[];
 }
@@ -22,8 +22,271 @@ interface Section {
   categories: Category[];
 }
 
-// Survey categories based on the form images
-const surveySections: Section[] = [
+// Define types for API responses
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  status?: number;
+  message?: string;
+  fromCache: boolean;
+}
+
+interface RiskTemplate {
+  id?: string;
+  risktemplateid?: string;
+  templateid?: string;
+  name?: string;
+  templatename?: string;
+  description?: string;
+}
+
+interface TemplateSection {
+  id?: string;
+  sectionid?: string;
+  risktemplatesectionid?: string;
+  templateSectionId?: string;
+  name?: string;
+  sectionname?: string;
+}
+
+interface TemplateCategory {
+  id?: string;
+  categoryid?: string;
+  templateCategoryId?: string;
+  risktemplatecategoryid?: string;
+  name?: string;
+  categoryname?: string;
+  subcategories?: string[];
+}
+
+export default function CategoriesScreen() {
+  logNavigation('Survey Categories');
+  
+  // Get router instance
+  const router = useRouter();
+  
+  // Get template ID from route params
+  const { templateId } = useLocalSearchParams<{ templateId: string }>();
+  
+  // State for API data
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [surveySections, setSurveySections] = useState<Section[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<RiskTemplate | null>(null);
+  const [isOffline, setIsOffline] = useState<boolean>(false);
+  const [fromCache, setFromCache] = useState<boolean>(false);
+  
+  // UI state
+  const [expandedSections, setExpandedSections] = useState<string[]>(['section-a', 'section-b']);
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+  const [apiInfo, setApiInfo] = useState<string | null>(null);
+  
+  // Update offline status
+  useEffect(() => {
+    const checkIsOffline = async () => {
+      const online = await connectionUtils.updateConnectionStatus();
+      setIsOffline(!online);
+    };
+    
+    checkIsOffline();
+    
+    // Check again if it's offline every 30 seconds
+    const intervalId = setInterval(checkIsOffline, 30000);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
+  
+  // Fetch data from API
+  useEffect(() => {
+    async function fetchCategoriesData() {
+      try {
+        setLoading(true);
+        setError(null);
+        setFromCache(false);
+        
+        // Add info about what API we're using
+        setApiInfo('Connecting to API at 192.168.0.102:5000...');
+        
+        // Check if we have a template ID from params
+        if (!templateId) {
+          console.log('No template ID provided, fetching all templates');
+          
+          // First, get all risk templates
+          const templatesResponse = await api.getRiskTemplates() as ApiResponse<RiskTemplate[]>;
+          
+          // Check if we got data from cache
+          if (templatesResponse.fromCache) {
+            setFromCache(true);
+            setApiInfo('Using cached data (offline mode)');
+          }
+          
+          if (!templatesResponse.success || !templatesResponse.data) {
+            setError('Failed to load templates: ' + templatesResponse.message);
+            setLoading(false);
+            return;
+          }
+          
+          console.log('Templates retrieved:', templatesResponse.data.length);
+          if (!templatesResponse.fromCache) {
+            setApiInfo(`Connected to API: Found ${templatesResponse.data.length} templates`);
+          }
+          
+          // We'll use the first template if no ID was provided
+          // Use the correct property based on the API response
+          const firstTemplateId = templatesResponse.data[0]?.risktemplateid || 
+                              templatesResponse.data[0]?.templateid || 
+                              templatesResponse.data[0]?.id;
+          
+          if (!firstTemplateId) {
+            setError('No valid template found in API response');
+            console.error('Template object:', templatesResponse.data[0]);
+            setLoading(false);
+            return;
+          }
+          
+          setSelectedTemplate(templatesResponse.data[0]);
+          console.log('Using first template ID:', firstTemplateId);
+          await loadTemplateSections(firstTemplateId);
+        } else {
+          // Use the provided template ID from params
+          console.log('Using provided template ID:', templateId);
+          await loadTemplateSections(templateId);
+          
+          // Optionally, load template details
+          try {
+            const templatesResponse = await api.getRiskTemplates() as ApiResponse<RiskTemplate[]>;
+            
+            // Check if we got data from cache
+            if (templatesResponse.fromCache) {
+              setFromCache(true);
+              setApiInfo('Using cached data (offline mode)');
+            }
+            
+            if (templatesResponse.success && templatesResponse.data) {
+              const template = templatesResponse.data.find(t => 
+                (t.risktemplateid?.toString() === templateId) || 
+                (t.templateid?.toString() === templateId) || 
+                (t.id?.toString() === templateId)
+              );
+              
+              if (template) {
+                setSelectedTemplate(template);
+                console.log('Found template details:', template);
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to load template details:', e);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+        setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setApiInfo(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchCategoriesData();
+  }, [templateId]);
+  
+  // Function to load sections for a template
+  const loadTemplateSections = async (id: string) => {
+    console.log(`Fetching sections for template ID: ${id}`);
+    
+    // Get sections for this template using the updated API path
+    const sectionsResponse = await api.getRiskTemplateSections(id) as ApiResponse<TemplateSection[]>;
+    
+    // Check if we got data from cache
+    if (sectionsResponse.fromCache) {
+      setFromCache(true);
+      setApiInfo('Using cached data (offline mode)');
+    }
+    
+    if (!sectionsResponse.success || !sectionsResponse.data) {
+      setError('Failed to load sections: ' + sectionsResponse.message);
+      console.error('Section error:', sectionsResponse);
+      return;
+    }
+    
+    console.log(`Retrieved ${sectionsResponse.data.length} sections`);
+    
+    // Build sections data with categories
+    const sections: Section[] = [];
+    
+    // For each section, get categories
+    for (const section of sectionsResponse.data) {
+      // Use the correct property name based on API response
+      const sectionId = section.risktemplatesectionid || 
+                       section.sectionid ||
+                       section.templateSectionId || 
+                       section.id || '';
+                       
+      if (!sectionId) {
+        console.warn('Skipping section with no ID:', section);
+        continue;
+      }
+
+      console.log(`Fetching categories for section ${sectionId}`);
+      console.log(`Section name: ${section.sectionname || section.name || 'Unnamed'}`);
+      
+      // Get categories for this section using the updated API path
+      const categoriesResponse = await api.getRiskTemplateCategories(
+        id,
+        sectionId
+      ) as ApiResponse<TemplateCategory[]>;
+      
+      // Check if we got data from cache
+      if (categoriesResponse.fromCache) {
+        setFromCache(true);
+        setApiInfo('Using cached data (offline mode)');
+      }
+      
+      let categories: Category[] = [];
+      
+      if (categoriesResponse.success && categoriesResponse.data) {
+        console.log(`Found ${categoriesResponse.data.length} categories for section ${sectionId}`);
+        
+        // Map the category data using the correct property names
+        categories = categoriesResponse.data.map(cat => {
+          // Get the raw categoryid for display purposes - prioritize risktemplatecategoryid
+          const rawCategoryId = cat.risktemplatecategoryid || cat.categoryid || cat.templateCategoryId || '';
+          
+          const mappedCategory = {
+            id: cat.categoryid || cat.templateCategoryId || cat.id || `cat-${Math.random().toString(36).substring(2, 9)}`,
+            rawId: rawCategoryId, // Store the original ID for display
+            title: cat.categoryname || cat.name || 'Unnamed Category',
+            // If the category has subcategories, add them
+            ...(cat.subcategories ? { subcategories: cat.subcategories } : {})
+          };
+          
+          return mappedCategory;
+        });
+      } else {
+        console.warn(`No categories found for section ${sectionId}:`, categoriesResponse.message);
+      }
+      
+      // Use the correct property names for section data
+      sections.push({
+        id: sectionId,
+        title: section.sectionname || section.name || 'Unnamed Section',
+        categories
+      });
+    }
+    
+    // Update state with the fetched data
+    setSurveySections(sections);
+    console.log('Sections data prepared:', sections.length);
+  };
+  
+  // Fallback to static data if API fails (for development)
+  useEffect(() => {
+    if (error && surveySections.length === 0) {
+      console.log('Using fallback static data');
+      // Static data as fallback
+      const staticSections = [
   {
     id: 'section-a',
     title: 'SECTION A - AGREED VALUE ITEMS',
@@ -31,15 +294,7 @@ const surveySections: Section[] = [
       { id: 'cat-1', title: 'CLOTHING', subcategories: ['GENTS/BOYS', 'LADIES/GIRLS', 'CHILDREN/BABIES'] },
       { id: 'cat-2', title: 'FURNITURE' },
       { id: 'cat-3', title: 'LINEN' },
-      { id: 'cat-4', title: 'LUGGAGE/CONTAINERS' },
-      { id: 'cat-5', title: 'JEWELLERY' },
-      { id: 'cat-6', title: 'ANTIQUES' },
-      { id: 'cat-7', title: 'VALUABLE ARTWORKS' },
-      { id: 'cat-8', title: 'VALUABLE CARPETS' },
-      { id: 'cat-9', title: 'COLLECTIONS (COINS/STAMPS)' },
-      { id: 'cat-10', title: 'VALUABLE ORNAMENTS' },
-      { id: 'cat-11', title: 'SPORT EQUIPMENT' },
-      { id: 'cat-12', title: 'OUTDOOR EQUIPMENT' },
+            // ... other categories
     ]
   },
   {
@@ -48,17 +303,15 @@ const surveySections: Section[] = [
     categories: [
       { id: 'cat-13', title: 'DOMESTIC APPLIANCES' },
       { id: 'cat-14', title: 'VISUAL, SOUND, COMPUTERS' },
-      { id: 'cat-15', title: 'PHOTOGRAPHIC EQUIPMENT' },
-      { id: 'cat-16', title: 'HIGH RISK ITEMS' },
-      { id: 'cat-17', title: 'POWER TOOLS' },
-    ]
-  }
-];
-
-export default function CategoriesScreen() {
-  logNavigation('Survey Categories');
-  const [expandedSections, setExpandedSections] = useState<string[]>(['section-a', 'section-b']);
-  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+            // ... other categories
+          ]
+        }
+      ];
+      
+      setSurveySections(staticSections);
+      setExpandedSections(['section-a', 'section-b']);
+    }
+  }, [error, surveySections]);
   
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev => 
@@ -76,21 +329,65 @@ export default function CategoriesScreen() {
     );
   };
   
-  const navigateToItems = (categoryId: string, categoryTitle: string) => {
+  const navigateToItems = (categoryId: string, categoryTitle: string, rawCategoryId?: string) => {
+    // For categories with subcategories, we need to extract the rawId from the original category
+    let effectiveRawId = rawCategoryId;
+    
+    // If this is a subcategory format (cat-X-sub-Y), extract the rawId from the parent category
+    if (!effectiveRawId && categoryId.includes('-sub-')) {
+      const parentCategoryId = categoryId.split('-sub-')[0];
+      // Find the parent category to get its rawId
+      for (const section of surveySections) {
+        const parentCategory = section.categories.find(cat => cat.id === parentCategoryId);
+        if (parentCategory && parentCategory.rawId) {
+          effectiveRawId = parentCategory.rawId;
+          break;
+        }
+      }
+    }
+    
+    // Handle normal categories
+    if (!effectiveRawId) {
+      // Find the category to get its rawId
+      for (const section of surveySections) {
+        const category = section.categories.find(cat => cat.id === categoryId);
+        if (category && category.rawId) {
+          effectiveRawId = category.rawId;
+          break;
+        }
+      }
+    }
+    
+    // Simplified logging now that functionality is working
+    console.log(`Navigating to items for category: ${categoryTitle}, using ID: ${effectiveRawId || categoryId}`);
+    
     router.push({
       pathname: '/survey/items',
       params: { 
-        categoryId,
-        categoryTitle
+        categoryId: effectiveRawId || categoryId, // Use the raw ID if available, otherwise the regular ID
+        categoryTitle,
+        originalCategoryId: categoryId // Keep the original ID for reference
       }
     });
   };
+  
+  // Show loading indicator
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#27ae60" />
+        <Text style={styles.loadingText}>Loading assessment categories...</Text>
+      </View>
+    );
+  }
   
   return (
     <>
       <Stack.Screen
         options={{
-          title: 'Survey Categories',
+          title: selectedTemplate ? 
+            `${selectedTemplate.templatename || selectedTemplate.name}` : 
+            'Risk Assessment Categories',
           headerTitleStyle: {
             fontWeight: '600',
           },
@@ -98,11 +395,40 @@ export default function CategoriesScreen() {
       />
 
       <View style={styles.container}>
+        <ConnectionStatus showOffline={true} showOnline={false} />
+        
         <ScrollView style={styles.scrollView}>
           <View style={styles.instructions}>
             <Text style={styles.instructionsText}>
-              Select a category to add items to your inventory
+              Select a category from the risk assessment template to add items
             </Text>
+            
+            {apiInfo && (
+              <View style={styles.apiInfoContainer}>
+                <MaterialCommunityIcons 
+                  name={isOffline || fromCache ? "server-network-off" : "server-network"} 
+                  size={16} 
+                  color={isOffline || fromCache ? "#e74c3c" : "#3498db"} 
+                />
+                <Text style={[
+                  styles.apiInfoText, 
+                  (isOffline || fromCache) && { color: "#e74c3c" }
+                ]}>
+                  {isOffline || fromCache ? "Offline Mode - Using Cached Data" : apiInfo}
+                </Text>
+              </View>
+            )}
+            
+            {selectedTemplate && (
+              <View style={styles.templateInfoContainer}>
+                <MaterialCommunityIcons name="file-document-outline" size={16} color="#27ae60" />
+                <Text style={styles.templateInfoText}>
+                  Using template: {selectedTemplate.templatename || selectedTemplate.name}
+                </Text>
+              </View>
+            )}
+            
+            {error && <Text style={styles.errorText}>{error}</Text>}
           </View>
           
           {surveySections.map(section => (
@@ -121,21 +447,35 @@ export default function CategoriesScreen() {
               
               {expandedSections.includes(section.id) && (
                 <View style={styles.categoryList}>
-                  {section.categories.map(category => (
+                  {section.categories.map((category, index) => (
                     <View key={category.id}>
                       {category.subcategories ? (
                         <List.Accordion
-                          title={category.title}
+                          title={
+                            <View style={styles.categoryTitleContainer}>
+                              <Text style={styles.categoryTitle}>{category.title}</Text>
+                              {category.rawId && (
+                                <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
+                              )}
+                            </View>
+                          }
                           expanded={expandedCategories.includes(category.id)}
                           onPress={() => toggleCategory(category.id)}
                           style={styles.accordion}
                           titleStyle={styles.categoryTitle}
                         >
-                          {category.subcategories.map((subcat, index) => (
+                          {category.subcategories.map((subcat, subIndex) => (
                             <List.Item
-                              key={`${category.id}-sub-${index}`}
-                              title={subcat}
-                              onPress={() => navigateToItems(`${category.id}-sub-${index}`, `${category.title} - ${subcat}`)}
+                              key={`${category.id}-sub-${subIndex}`}
+                              title={
+                                <View style={styles.categoryTitleContainer}>
+                                  <Text style={styles.subcategoryTitle}>{subcat}</Text>
+                                  {category.rawId && (
+                                    <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
+                                  )}
+                                </View>
+                              }
+                              onPress={() => navigateToItems(`${category.id}-sub-${subIndex}`, `${category.title} - ${subcat}`, category.rawId)}
                               titleStyle={styles.subcategoryTitle}
                               style={styles.subcategoryItem}
                               right={props => (
@@ -150,9 +490,15 @@ export default function CategoriesScreen() {
                         </List.Accordion>
                       ) : (
                         <List.Item
-                          title={category.title}
-                          onPress={() => navigateToItems(category.id, category.title)}
-                          titleStyle={styles.categoryTitle}
+                          title={
+                            <View style={styles.categoryTitleContainer}>
+                              <Text style={styles.categoryTitle}>{category.title}</Text>
+                              {category.rawId && (
+                                <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
+                              )}
+                            </View>
+                          }
+                          onPress={() => navigateToItems(category.id, category.title, category.rawId)}
                           style={styles.categoryItem}
                           right={props => (
                             <MaterialCommunityIcons
@@ -191,6 +537,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f6fa',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f6fa',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#555',
+  },
   scrollView: {
     flex: 1,
     padding: 16,
@@ -203,6 +560,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#7f8c8d',
     lineHeight: 22,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#e74c3c',
+    marginTop: 8,
   },
   sectionCard: {
     marginBottom: 16,
@@ -226,6 +588,12 @@ const styles = StyleSheet.create({
   },
   accordion: {
     backgroundColor: '#fff',
+  },
+  categoryTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
   },
   categoryTitle: {
     fontSize: 15,
@@ -252,5 +620,40 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     backgroundColor: '#27ae60',
+  },
+  apiInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#e3f2fd',
+    borderRadius: 4,
+  },
+  apiInfoText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#3498db',
+  },
+  templateInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#e8f5e9',
+    borderRadius: 4,
+  },
+  templateInfoText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#27ae60',
+  },
+  categoryIdBadge: {
+    fontSize: 12,
+    color: '#777',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
   },
 }); 

@@ -1,4 +1,4 @@
-{
+module.exports = {
   "expo": {
     "name": "Valuations App",
     "slug": "valuations-mobile-tablet",
@@ -28,14 +28,14 @@
       "bundler": "metro",
       "favicon": "./assets/images/favicon.png"
     },
-    "plugins": [
-      "expo-router",
-      "expo-font",
-      "expo-screen-orientation"
-    ],
     "experiments": {
       "typedRoutes": true
     },
+    "plugins": [
+      "expo-font",
+      "expo-screen-orientation",
+      "expo-router"
+    ],
     "newArchEnabled": true
   }
-}
+}; 

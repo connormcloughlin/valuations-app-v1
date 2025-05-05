@@ -3,10 +3,8 @@ import { Platform } from 'react-native';
 
 // API configuration
 const API_CONFIG = {
-  // Updated URLs for the new backend server
-  BASE_URL: Platform.OS === 'ios' 
-    ? 'http://localhost:5000/api' 
-    : 'http://10.0.2.2:5000/api', // Use 10.0.2.2 for Android emulator to access host's localhost
+  // Use the specific IP address for the API server
+  BASE_URL: 'http://192.168.0.102:5000/api',
   TIMEOUT: 10000,
   HEADERS: {
     'Content-Type': 'application/json',
@@ -14,12 +12,33 @@ const API_CONFIG = {
   }
 };
 
+console.log(`API configured with base URL: ${API_CONFIG.BASE_URL}`);
+
 // Create axios instance with config
 const apiClient = axios.create({
   baseURL: API_CONFIG.BASE_URL,
   timeout: API_CONFIG.TIMEOUT,
   headers: API_CONFIG.HEADERS
 });
+
+// Simple test to check API connectivity on startup
+(async () => {
+  try {
+    console.log(`Testing connection to ${API_CONFIG.BASE_URL}...`);
+    const response = await fetch(`${API_CONFIG.BASE_URL}/risk-templates`, { 
+      method: 'GET', 
+      headers: API_CONFIG.HEADERS 
+    });
+    console.log(`API connection test result: ${response.status}`);
+    if (response.status >= 200 && response.status < 300) {
+      console.log('✅ API server is reachable');
+    } else {
+      console.warn(`⚠️ API returned status ${response.status}`);
+    }
+  } catch (error) {
+    console.error('❌ API connection test failed:', error.message);
+  }
+})();
 
 // Add response interceptor for standardizing responses
 apiClient.interceptors.response.use(
@@ -164,6 +183,78 @@ const api = {
       return response;
     } catch (error) {
       console.error('File upload error:', error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get risk templates from the server
+   * @returns {Promise<Object>} Response with risk templates array
+   */
+  getRiskTemplates: async () => {
+    try {
+      console.log(`Fetching risk templates from ${API_CONFIG.BASE_URL}/risk-templates`);
+      const response = await apiClient.get('/risk-templates');
+      console.log(`Got ${response.data?.length || 0} risk templates`);
+      return response;
+    } catch (error) {
+      console.error('Get risk templates error:', error);
+      console.error('Error message:', error.message);
+      console.error('API URL was:', `${API_CONFIG.BASE_URL}/risk-templates`);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get sections for a specific risk template
+   * @param {string} templateId - ID of the risk template
+   * @returns {Promise<Object>} Response with template sections
+   */
+  getRiskTemplateSections: async (templateId) => {
+    try {
+      console.log(`Fetching sections for template: ${templateId}`);
+      // Using the correct endpoint path for sections
+      const response = await apiClient.get(`/risk-template-sections/template/${templateId}`);
+      if (response.data && response.data.length > 0) {
+        console.log('Example section object:', JSON.stringify(response.data[0]));
+      }
+      return response;
+    } catch (error) {
+      console.error(`Get template sections error:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get categories for a specific risk template section
+   * @param {string} templateId - ID of the risk template
+   * @param {string} sectionId - ID of the section
+   * @returns {Promise<Object>} Response with template categories
+   */
+  getRiskTemplateCategories: async (templateId, sectionId) => {
+    try {
+      console.log(`Fetching categories for section: ${sectionId}`);
+      console.log(`Section ID property type: ${typeof sectionId}`);
+      // Using the correct endpoint path for categories
+      return await apiClient.get(`/risk-template-categories/section/${sectionId}`);
+    } catch (error) {
+      console.error(`Get template categories error:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get items for a specific risk template category
+   * @param {string} categoryId - ID of the category
+   * @returns {Promise<Object>} Response with category items
+   */
+  getRiskTemplateItems: async (categoryId) => {
+    try {
+      console.log(`Fetching items for category: ${categoryId}`);
+      // Using the correct endpoint path for items
+      return await apiClient.get(`/risk-template-items/category/${categoryId}`);
+    } catch (error) {
+      console.error(`Get category items error:`, error);
       return error.success === false ? error : { success: false, message: error.message };
     }
   }

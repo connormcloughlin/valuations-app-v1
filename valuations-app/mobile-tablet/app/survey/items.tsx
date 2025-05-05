@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, ScrollView, Text, TouchableOpacity, TextInput, Modal, Image, ActivityIndicator, Alert } from 'react-native';
 import { Button, Card, IconButton, Divider, DataTable, Switch } from 'react-native-paper';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Svg, { Path } from 'react-native-svg';
 import categoryItemsApi from '../../services/categoryItemsApi';
-import * as ImagePicker from 'expo-image-picker';
+import api from '../../api';
+// Use require instead of import to avoid type declaration issues
+const ImagePicker = require('expo-image-picker');
 import { logNavigation } from '../../utils/logger';
+import ConnectionStatus from '../../components/ConnectionStatus';
+import connectionUtils from '../../utils/connectionUtils';
 
 // Categories with rooms for furniture
 const roomsForCategory: Record<string, string[]> = {
@@ -30,12 +34,130 @@ interface Item {
   selection?: string;
 }
 
+// Define the API response type
+interface ApiResponse {
+  success: boolean;
+  data: any[];
+  message?: string;
+  status?: number;
+  fromCache?: boolean;
+}
+
+interface CategoryIdMapping {
+  [key: string]: string;
+}
+
 export default function ItemsScreen() {
   logNavigation('Survey Items');
-  const params = useLocalSearchParams();
-  const { categoryId, categoryTitle, surveyId, useHandwriting } = params;
   
-  console.log('Route params:', { categoryId, categoryTitle, surveyId, useHandwriting });
+  // Get router instance
+  const router = useRouter();
+  
+  const params = useLocalSearchParams();
+  const { categoryId, categoryTitle, surveyId, useHandwriting, templateId } = params;
+  
+  console.log('Route params:', { categoryId, categoryTitle, surveyId, useHandwriting, templateId });
+  
+  // Add state for storing the actual category ID from the API
+  const [actualApiCategoryId, setActualApiCategoryId] = useState<string | null>(() => {
+    // Initial state computation
+    if (typeof categoryId === 'string' && categoryId.match(/^\d+$/)) {
+      console.log('Initializing with direct numeric categoryId:', categoryId);
+      return categoryId as string;
+    }
+    return null;
+  });
+  
+  // State for offline and cache status
+  const [isOffline, setIsOffline] = useState<boolean>(false);
+  const [fromCache, setFromCache] = useState<boolean>(false);
+  
+  // Update offline status
+  useEffect(() => {
+    const checkIsOffline = async () => {
+      const online = await connectionUtils.updateConnectionStatus();
+      setIsOffline(!online);
+    };
+    
+    checkIsOffline();
+    
+    // Check again if it's offline every 30 seconds
+    const intervalId = setInterval(checkIsOffline, 30000);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
+  
+  // Process the categoryId to get the actual API ID to use
+  useEffect(() => {
+    // Simplified logging
+    console.log('Category params:', { categoryId, categoryTitle });
+    
+    // Process the categoryId to get the actual API ID to use
+    if (typeof categoryId === 'string') {
+      // First check if it's a direct numeric ID (highest priority)
+      if (categoryId.match(/^\d+$/)) {
+        console.log('Setting category ID from direct numeric ID:', categoryId);
+        setActualApiCategoryId(categoryId);
+        return; // Exit early since we have our ID
+      } else if (categoryId.length > 0 && !categoryId.includes('-')) {
+        // This is already the raw ID (should be just a number)
+        setActualApiCategoryId(categoryId);
+      } else if (categoryId.startsWith('cat-')) {
+        // For legacy/fallback support, extract from cat- format if needed
+        const match = categoryId.match(/cat-([\d.]+)/);
+        if (match && match[1]) {
+          const rawId = match[1].split('.')[0]; // Extract the numeric part before any decimal
+          if (rawId && !isNaN(parseInt(rawId))) {
+            setActualApiCategoryId(rawId);
+          }
+        }
+      }
+    }
+    
+    // Ensure we always have a fallback value for categoryId (run this only if we don't have an ID yet)
+    if (!actualApiCategoryId) {
+      setTimeout(() => {
+        setActualApiCategoryId(prevId => {
+          if (!prevId) {
+            // Default to "1" as a fallback to prevent errors
+            if (typeof categoryId === 'string' && categoryId.includes('ladies') || 
+                (typeof categoryTitle === 'string' && categoryTitle.toLowerCase().includes('ladies'))) {
+              return '2';
+            } else {
+              return '1'; 
+            }
+          }
+          return prevId;
+        });
+      }, 100);
+    }
+  }, [categoryId, categoryTitle, params.originalCategoryId]);
+
+  // Add a second useEffect to trigger the fetch once actualApiCategoryId is available
+  useEffect(() => {
+    if (actualApiCategoryId) {
+      console.log('Category ID is now available:', actualApiCategoryId);
+      fetchCategoryItems();
+    }
+  }, [actualApiCategoryId]);
+
+  // Create a better mapping for CategoryIDs to API IDs
+  const categoryApiMapping: Record<string, string> = {
+    // Clothing categories
+    'clothing': '1', // Main clothing category ID on the API server
+    'clothing-gents-boys': '1', // Assuming gents/boys is category 1
+    'clothing-ladies-girls': '2', // Assuming ladies/girls is category 2
+    'cat-1': '1', // Legacy mapping
+    // More specific clothing subcategory mappings
+    'clothing (gents / boys)': '1',
+    'clothing (ladies / girls)': '2',
+    // Furniture categories
+    'furniture': '3',
+    'cat-2': '3',
+    // Add more mappings as you discover them
+  };
   
   const [showForm, setShowForm] = useState(false);
   const [predefinedItems, setPredefinedItems] = useState<Item[]>([]); // For storing category items from API
@@ -103,8 +225,6 @@ export default function ItemsScreen() {
     } else if (catTitle.includes('domestic') || catTitle.includes('appliances')) {
       return 'b1';
     } else if (catTitle.includes('furniture')) {
-      return 'cat-2';
-    } else if (catTitle.includes('clothing')) {
       // Default to cat-1 for any clothing category 
       return 'cat-1';
     }
@@ -113,58 +233,126 @@ export default function ItemsScreen() {
     return id;
   };
 
-  // Fetch items from API when screen loads
-  useEffect(() => {
-    console.log('Category ID from params:', categoryId);
-    fetchCategoryItems();
-  }, [categoryId]);
-
+  // Fetch items from API
   const fetchCategoryItems = async () => {
-    setLoading(true);
-    setError(null);
+    // Make sure we have a category ID
+    const currentCategoryId = actualApiCategoryId;
+    setFromCache(false);
     
-    try {
-      // Special case for cat1 which maps to "CLOTHING (GENTS / BOYS)"
-      if (categoryId === 'cat1' || categoryId === 'cat-1') {
-        console.log('Direct mapping to cat-1 for clothing items');
-        const response = await categoryItemsApi.getCategoryItems('cat-1');
-        console.log('API response:', response);
-        if (response.success) {
-          const formattedItems = response.data.map((item: any) => ({
+    if (!currentCategoryId) {
+      console.error('No valid category ID available for API call');
+      setError('Missing category ID. Please try again.');
+      // Continue with fallback instead of returning
+      try {
+        const normalizedCategoryId = normalizeCategoryId(categoryId as string);
+        console.log('Using normalized ID for fallback:', normalizedCategoryId);
+        const fallbackResponse = await categoryItemsApi.getCategoryItems(normalizedCategoryId);
+        if (fallbackResponse.success) {
+          const formattedItems = fallbackResponse.data.map((item: any) => ({
             ...item,
             quantity: item.quantity?.toString() || '1',
             price: item.price?.toString() || '0',
             room: '',
             notes: ''
           }));
-          console.log('Formatted items for cat1:', formattedItems);
           setPredefinedItems(formattedItems);
+          setError(null);
+        } else {
+          setError('Failed to load category items');
+        }
+        setLoading(false);
+        return;
+      } catch (err) {
+        console.error('Fallback failed:', err);
+        setError('Failed to load items. Please try again later.');
           setLoading(false);
           return;
         }
       }
 
-      const normalizedCategoryId = normalizeCategoryId(categoryId as string);
-      console.log('Fetching items for normalized category ID:', normalizedCategoryId);
-      const response = await categoryItemsApi.getCategoryItems(normalizedCategoryId);
-      console.log('API response:', response);
-      if (response.success) {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      console.log(`Fetching items for category ID: ${currentCategoryId}`);
+      
+      // Call the Risk Template Items API with the category ID
+      const response = await api.getRiskTemplateItems(currentCategoryId) as ApiResponse;
+      
+      // Check if the data is from cache
+      if (response.fromCache) {
+        setFromCache(true);
+      }
+      
+      if (response.success && response.data && response.data.length > 0) {
         // Transform the API items to match our interface
-        const formattedItems = response.data.map((item: any) => ({
+        const formattedItems = response.data.map((item: any) => {
+          return {
+            id: item.id || item.itemId || item.item_id || `item-${Math.random().toString(36).substring(2, 9)}`,
+            type: item.itemprompt || item.type || item.itemName || item.item_name || item.name || item.title || '',
+            description: item.description || item.desc || '',
+            quantity: item.quantity?.toString() || '1',
+            price: item.price?.toString() || item.estimatedValue?.toString() || item.estimated_value?.toString() || '0',
+            room: item.room || '',
+            notes: item.notes || '',
+            model: item.model || '',
+            selection: item.selection || ''
+          };
+        });
+        
+        console.log(`Found ${formattedItems.length} items for category ID ${currentCategoryId}`);
+        setPredefinedItems(formattedItems);
+      } else {
+        console.log(`No items found for category ID ${currentCategoryId}, using fallback`);
+        
+        // Use fallback if API returns no items
+        const normalizedCategoryId = normalizeCategoryId(categoryId as string);
+        
+        const fallbackResponse = await categoryItemsApi.getCategoryItems(normalizedCategoryId);
+        
+        if (fallbackResponse.success) {
+          const formattedItems = fallbackResponse.data.map((item: any) => ({
           ...item,
           quantity: item.quantity?.toString() || '1',
           price: item.price?.toString() || '0',
           room: '',
           notes: ''
         }));
-        console.log('Formatted items:', formattedItems);
+          console.log('Using fallback data:', formattedItems.length, 'items');
         setPredefinedItems(formattedItems);
       } else {
         setError('Failed to load category items');
+          setPredefinedItems([]);
+        }
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
-      console.error('Error fetching items:', err);
+      console.error('Error:', err);
+      
+      try {
+        // Always try fallback on any error
+        console.log('Error occurred, trying fallback data');
+        const normalizedCategoryId = normalizeCategoryId(categoryId as string);
+        const fallbackResponse = await categoryItemsApi.getCategoryItems(normalizedCategoryId);
+        
+        if (fallbackResponse.success) {
+          const formattedItems = fallbackResponse.data.map((item: any) => ({
+            ...item,
+            quantity: item.quantity?.toString() || '1',
+            price: item.price?.toString() || '0',
+            room: '',
+            notes: ''
+          }));
+          setPredefinedItems(formattedItems);
+          setError(null); // Clear any error
+        } else {
+          setError('Failed to load items. Please try again later.');
+          setPredefinedItems([]);
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback also failed:', fallbackErr);
+        setError('Failed to load items. Please try again later.');
+        setPredefinedItems([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -356,6 +544,8 @@ export default function ItemsScreen() {
       />
 
       <View style={styles.container}>
+        <ConnectionStatus showOffline={true} showOnline={false} />
+      
         <ScrollView style={styles.scrollView}>
           {loading ? (
             <View style={styles.loadingContainer}>
@@ -372,6 +562,16 @@ export default function ItemsScreen() {
               >
                 Retry
               </Button>
+              {isOffline && (
+                <Text style={styles.offlineHint}>
+                  You are currently offline. Showing cached data if available.
+                </Text>
+              )}
+              {fromCache && !isOffline && (
+                <Text style={styles.offlineHint}>
+                  Using cached data. Items were loaded from local storage.
+                </Text>
+              )}
             </View>
           ) : (
             <>
@@ -1103,5 +1303,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7f8c8d',
     marginLeft: 4,
+  },
+  offlineHint: {
+    marginTop: 16,
+    fontSize: 14,
+    color: '#7f8c8d',
+    textAlign: 'center',
   },
 });

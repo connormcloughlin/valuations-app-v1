@@ -65,7 +65,7 @@ export default function ItemsScreen() {
   useEffect(() => {
     const loadTemplateItems = async () => {
       try {
-        setLoading(true);
+    setLoading(true);
         // Get items for the selected template category
         const response = await api.getTemplateItems(templateId, sectionId, categoryId) as ApiResponse;
         
@@ -80,17 +80,17 @@ export default function ItemsScreen() {
           
           setItems(templateItems);
           setFilteredItems(templateItems);
-        } else {
+      } else {
           setError('Failed to load items');
-        }
-      } catch (err) {
+      }
+    } catch (err) {
         console.error('Error loading template items:', err);
         setError('An error occurred while loading items');
-      } finally {
-        setLoading(false);
-      }
-    };
-
+    } finally {
+      setLoading(false);
+    }
+  };
+  
     if (templateId && sectionId && categoryId) {
       loadTemplateItems();
     }
@@ -238,11 +238,11 @@ export default function ItemsScreen() {
           },
         }}
       />
-      
+
       <View style={styles.container}>
         <View style={styles.searchContainer}>
           <MaterialCommunityIcons name="magnify" size={20} color="#999" style={styles.searchIcon} />
-          <TextInput
+                        <TextInput
             style={styles.searchInput}
             placeholder="Search items..."
             value={searchQuery}
@@ -251,7 +251,7 @@ export default function ItemsScreen() {
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
               <MaterialCommunityIcons name="close" size={20} color="#999" />
-            </TouchableOpacity>
+                            </TouchableOpacity>
           )}
         </View>
         
@@ -269,12 +269,12 @@ export default function ItemsScreen() {
             </View>
           }
         />
-        
+            
         <View style={styles.footer}>
           <Text style={styles.selectedCount}>
             {Object.keys(selectedItems).length} items selected
           </Text>
-          <TouchableOpacity 
+              <TouchableOpacity
             style={[
               styles.saveButton,
               Object.keys(selectedItems).length === 0 && styles.disabledButton
@@ -283,9 +283,9 @@ export default function ItemsScreen() {
             disabled={Object.keys(selectedItems).length === 0}
           >
             <Text style={styles.saveButtonText}>Save Items</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+              </TouchableOpacity>
+            </View>
+          </View>
     </>
   );
 }
