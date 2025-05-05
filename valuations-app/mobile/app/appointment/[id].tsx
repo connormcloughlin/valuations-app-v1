@@ -43,9 +43,9 @@ export default function AppointmentDetails() {
   const [note, setNote] = useState(appointment?.notes || '');
   
   const startSurvey = () => {
-    // Navigate to survey with pre-populated client data
+    // Navigate to survey selector with pre-populated client data and order ID
     router.push({
-      pathname: '/survey/new',
+      pathname: '/survey/selector',
       params: { 
         clientName: appointment.client,
         address: appointment.address,
@@ -53,7 +53,7 @@ export default function AppointmentDetails() {
         sumInsured: appointment.sumInsured,
         broker: appointment.broker,
         appointmentId: appointment.id,
-        orderNumber: appointment.orderNumber
+        orderId: appointment.orderNumber
       }
     });
   };

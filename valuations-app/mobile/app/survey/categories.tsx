@@ -1,13 +1,9 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity } from 'react-native';
-import { Button, Card, List, Divider } from 'react-native-paper';
-import { router, Stack } from 'expo-router';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
-// Define types for our category structure
-interface Subcategory {
-  name: string;
-}
+import { Card } from 'react-native-paper';
+import api from '../../api';
 
 interface Category {
   id: string;
@@ -21,42 +17,67 @@ interface Section {
   categories: Category[];
 }
 
-// Survey categories based on the form images
-const surveySections: Section[] = [
-  {
-    id: 'section-a',
-    title: 'SECTION A - AGREED VALUE ITEMS',
-    categories: [
-      { id: 'cat-1', title: 'CLOTHING', subcategories: ['GENTS/BOYS', 'LADIES/GIRLS', 'CHILDREN/BABIES'] },
-      { id: 'cat-2', title: 'FURNITURE' },
-      { id: 'cat-3', title: 'LINEN' },
-      { id: 'cat-4', title: 'LUGGAGE/CONTAINERS' },
-      { id: 'cat-5', title: 'JEWELLERY' },
-      { id: 'cat-6', title: 'ANTIQUES' },
-      { id: 'cat-7', title: 'VALUABLE ARTWORKS' },
-      { id: 'cat-8', title: 'VALUABLE CARPETS' },
-      { id: 'cat-9', title: 'COLLECTIONS (COINS/STAMPS)' },
-      { id: 'cat-10', title: 'VALUABLE ORNAMENTS' },
-      { id: 'cat-11', title: 'SPORT EQUIPMENT' },
-      { id: 'cat-12', title: 'OUTDOOR EQUIPMENT' },
-    ]
-  },
-  {
-    id: 'section-b',
-    title: 'SECTION B - REPLACEMENT VALUE ITEMS',
-    categories: [
-      { id: 'cat-13', title: 'DOMESTIC APPLIANCES' },
-      { id: 'cat-14', title: 'VISUAL, SOUND, COMPUTERS' },
-      { id: 'cat-15', title: 'PHOTOGRAPHIC EQUIPMENT' },
-      { id: 'cat-16', title: 'HIGH RISK ITEMS' },
-      { id: 'cat-17', title: 'POWER TOOLS' },
-    ]
-  }
-];
+// Define a type for the API response
+interface ApiResponse {
+  success: boolean;
+  data: any;
+  status?: number;
+  message?: string;
+}
 
 export default function CategoriesScreen() {
-  const [expandedSections, setExpandedSections] = useState<string[]>(['section-a', 'section-b']);
+  const { appointmentId, orderId, templateId, templateName } = useLocalSearchParams<{ 
+    appointmentId: string; 
+    orderId: string;
+    templateId: string;
+    templateName: string;
+  }>();
+  
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [surveySections, setSurveySections] = useState<Section[]>([]);
+  const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+  
+  // Load sections and categories from the selected template
+  useEffect(() => {
+    const loadTemplateData = async () => {
+      try {
+        setLoading(true);
+        // Cast the response to our ApiResponse type
+        const response = await api.getTemplateSections(templateId) as ApiResponse;
+        
+        if (response.success && response.data) {
+          // Transform API data to our section/category structure
+          const sections: Section[] = response.data.map((section: any) => ({
+            id: section.id,
+            title: section.name,
+            categories: section.categories.map((category: any) => ({
+              id: category.id,
+              title: category.name,
+              subcategories: category.subcategories?.map((sub: any) => sub.name) || []
+            }))
+          }));
+          
+          setSurveySections(sections);
+          
+          // Initially expand all sections
+          setExpandedSections(sections.map(section => section.id));
+        } else {
+          setError('Failed to load assessment sections');
+        }
+      } catch (err) {
+        console.error('Error loading template sections:', err);
+        setError('An error occurred while loading assessment data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (templateId) {
+      loadTemplateData();
+    }
+  }, [templateId]);
   
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev => 
@@ -74,21 +95,48 @@ export default function CategoriesScreen() {
     );
   };
   
-  const navigateToItems = (categoryId: string, categoryTitle: string) => {
+  const navigateToItems = (categoryId: string, categoryTitle: string, sectionId: string) => {
     router.push({
       pathname: '/survey/items',
       params: { 
         categoryId,
-        categoryTitle
+        categoryTitle,
+        templateId,
+        sectionId,
+        appointmentId,
+        orderId
       }
     });
   };
+  
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#0066cc" />
+        <Text style={styles.loadingText}>Loading assessment sections...</Text>
+      </View>
+    );
+  }
+  
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity 
+          style={styles.retryButton}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.retryButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
   
   return (
     <>
       <Stack.Screen
         options={{
-          title: 'Survey Categories',
+          title: templateName || 'Survey Categories',
           headerTitleStyle: {
             fontWeight: '600',
           },
@@ -99,7 +147,7 @@ export default function CategoriesScreen() {
         <ScrollView style={styles.scrollView}>
           <View style={styles.instructions}>
             <Text style={styles.instructionsText}>
-              Select a category to add items to your inventory
+              Select a category to add items to your assessment
             </Text>
           </View>
           
@@ -118,50 +166,59 @@ export default function CategoriesScreen() {
               </TouchableOpacity>
               
               {expandedSections.includes(section.id) && (
-                <View style={styles.categoryList}>
+                <View style={styles.categoriesContainer}>
                   {section.categories.map(category => (
                     <View key={category.id}>
-                      {category.subcategories ? (
-                        <List.Accordion
-                          title={category.title}
-                          expanded={expandedCategories.includes(category.id)}
-                          onPress={() => toggleCategory(category.id)}
-                          style={styles.accordion}
-                          titleStyle={styles.categoryTitle}
-                        >
-                          {category.subcategories.map((subcat, index) => (
-                            <List.Item
-                              key={`${category.id}-sub-${index}`}
-                              title={subcat}
-                              onPress={() => navigateToItems(`${category.id}-sub-${index}`, `${category.title} - ${subcat}`)}
-                              titleStyle={styles.subcategoryTitle}
-                              style={styles.subcategoryItem}
-                              right={props => (
-                                <MaterialCommunityIcons
-                                  name="chevron-right"
-                                  size={20}
-                                  color="#999"
-                                />
-                              )}
-                            />
-                          ))}
-                        </List.Accordion>
-                      ) : (
-                        <List.Item
-                          title={category.title}
-                          onPress={() => navigateToItems(category.id, category.title)}
-                          titleStyle={styles.categoryTitle}
-                          style={styles.categoryItem}
-                          right={props => (
+                      {category.subcategories && category.subcategories.length > 0 ? (
+                        <>
+                          <TouchableOpacity
+                            style={styles.categoryHeader}
+                            onPress={() => toggleCategory(category.id)}
+                          >
+                            <Text style={styles.categoryTitle}>{category.title}</Text>
                             <MaterialCommunityIcons
-                              name="chevron-right"
+                              name={expandedCategories.includes(category.id) ? 'chevron-up' : 'chevron-down'}
                               size={20}
-                              color="#999"
+                              color="#777"
                             />
+                          </TouchableOpacity>
+                          
+                          {expandedCategories.includes(category.id) && (
+                            <View style={styles.subcategoriesContainer}>
+                              {category.subcategories.map((subcategory, index) => (
+                                <TouchableOpacity
+                                  key={`${category.id}-sub-${index}`}
+                                  style={styles.subcategoryItem}
+                                  onPress={() => navigateToItems(
+                                    `${category.id}-sub-${index}`,
+                                    `${category.title} - ${subcategory}`,
+                                    section.id
+                                  )}
+                                >
+                                  <Text style={styles.subcategoryTitle}>{subcategory}</Text>
+                                  <MaterialCommunityIcons
+                                    name="chevron-right"
+                                    size={20}
+                                    color="#999"
+                                  />
+                                </TouchableOpacity>
+                              ))}
+                            </View>
                           )}
-                        />
+                        </>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.categoryItem}
+                          onPress={() => navigateToItems(category.id, category.title, section.id)}
+                        >
+                          <Text style={styles.categoryTitle}>{category.title}</Text>
+                          <MaterialCommunityIcons
+                            name="chevron-right"
+                            size={20}
+                            color="#777"
+                          />
+                        </TouchableOpacity>
                       )}
-                      <Divider />
                     </View>
                   ))}
                 </View>
@@ -169,16 +226,6 @@ export default function CategoriesScreen() {
             </Card>
           ))}
         </ScrollView>
-        
-        <View style={styles.buttonContainer}>
-          <Button
-            mode="contained"
-            style={styles.completeButton}
-            onPress={() => router.push('/survey/summary')}
-          >
-            Complete & View Summary
-          </Button>
-        </View>
       </View>
     </>
   );
@@ -187,7 +234,12 @@ export default function CategoriesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: '#f5f5f5',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   scrollView: {
     flex: 1,
@@ -195,16 +247,44 @@ const styles = StyleSheet.create({
   },
   instructions: {
     marginBottom: 16,
-    paddingHorizontal: 8,
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   instructionsText: {
     fontSize: 16,
-    color: '#7f8c8d',
-    lineHeight: 22,
+    color: '#444',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#d32f2f',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#0066cc',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
   },
   sectionCard: {
     marginBottom: 16,
-    borderRadius: 10,
+    borderRadius: 8,
     overflow: 'hidden',
   },
   sectionHeader: {
@@ -212,43 +292,49 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#f0f4f7',
+    backgroundColor: '#f0f0f0',
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2c3e50',
+    fontWeight: '600',
+    color: '#333',
   },
-  categoryList: {
-    backgroundColor: '#fff',
+  categoriesContainer: {
+    padding: 8,
   },
-  accordion: {
-    backgroundColor: '#fff',
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   categoryTitle: {
     fontSize: 15,
-    color: '#34495e',
+    color: '#444',
   },
-  categoryItem: {
-    paddingVertical: 12,
+  subcategoriesContainer: {
+    paddingLeft: 16,
+  },
+  subcategoryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   subcategoryTitle: {
     fontSize: 14,
-    color: '#34495e',
-  },
-  subcategoryItem: {
-    paddingLeft: 36,
-    backgroundColor: '#f9f9f9',
-  },
-  buttonContainer: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  completeButton: {
-    height: 50,
-    justifyContent: 'center',
-    backgroundColor: '#27ae60',
+    color: '#666',
   },
 }); 

@@ -3,10 +3,10 @@ import { Platform } from 'react-native';
 
 // API configuration
 const API_CONFIG = {
-  // Use localhost for iOS simulator, 10.0.2.2 for Android emulator
+  // Updated URLs for the new backend server
   BASE_URL: Platform.OS === 'ios' 
-    ? 'http://localhost:3000/api' 
-    : 'http://10.0.2.2:3000/api',
+    ? 'http://localhost:5000/api' 
+    : 'http://10.0.2.2:5000/api', // Use 10.0.2.2 for Android emulator to access host's localhost
   TIMEOUT: 10000,
   HEADERS: {
     'Content-Type': 'application/json',
@@ -164,6 +164,79 @@ const api = {
       return response;
     } catch (error) {
       console.error('File upload error:', error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get risk templates associated with an order
+   * @param {string} orderId - ID of the order
+   * @returns {Promise<Object>} Response with risk templates data
+   */
+  getRiskTemplatesForOrder: async (orderId) => {
+    try {
+      return await apiClient.get(`/orders/${orderId}/risk-templates`);
+    } catch (error) {
+      console.error(`Get risk templates for order ${orderId} error:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get sections for a specific risk template
+   * @param {string} templateId - Risk template ID
+   * @returns {Promise<Object>} Response with template sections
+   */
+  getTemplateSections: async (templateId) => {
+    try {
+      return await apiClient.get(`/risk-templates/${templateId}/sections`);
+    } catch (error) {
+      console.error(`Get sections for template ${templateId} error:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get categories for a specific template section
+   * @param {string} templateId - Risk template ID
+   * @param {string} sectionId - Section ID
+   * @returns {Promise<Object>} Response with categories data
+   */
+  getTemplateCategories: async (templateId, sectionId) => {
+    try {
+      return await apiClient.get(`/risk-templates/${templateId}/sections/${sectionId}/categories`);
+    } catch (error) {
+      console.error(`Get categories for template ${templateId}, section ${sectionId} error:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get items for a specific category
+   * @param {string} templateId - Risk template ID
+   * @param {string} sectionId - Section ID
+   * @param {string} categoryId - Category ID
+   * @returns {Promise<Object>} Response with items data
+   */
+  getTemplateItems: async (templateId, sectionId, categoryId) => {
+    try {
+      return await apiClient.get(`/risk-templates/${templateId}/sections/${sectionId}/categories/${categoryId}/items`);
+    } catch (error) {
+      console.error(`Get items for template ${templateId}, section ${sectionId}, category ${categoryId} error:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Submit survey items to the server
+   * @param {Object} surveyData - Survey data with items
+   * @returns {Promise<Object>} Response with confirmation
+   */
+  submitSurveyItems: async (surveyData) => {
+    try {
+      return await apiClient.post('/surveys/items', surveyData);
+    } catch (error) {
+      console.error('Submit survey items error:', error);
       return error.success === false ? error : { success: false, message: error.message };
     }
   }

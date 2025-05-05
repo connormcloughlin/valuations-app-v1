@@ -996,4 +996,22 @@ export const CameraModal: React.FC<{
       </View>
     </View>
   </Modal>
-); 
+);
+
+// Default export with all components
+export default {
+  AddItemButton,
+  PredefinedItemsList,
+  EmptyState,
+  ItemsTable,
+  DynamicForm,
+  FormInputField,
+  RoomSelector,
+  FormButtons,
+  PhotoPreview,
+  ItemFormHeader,
+  HandwritingModal,
+  CameraModal,
+  itemUtils,
+  styles
+}; 

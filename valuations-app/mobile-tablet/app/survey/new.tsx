@@ -4,6 +4,24 @@ import { Button, Card, Divider, Checkbox, Switch } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../utils/logger';
+import api from '../../api';
+
+// Define types for API responses
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  status?: number;
+  message?: string;
+}
+
+interface RiskTemplate {
+  id?: string;
+  risktemplateid?: string;
+  templateid?: string;
+  name?: string;
+  templatename?: string;
+  description?: string;
+}
 
 type SurveyData = {
   surveyor: string;
@@ -18,12 +36,17 @@ type SurveyData = {
   appointmentId: string;
   useHandwriting: boolean;
   consultant: string;
+  selectedTemplate?: RiskTemplate | null;
 };
 
 export default function NewSurveyScreen() {
   logNavigation('New Survey');
   const params = useLocalSearchParams();
   const initialLoad = useRef(true);
+  
+  // State for template data
+  const [loading, setLoading] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
   
   // Initialize with params or empty values
   const [surveyData, setSurveyData] = useState<SurveyData>({
@@ -39,6 +62,7 @@ export default function NewSurveyScreen() {
     appointmentId: '',
     useHandwriting: false,
     consultant: '',
+    selectedTemplate: null,
   });
 
   // Update survey data from URL params (appointment data)
@@ -64,22 +88,82 @@ export default function NewSurveyScreen() {
     }
   }, []);
 
-  const updateField = (field: keyof SurveyData, value: string | boolean) => {
+  // Fetch default template on mount
+  useEffect(() => {
+    fetchDefaultTemplate();
+  }, []);
+
+  // Fetch default template (first one)
+  const fetchDefaultTemplate = async () => {
+    try {
+      setLoading(true);
+      setTemplateError(null);
+      
+      const response = await api.getRiskTemplates() as ApiResponse<RiskTemplate[]>;
+      
+      if (!response.success || !response.data || response.data.length === 0) {
+        setTemplateError('Failed to load default template');
+        return;
+      }
+      
+      // Use the first template as default
+      const defaultTemplate = response.data[0];
+      console.log('Using default template:', defaultTemplate.templatename || defaultTemplate.name);
+      
+      setSurveyData(prev => ({
+        ...prev,
+        selectedTemplate: defaultTemplate
+      }));
+    } catch (err) {
+      console.error('Error fetching templates:', err);
+      setTemplateError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateField = (field: keyof SurveyData, value: string | boolean | RiskTemplate | null) => {
     setSurveyData(prevData => ({
       ...prevData,
       [field]: value
     }));
   };
 
+  // Navigate to template selection screen
+  const navigateToTemplates = () => {
+    // Just navigate to templates screen
+    router.push('/survey/templates');
+  };
+
   const handleSave = () => {
-    // Redirect to category selection screen with survey ID
+    // Redirect to templates selection screen with survey ID
     const surveyId = 'SRV-' + Date.now();
     
     // In a real app, save the survey data to local storage or API
     console.log('Saving survey:', { id: surveyId, ...surveyData });
     
+    // If we already have a selected template, skip the template selection screen
+    if (surveyData.selectedTemplate) {
+      const templateId = surveyData.selectedTemplate.risktemplateid || 
+                         surveyData.selectedTemplate.templateid || 
+                         surveyData.selectedTemplate.id;
+      
+      if (templateId) {
+        router.push({
+          pathname: '/survey/categories',
+          params: { 
+            surveyId,
+            useHandwriting: surveyData.useHandwriting ? '1' : '0',
+            templateId: templateId.toString()
+          }
+        });
+        return;
+      }
+    }
+    
+    // If no template is selected, go to template selection
     router.push({
-      pathname: '/survey/categories',
+      pathname: '/survey/templates',
       params: { 
         surveyId,
         useHandwriting: surveyData.useHandwriting ? '1' : '0'
@@ -205,6 +289,38 @@ export default function NewSurveyScreen() {
               
               <Divider style={styles.divider} />
               
+              <Text style={styles.sectionTitle}>Risk Assessment Template</Text>
+              
+              {loading ? (
+                <View style={styles.templateLoading}>
+                  <Text style={styles.templateLoadingText}>Loading templates...</Text>
+                </View>
+              ) : templateError ? (
+                <View style={styles.templateError}>
+                  <Text style={styles.errorText}>{templateError}</Text>
+                  <Button mode="text" onPress={fetchDefaultTemplate}>Retry</Button>
+                </View>
+              ) : (
+                <View style={styles.templateContainer}>
+                  <View style={styles.selectedTemplateCard}>
+                    <MaterialCommunityIcons name="file-document-outline" size={20} color="#4a90e2" />
+                    <Text style={styles.selectedTemplateName}>
+                      {surveyData.selectedTemplate 
+                        ? (surveyData.selectedTemplate.templatename || surveyData.selectedTemplate.name) 
+                        : 'No template selected'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.changeTemplateButton}
+                    onPress={navigateToTemplates}
+                  >
+                    <Text style={styles.changeTemplateText}>Change Template</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              <Divider style={styles.divider} />
+              
               <Text style={styles.sectionTitle}>Survey Preferences</Text>
               
               <View style={styles.optionRow}>
@@ -230,7 +346,9 @@ export default function NewSurveyScreen() {
               onPress={handleSave}
               disabled={!surveyData.clientName || !surveyData.address}
             >
-              Continue to Inventory
+              {surveyData.selectedTemplate 
+                ? 'Continue to Inventory' 
+                : 'Select Template'}
             </Button>
           </View>
         </ScrollView>
@@ -289,6 +407,49 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     marginVertical: 16,
+  },
+  templateContainer: {
+    marginBottom: 16,
+  },
+  selectedTemplateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#ecf0f1',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  selectedTemplateName: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#34495e',
+    flex: 1,
+  },
+  changeTemplateButton: {
+    padding: 8,
+    alignSelf: 'flex-end',
+  },
+  changeTemplateText: {
+    color: '#4a90e2',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  templateLoading: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  templateLoadingText: {
+    color: '#7f8c8d',
+    fontSize: 14,
+  },
+  templateError: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#e74c3c',
+    fontSize: 14,
+    marginBottom: 8,
   },
   optionRow: {
     flexDirection: 'row',

@@ -57,10 +57,17 @@ export default function InProgressAppointmentsScreen() {
   }, [searchQuery]);
 
   const navigateToSurvey = (id: string) => {
-    router.push({
-      pathname: '/survey/[id]',
-      params: { id }
-    });
+    // Find the appointment to get its order ID
+    const appointment = appointmentData.find(a => a.id === id);
+    if (appointment) {
+      router.push({
+        pathname: '/survey/selector',
+        params: { 
+          appointmentId: id,
+          orderId: appointment.orderNumber
+        }
+      });
+    }
   };
 
   const renderAppointmentItem = ({ item }: { item: Appointment }) => (
