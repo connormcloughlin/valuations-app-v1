@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, ScrollView, TextInput, Text, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, ScrollView, TextInput, Text, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Button, Card, Divider, Checkbox, Switch } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -36,7 +36,6 @@ type SurveyData = {
   appointmentId: string;
   useHandwriting: boolean;
   consultant: string;
-  selectedTemplate?: RiskTemplate | null;
 };
 
 export default function NewSurveyScreen() {
@@ -45,6 +44,7 @@ export default function NewSurveyScreen() {
   const initialLoad = useRef(true);
   
   // State for template data
+  const [templates, setTemplates] = useState<RiskTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
   
@@ -62,7 +62,6 @@ export default function NewSurveyScreen() {
     appointmentId: '',
     useHandwriting: false,
     consultant: '',
-    selectedTemplate: null,
   });
 
   // Update survey data from URL params (appointment data)
@@ -88,13 +87,13 @@ export default function NewSurveyScreen() {
     }
   }, []);
 
-  // Fetch default template on mount
+  // Fetch templates on mount
   useEffect(() => {
-    fetchDefaultTemplate();
+    fetchTemplates();
   }, []);
 
-  // Fetch default template (first one)
-  const fetchDefaultTemplate = async () => {
+  // Fetch all available templates
+  const fetchTemplates = async () => {
     try {
       setLoading(true);
       setTemplateError(null);
@@ -102,18 +101,12 @@ export default function NewSurveyScreen() {
       const response = await api.getRiskTemplates() as ApiResponse<RiskTemplate[]>;
       
       if (!response.success || !response.data || response.data.length === 0) {
-        setTemplateError('Failed to load default template');
+        setTemplateError('Failed to load risk templates');
         return;
       }
       
-      // Use the first template as default
-      const defaultTemplate = response.data[0];
-      console.log('Using default template:', defaultTemplate.templatename || defaultTemplate.name);
-      
-      setSurveyData(prev => ({
-        ...prev,
-        selectedTemplate: defaultTemplate
-      }));
+      console.log(`Loaded ${response.data.length} templates`);
+      setTemplates(response.data);
     } catch (err) {
       console.error('Error fetching templates:', err);
       setTemplateError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -122,53 +115,73 @@ export default function NewSurveyScreen() {
     }
   };
 
-  const updateField = (field: keyof SurveyData, value: string | boolean | RiskTemplate | null) => {
+  const updateField = (field: keyof SurveyData, value: string | boolean) => {
     setSurveyData(prevData => ({
       ...prevData,
       [field]: value
     }));
   };
 
-  // Navigate to template selection screen
-  const navigateToTemplates = () => {
-    // Just navigate to templates screen
-    router.push('/survey/templates');
-  };
-
-  const handleSave = () => {
-    // Redirect to templates selection screen with survey ID
+  // Start survey with the selected template
+  const startSurveyWithTemplate = (template: RiskTemplate) => {
+    // Get the template ID - ensure we have a valid ID with fallbacks
+    const templateId = template.risktemplateid || template.templateid || template.id;
+    
+    if (!templateId) {
+      console.error('Invalid template: No ID found', template);
+      return;
+    }
+    
+    console.log(`Starting survey with template: ${templateId} - ${template.templatename || template.name}`);
+    
+    // Create a survey ID
     const surveyId = 'SRV-' + Date.now();
     
     // In a real app, save the survey data to local storage or API
-    console.log('Saving survey:', { id: surveyId, ...surveyData });
+    console.log('Starting survey:', { 
+      id: surveyId, 
+      ...surveyData, 
+      templateId: templateId,
+      templateName: template.templatename || template.name
+    });
     
-    // If we already have a selected template, skip the template selection screen
-    if (surveyData.selectedTemplate) {
-      const templateId = surveyData.selectedTemplate.risktemplateid || 
-                         surveyData.selectedTemplate.templateid || 
-                         surveyData.selectedTemplate.id;
-      
-      if (templateId) {
-        router.push({
-          pathname: '/survey/categories',
-          params: { 
-            surveyId,
-            useHandwriting: surveyData.useHandwriting ? '1' : '0',
-            templateId: templateId.toString()
-          }
-        });
-        return;
-      }
-    }
+    // Ensure templateId is properly converted to a string
+    const templateIdStr = String(templateId);
+    console.log(`Navigating to categories with templateId: ${templateIdStr}`);
     
-    // If no template is selected, go to template selection
+    // Navigate to categories screen with the template
     router.push({
-      pathname: '/survey/templates',
+      pathname: '/survey/categories',
       params: { 
         surveyId,
-        useHandwriting: surveyData.useHandwriting ? '1' : '0'
+        useHandwriting: surveyData.useHandwriting ? '1' : '0',
+        templateId: templateIdStr
       }
     });
+  };
+
+  // Render a template card with its own continue button
+  const renderTemplateCard = (template: RiskTemplate) => {
+    const templateId = template.risktemplateid || template.templateid || template.id;
+    const templateName = template.templatename || template.name || 'Unnamed Template';
+    
+    return (
+      <Card key={templateId} style={styles.templateCard}>
+        <Card.Content>
+          <Text style={styles.templateTitle}>{templateName}</Text>
+          {template.description && (
+            <Text style={styles.templateDescription}>{template.description}</Text>
+          )}
+          <Button 
+            mode="contained" 
+            style={styles.templateButton}
+            onPress={() => startSurveyWithTemplate(template)}
+          >
+            Continue with this Template
+          </Button>
+        </Card.Content>
+      </Card>
+    );
   };
 
   return (
@@ -255,14 +268,25 @@ export default function NewSurveyScreen() {
               </View>
               
               <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Risk Address</Text>
+                <Text style={styles.fieldLabel}>Address</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter property address"
+                  placeholder="Enter address"
                   value={surveyData.address}
                   onChangeText={(text) => updateField('address', text)}
-                  multiline
                   editable={!surveyData.address}
+                  multiline
+                />
+              </View>
+              
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter email address"
+                  keyboardType="email-address"
+                  value={surveyData.email}
+                  onChangeText={(text) => updateField('email', text)}
                 />
               </View>
               
@@ -287,70 +311,53 @@ export default function NewSurveyScreen() {
                 />
               </View>
               
-              <Divider style={styles.divider} />
-              
-              <Text style={styles.sectionTitle}>Risk Assessment Template</Text>
-              
-              {loading ? (
-                <View style={styles.templateLoading}>
-                  <Text style={styles.templateLoadingText}>Loading templates...</Text>
-                </View>
-              ) : templateError ? (
-                <View style={styles.templateError}>
-                  <Text style={styles.errorText}>{templateError}</Text>
-                  <Button mode="text" onPress={fetchDefaultTemplate}>Retry</Button>
-                </View>
-              ) : (
-                <View style={styles.templateContainer}>
-                  <View style={styles.selectedTemplateCard}>
-                    <MaterialCommunityIcons name="file-document-outline" size={20} color="#4a90e2" />
-                    <Text style={styles.selectedTemplateName}>
-                      {surveyData.selectedTemplate 
-                        ? (surveyData.selectedTemplate.templatename || surveyData.selectedTemplate.name) 
-                        : 'No template selected'}
-                    </Text>
-                  </View>
-                  <TouchableOpacity 
-                    style={styles.changeTemplateButton}
-                    onPress={navigateToTemplates}
-                  >
-                    <Text style={styles.changeTemplateText}>Change Template</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              
-              <Divider style={styles.divider} />
-              
-              <Text style={styles.sectionTitle}>Survey Preferences</Text>
-              
-              <View style={styles.optionRow}>
-                <View style={styles.optionTextContainer}>
-                  <Text style={styles.optionTitle}>Use Handwriting Input</Text>
-                  <Text style={styles.optionDescription}>
-                    Use stylus to write item descriptions and convert to text
-                  </Text>
-                </View>
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>Use Handwriting Recognition</Text>
                 <Switch
                   value={surveyData.useHandwriting}
                   onValueChange={(value) => updateField('useHandwriting', value)}
-                  color="#4a90e2"
                 />
               </View>
             </Card.Content>
           </Card>
           
-          <View style={styles.buttonContainer}>
-            <Button
-              mode="contained"
-              style={styles.saveButton}
-              onPress={handleSave}
-              disabled={!surveyData.clientName || !surveyData.address}
-            >
-              {surveyData.selectedTemplate 
-                ? 'Continue to Inventory' 
-                : 'Select Template'}
-            </Button>
-          </View>
+          {/* Risk Template Selection Section */}
+          <Card style={styles.card}>
+            <Card.Title 
+              title="Risk Assessment Templates" 
+              left={(props) => <MaterialCommunityIcons name="file-document-outline" {...props} size={24} color="#4a90e2" />}
+            />
+            <Card.Content>
+              {loading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#4a90e2" />
+                  <Text style={styles.loadingText}>Loading templates...</Text>
+                </View>
+              ) : templateError ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{templateError}</Text>
+                  <Button 
+                    mode="outlined" 
+                    onPress={fetchTemplates}
+                    style={styles.retryButton}
+                  >
+                    Retry
+                  </Button>
+                </View>
+              ) : templates.length === 0 ? (
+                <Text style={styles.noTemplatesText}>No templates available</Text>
+              ) : (
+                <View style={styles.templatesContainer}>
+                  <Text style={styles.templatesInstructions}>
+                    Select a template to continue with:
+                  </Text>
+                  {templates.map(renderTemplateCard)}
+                </View>
+              )}
+            </Card.Content>
+          </Card>
+          
+          <View style={styles.spacer} />
         </ScrollView>
       </KeyboardAvoidingView>
     </>
@@ -360,7 +367,7 @@ export default function NewSurveyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: '#f5f5f5',
   },
   scrollView: {
     flex: 1,
@@ -368,115 +375,104 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: 16,
-    borderRadius: 10,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    marginTop: 8,
-    color: '#2c3e50',
+    borderRadius: 8,
+    elevation: 2,
   },
   fieldRow: {
     marginBottom: 16,
   },
   fieldLabel: {
     fontSize: 14,
-    color: '#7f8c8d',
-    marginBottom: 4,
+    fontWeight: '500',
+    marginBottom: 6,
+    color: '#555',
   },
   input: {
-    height: 44,
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    borderRadius: 4,
+    padding: 8,
     backgroundColor: '#fff',
   },
   prefilledText: {
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#f5f6fa',
-    color: '#34495e',
-    paddingTop: 12,
-    fontSize: 14,
+    padding: 8,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 4,
+    color: '#555',
+    fontSize: 16,
   },
   divider: {
-    height: 1,
     marginVertical: 16,
   },
-  templateContainer: {
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
     marginBottom: 16,
+    color: '#333',
   },
-  selectedTemplateCard: {
+  switchRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#ecf0f1',
+    marginTop: 16,
+  },
+  switchLabel: {
+    fontSize: 14,
+    color: '#555',
+  },
+  spacer: {
+    height: 100,
+  },
+  // Templates styles
+  templatesContainer: {
+    marginTop: 8,
+  },
+  templatesInstructions: {
+    fontSize: 16,
+    marginBottom: 16,
+    color: '#333',
+  },
+  templateCard: {
+    marginBottom: 16,
     borderRadius: 8,
+    elevation: 2,
+  },
+  templateTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
     marginBottom: 8,
   },
-  selectedTemplateName: {
-    marginLeft: 8,
+  templateDescription: {
     fontSize: 14,
-    color: '#34495e',
-    flex: 1,
+    color: '#666',
+    marginBottom: 16,
   },
-  changeTemplateButton: {
-    padding: 8,
-    alignSelf: 'flex-end',
+  templateButton: {
+    marginTop: 8,
   },
-  changeTemplateText: {
-    color: '#4a90e2',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  templateLoading: {
-    padding: 12,
+  loadingContainer: {
+    padding: 20,
     alignItems: 'center',
   },
-  templateLoadingText: {
-    color: '#7f8c8d',
-    fontSize: 14,
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
   },
-  templateError: {
-    padding: 12,
+  errorContainer: {
+    padding: 16,
     alignItems: 'center',
   },
   errorText: {
     color: '#e74c3c',
-    fontSize: 14,
-    marginBottom: 8,
+    marginBottom: 16,
   },
-  optionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+  retryButton: {
+    marginTop: 8,
   },
-  optionTextContainer: {
-    flex: 1,
-  },
-  optionTitle: {
-    fontSize: 14,
-    color: '#2c3e50',
-    fontWeight: '500',
-  },
-  optionDescription: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 2,
-  },
-  buttonContainer: {
-    marginTop: 16,
-    marginBottom: 32,
-  },
-  saveButton: {
-    height: 50,
-    justifyContent: 'center',
-    backgroundColor: '#4a90e2',
+  noTemplatesText: {
+    padding: 16,
+    textAlign: 'center',
+    color: '#666',
   },
 }); 

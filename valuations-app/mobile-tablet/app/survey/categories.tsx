@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Button, Card, List, Divider } from 'react-native-paper';
-import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { logNavigation } from '../../utils/logger';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { List, Card, Button, Divider } from 'react-native-paper';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../../api';
 import ConnectionStatus from '../../components/ConnectionStatus';
 import connectionUtils from '../../utils/connectionUtils';
+import { logNavigation } from '../../utils/logger';
 
-// Define types for our data structures
+// Type definitions
 interface Category {
   id: string;
   rawId?: string;
@@ -22,13 +22,12 @@ interface Section {
   categories: Category[];
 }
 
-// Define types for API responses
 interface ApiResponse<T> {
   success: boolean;
   data?: T;
   status?: number;
   message?: string;
-  fromCache: boolean;
+  fromCache?: boolean;
 }
 
 interface RiskTemplate {
@@ -66,7 +65,11 @@ export default function CategoriesScreen() {
   const router = useRouter();
   
   // Get template ID from route params
-  const { templateId } = useLocalSearchParams<{ templateId: string }>();
+  const params = useLocalSearchParams<{ templateId: string, surveyId: string, useHandwriting: string }>();
+  const templateId = params.templateId;
+  
+  // Log all params for debugging
+  console.log('Categories Screen Params:', JSON.stringify(params));
   
   // State for API data
   const [loading, setLoading] = useState<boolean>(true);
@@ -100,6 +103,8 @@ export default function CategoriesScreen() {
   
   // Fetch data from API
   useEffect(() => {
+    console.log('Effect triggered with templateId:', templateId);
+    
     async function fetchCategoriesData() {
       try {
         setLoading(true);
@@ -123,7 +128,7 @@ export default function CategoriesScreen() {
           }
           
           if (!templatesResponse.success || !templatesResponse.data) {
-            setError('Failed to load templates: ' + templatesResponse.message);
+            setError('Failed to load templates: ' + (templatesResponse.message || 'Unknown error'));
             setLoading(false);
             return;
           }
@@ -148,10 +153,10 @@ export default function CategoriesScreen() {
           
           setSelectedTemplate(templatesResponse.data[0]);
           console.log('Using first template ID:', firstTemplateId);
-          await loadTemplateSections(firstTemplateId);
+          await loadTemplateSections(String(firstTemplateId));
         } else {
           // Use the provided template ID from params
-          console.log('Using provided template ID:', templateId);
+          console.log('Using provided template ID from navigation params:', templateId);
           await loadTemplateSections(templateId);
           
           // Optionally, load template details
@@ -165,15 +170,23 @@ export default function CategoriesScreen() {
             }
             
             if (templatesResponse.success && templatesResponse.data) {
+              // Log all template IDs for debugging
+              console.log('Available templates:');
+              templatesResponse.data.forEach(t => {
+                console.log(`- Template: ${t.templatename || t.name} - IDs: risktemplateid=${t.risktemplateid}, templateid=${t.templateid}, id=${t.id}`);
+              });
+              
               const template = templatesResponse.data.find(t => 
-                (t.risktemplateid?.toString() === templateId) || 
-                (t.templateid?.toString() === templateId) || 
-                (t.id?.toString() === templateId)
+                (String(t.risktemplateid) === templateId) || 
+                (String(t.templateid) === templateId) || 
+                (String(t.id) === templateId)
               );
               
               if (template) {
                 setSelectedTemplate(template);
                 console.log('Found template details:', template);
+              } else {
+                console.warn('Could not find matching template for ID:', templateId);
               }
             }
           } catch (e) {
@@ -192,12 +205,47 @@ export default function CategoriesScreen() {
     fetchCategoriesData();
   }, [templateId]);
   
+  // Function to retry loading data
+  const handleRetry = () => {
+    setLoading(true);
+    setError(null);
+    
+    if (templateId) {
+      console.log('Retrying with templateId:', templateId);
+      fetchCategoriesData();
+    } else {
+      console.warn('No templateId available for retry');
+      setError('No template ID available. Please go back and try again.');
+      setLoading(false);
+    }
+  };
+  
+  // Function to fetch categories data
+  const fetchCategoriesData = async () => {
+    try {
+      await loadTemplateSections(templateId || '');
+    } catch (err) {
+      console.error('Error in fetchCategoriesData:', err);
+      setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+  
   // Function to load sections for a template
   const loadTemplateSections = async (id: string) => {
     console.log(`Fetching sections for template ID: ${id}`);
     
+    if (!id) {
+      console.error('Cannot load template sections: No template ID provided');
+      setError('No template ID available. Please select a template first.');
+      setLoading(false);
+      return;
+    }
+    
     // Get sections for this template using the updated API path
     const sectionsResponse = await api.getRiskTemplateSections(id) as ApiResponse<TemplateSection[]>;
+    
+    // Debug the API request
+    console.log(`API Request for sections - endpoint: /risk-templates/${id}/sections`);
     
     // Check if we got data from cache
     if (sectionsResponse.fromCache) {
@@ -206,7 +254,7 @@ export default function CategoriesScreen() {
     }
     
     if (!sectionsResponse.success || !sectionsResponse.data) {
-      setError('Failed to load sections: ' + sectionsResponse.message);
+      setError('Failed to load sections: ' + (sectionsResponse.message || 'Unknown error'));
       console.error('Section error:', sectionsResponse);
       return;
     }
@@ -238,6 +286,9 @@ export default function CategoriesScreen() {
         sectionId
       ) as ApiResponse<TemplateCategory[]>;
       
+      // Debug the API request
+      console.log(`API Request for categories - endpoint: /risk-templates/${id}/sections/${sectionId}/categories`);
+      
       // Check if we got data from cache
       if (categoriesResponse.fromCache) {
         setFromCache(true);
@@ -247,28 +298,33 @@ export default function CategoriesScreen() {
       let categories: Category[] = [];
       
       if (categoriesResponse.success && categoriesResponse.data) {
-        console.log(`Found ${categoriesResponse.data.length} categories for section ${sectionId}`);
+        console.log(`Got ${categoriesResponse.data.length} categories`);
         
-        // Map the category data using the correct property names
+        // Map the categories from API response to our Category type
         categories = categoriesResponse.data.map(cat => {
-          // Get the raw categoryid for display purposes - prioritize risktemplatecategoryid
-          const rawCategoryId = cat.risktemplatecategoryid || cat.categoryid || cat.templateCategoryId || '';
+          // Use the correct property based on API response
+          const categoryId = cat.risktemplatecategoryid || 
+                            cat.categoryid || 
+                            cat.templateCategoryId || 
+                            cat.id || '';
+                          
+          const categoryName = cat.categoryname || cat.name || 'Unnamed Category';
           
-          const mappedCategory = {
-            id: cat.categoryid || cat.templateCategoryId || cat.id || `cat-${Math.random().toString(36).substring(2, 9)}`,
-            rawId: rawCategoryId, // Store the original ID for display
-            title: cat.categoryname || cat.name || 'Unnamed Category',
-            // If the category has subcategories, add them
-            ...(cat.subcategories ? { subcategories: cat.subcategories } : {})
+          return {
+            id: categoryId,
+            title: categoryName,
+            rawId: categoryId,
+            subcategories: cat.subcategories
           };
-          
-          return mappedCategory;
         });
+        
+        console.log(`Mapped ${categories.length} categories for UI`);
       } else {
-        console.warn(`No categories found for section ${sectionId}:`, categoriesResponse.message);
+        console.warn('Failed to load categories for section:', sectionId);
+        console.warn('Categories response:', categoriesResponse);
       }
       
-      // Use the correct property names for section data
+      // Add the section with its categories
       sections.push({
         id: sectionId,
         title: section.sectionname || section.name || 'Unnamed Section',
@@ -276,107 +332,47 @@ export default function CategoriesScreen() {
       });
     }
     
-    // Update state with the fetched data
+    // Update state with the sections
+    console.log(`Setting ${sections.length} sections in state`);
     setSurveySections(sections);
-    console.log('Sections data prepared:', sections.length);
   };
   
-  // Fallback to static data if API fails (for development)
-  useEffect(() => {
-    if (error && surveySections.length === 0) {
-      console.log('Using fallback static data');
-      // Static data as fallback
-      const staticSections = [
-  {
-    id: 'section-a',
-    title: 'SECTION A - AGREED VALUE ITEMS',
-    categories: [
-      { id: 'cat-1', title: 'CLOTHING', subcategories: ['GENTS/BOYS', 'LADIES/GIRLS', 'CHILDREN/BABIES'] },
-      { id: 'cat-2', title: 'FURNITURE' },
-      { id: 'cat-3', title: 'LINEN' },
-            // ... other categories
-    ]
-  },
-  {
-    id: 'section-b',
-    title: 'SECTION B - REPLACEMENT VALUE ITEMS',
-    categories: [
-      { id: 'cat-13', title: 'DOMESTIC APPLIANCES' },
-      { id: 'cat-14', title: 'VISUAL, SOUND, COMPUTERS' },
-            // ... other categories
-          ]
-        }
-      ];
-      
-      setSurveySections(staticSections);
-      setExpandedSections(['section-a', 'section-b']);
-    }
-  }, [error, surveySections]);
-  
+  // Toggle section expansion
   const toggleSection = (sectionId: string) => {
-    setExpandedSections(prev => 
-      prev.includes(sectionId)
-        ? prev.filter(id => id !== sectionId)
-        : [...prev, sectionId]
+    setExpandedSections(prevExpanded => 
+      prevExpanded.includes(sectionId)
+        ? prevExpanded.filter(id => id !== sectionId)
+        : [...prevExpanded, sectionId]
     );
   };
   
+  // Toggle category expansion
   const toggleCategory = (categoryId: string) => {
-    setExpandedCategories(prev => 
-      prev.includes(categoryId)
-        ? prev.filter(id => id !== categoryId)
-        : [...prev, categoryId]
+    setExpandedCategories(prevExpanded => 
+      prevExpanded.includes(categoryId)
+        ? prevExpanded.filter(id => id !== categoryId)
+        : [...prevExpanded, categoryId]
     );
   };
   
+  // Navigate to items screen for a specific category
   const navigateToItems = (categoryId: string, categoryTitle: string, rawCategoryId?: string) => {
-    // For categories with subcategories, we need to extract the rawId from the original category
-    let effectiveRawId = rawCategoryId;
-    
-    // If this is a subcategory format (cat-X-sub-Y), extract the rawId from the parent category
-    if (!effectiveRawId && categoryId.includes('-sub-')) {
-      const parentCategoryId = categoryId.split('-sub-')[0];
-      // Find the parent category to get its rawId
-      for (const section of surveySections) {
-        const parentCategory = section.categories.find(cat => cat.id === parentCategoryId);
-        if (parentCategory && parentCategory.rawId) {
-          effectiveRawId = parentCategory.rawId;
-          break;
-        }
-      }
-    }
-    
-    // Handle normal categories
-    if (!effectiveRawId) {
-      // Find the category to get its rawId
-      for (const section of surveySections) {
-        const category = section.categories.find(cat => cat.id === categoryId);
-        if (category && category.rawId) {
-          effectiveRawId = category.rawId;
-          break;
-        }
-      }
-    }
-    
-    // Simplified logging now that functionality is working
-    console.log(`Navigating to items for category: ${categoryTitle}, using ID: ${effectiveRawId || categoryId}`);
-    
     router.push({
       pathname: '/survey/items',
-      params: { 
-        categoryId: effectiveRawId || categoryId, // Use the raw ID if available, otherwise the regular ID
+      params: {
+        categoryId,
         categoryTitle,
-        originalCategoryId: categoryId // Keep the original ID for reference
+        rawCategoryId: rawCategoryId || ''
       }
     });
   };
   
-  // Show loading indicator
+  // Render loading state
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#27ae60" />
-        <Text style={styles.loadingText}>Loading assessment categories...</Text>
+        <ActivityIndicator size="large" color="#4a90e2" />
+        <Text style={styles.loadingText}>Loading categories...</Text>
       </View>
     );
   }
@@ -403,19 +399,30 @@ export default function CategoriesScreen() {
               Select a category from the risk assessment template to add items
             </Text>
             
-            {apiInfo && (
+            {fromCache && (
+              <View style={styles.offlineInfoCard}>
+                <View style={styles.offlineInfoHeader}>
+                  <MaterialCommunityIcons name="information-outline" size={20} color="#fff" />
+                  <Text style={styles.offlineInfoTitle}>
+                    {isOffline ? "Offline Mode" : "Using Cached Data"}
+                  </Text>
+                </View>
+                <Text style={styles.offlineInfoText}>
+                  {isOffline 
+                    ? "You are currently offline. Showing cached data that was previously downloaded." 
+                    : "Using data from your last successful connection."}
+                </Text>
+              </View>
+            )}
+            
+            {apiInfo && !fromCache && (
               <View style={styles.apiInfoContainer}>
                 <MaterialCommunityIcons 
-                  name={isOffline || fromCache ? "server-network-off" : "server-network"} 
+                  name="server-network" 
                   size={16} 
-                  color={isOffline || fromCache ? "#e74c3c" : "#3498db"} 
+                  color="#3498db" 
                 />
-                <Text style={[
-                  styles.apiInfoText, 
-                  (isOffline || fromCache) && { color: "#e74c3c" }
-                ]}>
-                  {isOffline || fromCache ? "Offline Mode - Using Cached Data" : apiInfo}
-                </Text>
+                <Text style={styles.apiInfoText}>{apiInfo}</Text>
               </View>
             )}
             
@@ -428,94 +435,124 @@ export default function CategoriesScreen() {
               </View>
             )}
             
-            {error && <Text style={styles.errorText}>{error}</Text>}
+            {error && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+                <Button 
+                  mode="contained" 
+                  onPress={handleRetry}
+                  style={styles.retryButton}
+                >
+                  Retry
+                </Button>
+              </View>
+            )}
           </View>
           
-          {surveySections.map(section => (
-            <Card key={section.id} style={styles.sectionCard}>
-              <TouchableOpacity
-                style={styles.sectionHeader}
-                onPress={() => toggleSection(section.id)}
+          {surveySections.length > 0 ? (
+            surveySections.map(section => (
+              <Card key={section.id} style={styles.sectionCard}>
+                <TouchableOpacity
+                  style={styles.sectionHeader}
+                  onPress={() => toggleSection(section.id)}
+                >
+                  <Text style={styles.sectionTitle}>{section.title}</Text>
+                  <MaterialCommunityIcons
+                    name={expandedSections.includes(section.id) ? 'chevron-up' : 'chevron-down'}
+                    size={24}
+                    color="#555"
+                  />
+                </TouchableOpacity>
+                
+                {expandedSections.includes(section.id) && (
+                  <View style={styles.categoryList}>
+                    {section.categories.map((category, index) => (
+                      <View key={category.id}>
+                        {category.subcategories ? (
+                          <List.Accordion
+                            title={
+                              <View style={styles.categoryTitleContainer}>
+                                <Text style={styles.categoryTitle}>{category.title}</Text>
+                                {category.rawId && (
+                                  <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
+                                )}
+                              </View>
+                            }
+                            expanded={expandedCategories.includes(category.id)}
+                            onPress={() => toggleCategory(category.id)}
+                            style={styles.accordion}
+                            titleStyle={styles.categoryTitle}
+                          >
+                            {category.subcategories.map((subcat, subIndex) => (
+                              <List.Item
+                                key={`${category.id}-sub-${subIndex}`}
+                                title={
+                                  <View style={styles.categoryTitleContainer}>
+                                    <Text style={styles.subcategoryTitle}>{subcat}</Text>
+                                    {category.rawId && (
+                                      <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
+                                    )}
+                                  </View>
+                                }
+                                onPress={() => navigateToItems(`${category.id}-sub-${subIndex}`, `${category.title} - ${subcat}`, category.rawId)}
+                                titleStyle={styles.subcategoryTitle}
+                                style={styles.subcategoryItem}
+                                right={props => (
+                                  <MaterialCommunityIcons
+                                    name="chevron-right"
+                                    size={20}
+                                    color="#999"
+                                  />
+                                )}
+                              />
+                            ))}
+                          </List.Accordion>
+                        ) : (
+                          <List.Item
+                            title={
+                              <View style={styles.categoryTitleContainer}>
+                                <Text style={styles.categoryTitle}>{category.title}</Text>
+                                {category.rawId && (
+                                  <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
+                                )}
+                              </View>
+                            }
+                            onPress={() => navigateToItems(category.id, category.title, category.rawId)}
+                            style={styles.categoryItem}
+                            right={props => (
+                              <MaterialCommunityIcons
+                                name="chevron-right"
+                                size={20}
+                                color="#999"
+                              />
+                            )}
+                          />
+                        )}
+                        <Divider />
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </Card>
+            ))
+          ) : !error && !loading ? (
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="folder-open-outline" size={48} color="#95a5a6" />
+              <Text style={styles.emptyText}>No categories found</Text>
+              <Text style={styles.emptySubtext}>
+                {isOffline 
+                  ? "You're offline and no cached categories are available"
+                  : "Try selecting a different template or check your connection"}
+              </Text>
+              <Button 
+                mode="outlined" 
+                onPress={handleRetry}
+                style={styles.retryButton}
               >
-                <Text style={styles.sectionTitle}>{section.title}</Text>
-                <MaterialCommunityIcons
-                  name={expandedSections.includes(section.id) ? 'chevron-up' : 'chevron-down'}
-                  size={24}
-                  color="#555"
-                />
-              </TouchableOpacity>
-              
-              {expandedSections.includes(section.id) && (
-                <View style={styles.categoryList}>
-                  {section.categories.map((category, index) => (
-                    <View key={category.id}>
-                      {category.subcategories ? (
-                        <List.Accordion
-                          title={
-                            <View style={styles.categoryTitleContainer}>
-                              <Text style={styles.categoryTitle}>{category.title}</Text>
-                              {category.rawId && (
-                                <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
-                              )}
-                            </View>
-                          }
-                          expanded={expandedCategories.includes(category.id)}
-                          onPress={() => toggleCategory(category.id)}
-                          style={styles.accordion}
-                          titleStyle={styles.categoryTitle}
-                        >
-                          {category.subcategories.map((subcat, subIndex) => (
-                            <List.Item
-                              key={`${category.id}-sub-${subIndex}`}
-                              title={
-                                <View style={styles.categoryTitleContainer}>
-                                  <Text style={styles.subcategoryTitle}>{subcat}</Text>
-                                  {category.rawId && (
-                                    <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
-                                  )}
-                                </View>
-                              }
-                              onPress={() => navigateToItems(`${category.id}-sub-${subIndex}`, `${category.title} - ${subcat}`, category.rawId)}
-                              titleStyle={styles.subcategoryTitle}
-                              style={styles.subcategoryItem}
-                              right={props => (
-                                <MaterialCommunityIcons
-                                  name="chevron-right"
-                                  size={20}
-                                  color="#999"
-                                />
-                              )}
-                            />
-                          ))}
-                        </List.Accordion>
-                      ) : (
-                        <List.Item
-                          title={
-                            <View style={styles.categoryTitleContainer}>
-                              <Text style={styles.categoryTitle}>{category.title}</Text>
-                              {category.rawId && (
-                                <Text style={styles.categoryIdBadge}>ID: {category.rawId}</Text>
-                              )}
-                            </View>
-                          }
-                          onPress={() => navigateToItems(category.id, category.title, category.rawId)}
-                          style={styles.categoryItem}
-                          right={props => (
-                            <MaterialCommunityIcons
-                              name="chevron-right"
-                              size={20}
-                              color="#999"
-                            />
-                          )}
-                        />
-                      )}
-                      <Divider />
-                    </View>
-                  ))}
-                </View>
-              )}
-            </Card>
-          ))}
+                Retry
+              </Button>
+            </View>
+          ) : null}
         </ScrollView>
         
         <View style={styles.buttonContainer}>
@@ -561,10 +598,40 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     lineHeight: 22,
   },
+  errorContainer: {
+    backgroundColor: '#ffeded',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
   errorText: {
     fontSize: 14,
     color: '#e74c3c',
+  },
+  retryButton: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    marginTop: 20,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#7f8c8d',
     marginTop: 8,
+    textAlign: 'center',
+    marginBottom: 16,
   },
   sectionCard: {
     marginBottom: 16,
@@ -580,80 +647,95 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#2c3e50',
   },
   categoryList: {
     backgroundColor: '#fff',
   },
-  accordion: {
+  categoryItem: {
     backgroundColor: '#fff',
   },
   categoryTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
   },
   categoryTitle: {
     fontSize: 15,
-    color: '#34495e',
+    color: '#2c3e50',
   },
-  categoryItem: {
-    paddingVertical: 12,
+  categoryIdBadge: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    backgroundColor: '#f0f4f7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  accordion: {
+    backgroundColor: '#fff',
   },
   subcategoryTitle: {
     fontSize: 14,
     color: '#34495e',
   },
   subcategoryItem: {
-    paddingLeft: 36,
-    backgroundColor: '#f9f9f9',
+    paddingLeft: 20,
+    backgroundColor: '#fafafa',
   },
   buttonContainer: {
     padding: 16,
     backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: '#e0e0e0',
   },
   completeButton: {
-    height: 50,
-    justifyContent: 'center',
-    backgroundColor: '#27ae60',
+    borderRadius: 4,
+    backgroundColor: '#2ecc71',
   },
   apiInfoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    padding: 8,
-    backgroundColor: '#e3f2fd',
-    borderRadius: 4,
+    marginTop: 12,
   },
   apiInfoText: {
     marginLeft: 8,
-    fontSize: 14,
+    fontSize: 12,
     color: '#3498db',
   },
   templateInfoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
-    padding: 8,
-    backgroundColor: '#e8f5e9',
-    borderRadius: 4,
   },
   templateInfoText: {
     marginLeft: 8,
-    fontSize: 14,
+    fontSize: 12,
     color: '#27ae60',
   },
-  categoryIdBadge: {
-    fontSize: 12,
-    color: '#777',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  offlineInfoCard: {
+    backgroundColor: '#3498db',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  offlineInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    padding: 8,
+  },
+  offlineInfoTitle: {
+    color: '#fff',
+    fontWeight: '600',
     marginLeft: 8,
   },
+  offlineInfoText: {
+    color: '#fff',
+    fontSize: 13,
+    padding: 12,
+    paddingTop: 8,
+  }
 }); 
