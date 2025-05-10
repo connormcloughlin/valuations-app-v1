@@ -5,7 +5,7 @@ import { Stack } from 'expo-router';
 export default function CombinedScreen() {
   return (
     <>
-      <Stack.Screen options={{ title: 'Combined View', headerShown: true }} />
+      <Stack.Screen options={{ title: 'Combined dd View', headerShown: true }} />
       
       <View style={styles.container}>
         <Text style={styles.title}>Combined View Works!</Text>
