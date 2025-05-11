@@ -13,30 +13,14 @@ export default function Index() {
   const segments = useSegments();
   const rootNavigation = useRootNavigation();
   const [isLoading, setIsLoading] = useState(true);
-  const [shouldRedirect, setShouldRedirect] = useState(true);
   
   useEffect(() => {
-    // Check if we've already redirected in this session
     const checkNavigation = async () => {
       try {
-        const hasNavigated = await AsyncStorage.getItem(HAS_NAVIGATED_KEY);
-        
-        if (!hasNavigated) {
-          // First time - set flag and allow redirect
-          await AsyncStorage.setItem(HAS_NAVIGATED_KEY, 'true');
-          setShouldRedirect(true);
-        } else if (segments[0] === '') {
-          // We're at the root path, but we've navigated before
-          // Only redirect if we're explicitly at the root
-          setShouldRedirect(true);
-        } else {
-          // We're not at the root path or we've navigated before
-          setShouldRedirect(false);
-        }
+        // Always set flag to track navigation
+        await AsyncStorage.setItem(HAS_NAVIGATED_KEY, 'true');
       } catch (error) {
-        console.error('Error checking navigation state:', error);
-        // Default to redirect if there's an error
-        setShouldRedirect(true);
+        console.error('Error setting navigation state:', error);
       } finally {
         setIsLoading(false);
       }
@@ -45,20 +29,20 @@ export default function Index() {
     if (rootNavigation?.isReady) {
       checkNavigation();
     }
-  }, [rootNavigation?.isReady, segments]);
+  }, [rootNavigation?.isReady]);
   
-  // Show nothing while we determine if we should redirect
+  // Show loading while we're initializing
   if (isLoading) {
-    return <View style={styles.container} />;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3498db" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
   }
   
-  // Only redirect if we should
-  if (shouldRedirect) {
-    return <Redirect href="/(tabs)" />;
-  }
-  
-  // If we shouldn't redirect, render nothing
-  return <View style={styles.container} />;
+  // Always redirect to the dashboard tabs
+  return <Redirect href="/(tabs)" />;
 }
 
 const styles = StyleSheet.create({
