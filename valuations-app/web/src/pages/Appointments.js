@@ -1,46 +1,68 @@
-import React, { useState } from 'react';
-import { Card, Table, Button, Form, Row, Col, InputGroup } from 'react-bootstrap';
-import { Calendar, Search, Plus } from 'react-bootstrap-icons';
+import React, { useState, useEffect } from 'react';
+import { Card, Table, Button, Form, Row, Col, InputGroup, Badge, Modal } from 'react-bootstrap';
+import { Calendar, Search, Plus, PencilFill, TrashFill } from 'react-bootstrap-icons';
 import { Link } from 'react-router-dom';
+import { appointmentApi } from '../services/api';
+import AppointmentBooking from '../components/AppointmentBooking';
 
 function Appointments() {
     const [searchTerm, setSearchTerm] = useState('');
     const [view, setView] = useState('list'); // 'list' or 'calendar'
+    const [appointments, setAppointments] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [showBookingModal, setShowBookingModal] = useState(false);
+    const [selectedAppointment, setSelectedAppointment] = useState(null);
     
-    // Placeholder data - replace with actual data from API
-    const appointments = [
-        {
-            id: 1,
-            property: '123 Main St',
-            date: '2024-03-20',
-            time: '10:00 AM',
-            type: 'Inspection',
-            status: 'Scheduled',
-            client: 'John Doe'
-        },
-        {
-            id: 2,
-            property: '456 Oak Ave',
-            date: '2024-03-22',
-            time: '02:00 PM',
-            type: 'Valuation',
-            status: 'Pending',
-            client: 'Jane Smith'
-        },
-        {
-            id: 3,
-            property: '789 Pine Rd',
-            date: '2024-03-25',
-            time: '11:00 AM',
-            type: 'Inspection',
-            status: 'Completed',
-            client: 'Bob Johnson'
+    useEffect(() => {
+        fetchAppointments();
+    }, []);
+    
+    const fetchAppointments = async () => {
+        try {
+            setLoading(true);
+            const data = await appointmentApi.getAll();
+            setAppointments(data);
+            setLoading(false);
+        } catch (err) {
+            console.error('Error fetching appointments:', err);
+            setError('Failed to load appointments. Please try again.');
+            setLoading(false);
         }
-    ];
+    };
+    
+    const handleDeleteAppointment = async (id) => {
+        if (window.confirm('Are you sure you want to delete this appointment?')) {
+            try {
+                await appointmentApi.delete(id);
+                fetchAppointments();
+            } catch (err) {
+                console.error('Error deleting appointment:', err);
+                setError('Failed to delete appointment. Please try again.');
+            }
+        }
+    };
+    
+    const handleEditAppointment = (appointment) => {
+        setSelectedAppointment(appointment);
+        setShowBookingModal(true);
+    };
+    
+    const handleCloseBookingModal = () => {
+        setShowBookingModal(false);
+        setSelectedAppointment(null);
+    };
+    
+    const handleSaveAppointment = () => {
+        fetchAppointments();
+        setShowBookingModal(false);
+        setSelectedAppointment(null);
+    };
 
     const filteredAppointments = appointments.filter(appointment =>
-        appointment.property.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        appointment.client.toLowerCase().includes(searchTerm.toLowerCase())
+        (appointment.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        appointment.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        appointment.orderId?.toString().includes(searchTerm))
     );
 
     return (
@@ -87,39 +109,82 @@ function Appointments() {
                         </Col>
                     </Row>
 
-                    {view === 'list' ? (
+                    {loading ? (
+                        <p>Loading appointments...</p>
+                    ) : error ? (
+                        <div className="alert alert-danger">{error}</div>
+                    ) : view === 'list' ? (
                         <Table hover responsive>
                             <thead>
                                 <tr>
-                                    <th>Property</th>
+                                    <th>Order ID</th>
+                                    <th>Customer</th>
+                                    <th>Location</th>
                                     <th>Date</th>
                                     <th>Time</th>
-                                    <th>Type</th>
-                                    <th>Client</th>
+                                    <th>Survey Types</th>
+                                    <th>Surveyor</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredAppointments.map(appointment => (
-                                    <tr key={appointment.id}>
-                                        <td>{appointment.property}</td>
-                                        <td>{appointment.date}</td>
-                                        <td>{appointment.time}</td>
-                                        <td>{appointment.type}</td>
-                                        <td>{appointment.client}</td>
-                                        <td>
-                                            <span className={`badge bg-${appointment.status === 'Scheduled' ? 'success' : appointment.status === 'Pending' ? 'warning' : 'info'}`}>
-                                                {appointment.status}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <Button variant="outline-primary" size="sm">
-                                                View Details
-                                            </Button>
-                                        </td>
+                                {filteredAppointments.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="9" className="text-center">No appointments found</td>
                                     </tr>
-                                ))}
+                                ) : (
+                                    filteredAppointments.map(appointment => (
+                                        <tr key={appointment.id}>
+                                            <td>{appointment.orderId}</td>
+                                            <td>{appointment.customerName}</td>
+                                            <td>{appointment.location}</td>
+                                            <td>{appointment.startDate}</td>
+                                            <td>{appointment.startTime}</td>
+                                            <td>
+                                                {appointment.surveyTypes?.map(type => (
+                                                    <Badge 
+                                                        key={type.id} 
+                                                        bg="info" 
+                                                        className="me-1"
+                                                    >
+                                                        {type.name}
+                                                    </Badge>
+                                                ))}
+                                            </td>
+                                            <td>{appointment.surveyor}</td>
+                                            <td>
+                                                <Badge 
+                                                    bg={
+                                                        appointment.status === 'scheduled' ? 'success' : 
+                                                        appointment.status === 'completed' ? 'secondary' : 
+                                                        appointment.status === 'cancelled' ? 'danger' : 
+                                                        'warning'
+                                                    }
+                                                >
+                                                    {appointment.status}
+                                                </Badge>
+                                            </td>
+                                            <td>
+                                                <Button 
+                                                    variant="outline-primary" 
+                                                    size="sm"
+                                                    className="me-2"
+                                                    onClick={() => handleEditAppointment(appointment)}
+                                                >
+                                                    <PencilFill />
+                                                </Button>
+                                                <Button 
+                                                    variant="outline-danger" 
+                                                    size="sm"
+                                                    onClick={() => handleDeleteAppointment(appointment.id)}
+                                                >
+                                                    <TrashFill />
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </Table>
                     ) : (
@@ -131,6 +196,22 @@ function Appointments() {
                     )}
                 </Card.Body>
             </Card>
+            
+            {/* Appointment Booking Modal */}
+            <Modal 
+                show={showBookingModal} 
+                onHide={handleCloseBookingModal}
+                size="xl"
+                centered
+            >
+                <Modal.Body>
+                    <AppointmentBooking 
+                        orderId={selectedAppointment?.orderId}
+                        onClose={handleCloseBookingModal}
+                        onSave={handleSaveAppointment}
+                    />
+                </Modal.Body>
+            </Modal>
         </div>
     );
 }
