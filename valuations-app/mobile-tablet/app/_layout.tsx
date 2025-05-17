@@ -88,7 +88,7 @@ export default function RootLayout() {
             screenOptions={{ 
               headerShown: false,
               // Add animation based on orientation
-              animation: orientation === 'landscape' ? 'slide_from_right' : 'default', 
+              animation: orientation === 'landscape' ? 'slide_from_right' : 'default',
             }}
           >
             <Stack.Screen name="index" />

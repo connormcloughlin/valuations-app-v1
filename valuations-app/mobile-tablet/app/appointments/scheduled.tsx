@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, FlatList, TextInput, TouchableOpacity, Text } from 'react-native';
+import { StyleSheet, View, FlatList, TextInput, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
 import { Card, Button, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { logNavigation } from '../../utils/logger';
+import api from '../../api';
 
 // Define the appointment type
 interface Appointment {
@@ -13,28 +14,79 @@ interface Appointment {
   date: string;
   policyNo: string;
   orderNumber: string;
+  status?: string;
+  // Add any other fields from the API response
 }
 
-// Mock appointment data - would come from API in a real app
-const appointmentData: Appointment[] = [
+// Fallback mock data in case API fails
+const fallbackData: Appointment[] = [
   { id: '1001', address: '123 Main St', client: 'M.R. Gumede', date: '2024-04-30 09:00', policyNo: 'K 82 mil', orderNumber: 'ORD-2024-1001' },
   { id: '1002', address: '456 Oak Ave', client: 'T. Mbatha', date: '2024-05-02 14:00', policyNo: 'P 56 mil', orderNumber: 'ORD-2024-1002' },
-  { id: '1003', address: '789 Pine Rd', client: 'S. Naidoo', date: '2024-05-04 10:00', policyNo: 'J 12 mil', orderNumber: 'ORD-2024-1003' },
-  { id: '1004', address: '29 Killarney Avenue', client: 'J. Smith', date: '2024-05-06 11:30', policyNo: 'L 94 mil', orderNumber: 'ORD-2024-1004' },
-  { id: '1005', address: '12 Beach Road', client: 'L. Johnson', date: '2024-05-08 15:00', policyNo: 'M 17 mil', orderNumber: 'ORD-2024-1005' },
 ];
 
 export default function ScheduledAppointmentsScreen() {
   logNavigation('Scheduled Appointments');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredAppointments, setFilteredAppointments] = useState(appointmentData);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fetch appointments from API
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const fetchAppointments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Use our API client to get appointments with 'scheduled' status
+      const response = await api.getAppointmentsByStatus('scheduled');
+      
+      if (response.success && response.data) {
+        console.log(`Loaded ${Array.isArray(response.data) ? response.data.length : 0} scheduled appointments`);
+        
+        // Ensure response.data is an array
+        const appointmentsArray = Array.isArray(response.data) ? response.data : [];
+        
+        // Map API response to our Appointment interface if needed
+        const mappedData: Appointment[] = appointmentsArray.map((item: any) => ({
+          id: item.id || item.appointmentId || '',
+          address: item.address || '',
+          client: item.clientName || item.client || '',
+          date: item.appointmentDate || item.date || '',
+          policyNo: item.policyNumber || item.policyNo || '',
+          orderNumber: item.orderNumber || '',
+          status: item.status || 'scheduled'
+        }));
+        
+        setAppointments(mappedData);
+        setFilteredAppointments(mappedData);
+      } else {
+        console.error('Failed to load appointments:', response.message);
+        setError('Failed to load appointments. Using fallback data.');
+        setAppointments(fallbackData);
+        setFilteredAppointments(fallbackData);
+      }
+    } catch (err) {
+      console.error('Error fetching appointments:', err);
+      setError('Error loading appointments. Using fallback data.');
+      setAppointments(fallbackData);
+      setFilteredAppointments(fallbackData);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter appointments based on search query
   useEffect(() => {
     if (searchQuery.trim() === '') {
-      setFilteredAppointments(appointmentData);
+      setFilteredAppointments(appointments);
     } else {
       const query = searchQuery.toLowerCase();
-      const filtered = appointmentData.filter(
+      const filtered = appointments.filter(
         appointment => 
           appointment.client.toLowerCase().includes(query) ||
           appointment.address.toLowerCase().includes(query) ||
@@ -42,12 +94,17 @@ export default function ScheduledAppointmentsScreen() {
       );
       setFilteredAppointments(filtered);
     }
-  }, [searchQuery]);
+  }, [searchQuery, appointments]);
 
   const navigateToAppointment = (id: string) => {
+    // In API, IDs might start at 1, but in our navigation we might use 0-based
+    // Make sure to adjust the ID when needed
+    const navigationId = id === '1' ? '1' : id; // Preserve the ID as-is for now
+    console.log(`Navigating to appointment details for ID: ${navigationId}`);
+    
     router.push({
       pathname: '/appointment/[id]',
-      params: { id }
+      params: { id: navigationId }
     });
   };
 
@@ -100,12 +157,26 @@ export default function ScheduledAppointmentsScreen() {
           iconColor="#4a90e2"
         />
         
-        {filteredAppointments.length > 0 ? (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4a90e2" />
+            <Text style={styles.loadingText}>Loading appointments...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Button mode="contained" onPress={fetchAppointments} style={styles.retryButton}>
+              Retry
+            </Button>
+          </View>
+        ) : filteredAppointments.length > 0 ? (
           <FlatList
             data={filteredAppointments}
             renderItem={renderAppointmentItem}
-            keyExtractor={item => item.id}
+            keyExtractor={(item, index) => item.id ? String(item.id) : `appointment-${index}`}
             contentContainerStyle={styles.listContainer}
+            refreshing={loading}
+            onRefresh={fetchAppointments}
           />
         ) : (
           <View style={styles.emptyContainer}>
@@ -165,6 +236,29 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 14,
     color: '#7f8c8d',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#7f8c8d',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: '#e74c3c',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 10,
   },
   emptyContainer: {
     flex: 1,

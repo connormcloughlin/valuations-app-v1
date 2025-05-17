@@ -38,6 +38,17 @@ type SurveyData = {
   consultant: string;
 };
 
+// Custom header component
+const CustomHeader = () => {
+  return (
+    <View style={{backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center'}}>
+      <Button onPress={() => router.back()} mode="text">Cancel</Button>
+      <Text style={{flex: 1, textAlign: 'center', fontSize: 18}}>New Survey</Text>
+      <View style={{width: 80}} />
+    </View>
+  );
+};
+
 export default function NewSurveyScreen() {
   logNavigation('New Survey');
   const params = useLocalSearchParams();
@@ -186,23 +197,7 @@ export default function NewSurveyScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'New Survey',
-          headerTitleStyle: {
-            fontWeight: '600',
-          },
-          headerLeft: () => (
-            <Button
-              onPress={() => router.back()}
-              mode="text"
-            >
-              Cancel
-            </Button>
-          ),
-        }}
-      />
-
+      <CustomHeader />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
