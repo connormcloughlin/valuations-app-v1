@@ -45,6 +45,25 @@ export interface Appointment {
   appointment_date?: string;
   order_id?: string;
   location?: string;
+  appointmentID?: number;
+  orderID?: number | string;
+  startTime?: string;
+  endTime?: string;
+  followUpDate?: string | null;
+  arrivalTime?: string | null;
+  departureTime?: string | null;
+  inviteStatus?: string | null;
+  meetingStatus?: string | null;
+  comments?: string;
+  category?: string;
+  outoftown?: string;
+  surveyorComments?: string | null;
+  eventId?: string | null;
+  surveyorEmail?: string | null;
+  dateModified?: string | null;
+  ordersList?: any;
+  originalAppointment?: any;
+  originalOrder?: any;
 }
 
 // API client interface
@@ -64,6 +83,8 @@ declare const api: {
   getAppointmentById: (appointmentId: string) => Promise<ApiResponse<Appointment>>;
   getAppointmentsByStatus: (status: string) => Promise<ApiResponse<Appointment[]>>;
   clearAllCachedData: () => Promise<ApiResponse<any>>;
+  getAppointmentsWithOrders: () => Promise<ApiResponse<Appointment[]>>;
+  getAppointmentsWithOrdersByStatus: (status: string) => Promise<ApiResponse<Appointment[]>>;
 };
 
 export default api; 

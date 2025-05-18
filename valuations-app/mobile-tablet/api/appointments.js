@@ -1,6 +1,8 @@
 import apiClient from './client';
+import axios from 'axios';
 import offlineStorage from '../utils/offlineStorage';
 import connectionUtils from '../utils/connectionUtils';
+import { API_CONFIG } from './config';
 
 /**
  * Appointment related API methods
@@ -18,8 +20,10 @@ const appointmentsApi = {
       
       // If offline, get from storage
       if (!isOnline) {
-        const cachedData = await offlineStorage.getDataForKey('appointments');
-        if (cachedData) {
+        const cachedResponse = await offlineStorage.getDataForKey('appointments');
+        if (cachedResponse && cachedResponse.data) {
+          // Extract the actual data array
+          const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
           console.log(`Using ${cachedData.length} cached appointments (offline)`);
           return {
             success: true,
@@ -81,8 +85,8 @@ const appointmentsApi = {
         
         // Determine client name from various possible fields
         const client = appointment.client || 
-                      appointment.clientName || 
-                      appointment.customer_name || 
+                       appointment.ordersList.clientsName || 
+                       appointment.customer_name || 
                       'Unknown client';
         
         // Determine date from various possible fields
@@ -94,8 +98,8 @@ const appointmentsApi = {
         
         // Determine order number
         const orderNumber = appointment.orderNumber || 
-                           appointment.orderID || 
-                           appointment.order_id || 
+                            appointment.orderID || 
+                            appointment.order_id || 
                            'Unknown order';
         
         // Create an appointment with the unique ID and normalized data
@@ -150,8 +154,11 @@ const appointmentsApi = {
       
       // If offline, try to get from storage
       if (!isOnline) {
-        const cachedData = await offlineStorage.getDataForKey('appointments');
-        if (cachedData && Array.isArray(cachedData)) {
+        const cachedResponse = await offlineStorage.getDataForKey('appointments');
+        if (cachedResponse && cachedResponse.data) {
+          // Extract the data array from response
+          const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
+          
           // Look for the appointment with the adjusted ID
           const appointment = cachedData.find(a => 
             a.id?.toString() === adjustedId || 
@@ -377,6 +384,529 @@ const appointmentsApi = {
         message: error.message || `Failed to get ${status} appointments`,
         data: []
       };
+    }
+  },
+
+  /**
+   * Get appointments with their associated orders
+   * @param {Object} options - Pagination and filter options
+   * @param {number} options.page - Page number (1-based)
+   * @param {number} options.pageSize - Number of items per page
+   * @returns {Promise<Object>} Response with appointments and orders data
+   */
+  getAppointmentsWithOrders: async (options = {}) => {
+    try {
+      // Set default pagination values
+      const page = options.page || 1;
+      const pageSize = options.pageSize || 10;
+      
+      // Check if we're online first
+      const isOnline = connectionUtils.isConnected();
+      console.log(`Connection status before fetching appointments with orders: ${isOnline ? 'Online' : 'Offline'}`);
+      
+      // If offline, get from storage and paginate locally
+      if (!isOnline) {
+        const cachedResponse = await offlineStorage.getDataForKey('appointmentsWithOrders');
+        if (cachedResponse && cachedResponse.data) {
+          console.log(`Using cached appointments with orders (offline)`);
+          
+          // Extract the data array from response
+          const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
+          
+          // Calculate pagination
+          const startIndex = (page - 1) * pageSize;
+          const endIndex = startIndex + pageSize;
+          const paginatedData = cachedData.slice(startIndex, endIndex);
+          
+          return {
+            success: true,
+            data: paginatedData,
+            pagination: {
+              page,
+              pageSize,
+              totalItems: cachedData.length,
+              totalPages: Math.ceil(cachedData.length / pageSize),
+              hasMore: endIndex < cachedData.length
+            },
+            fromCache: true
+          };
+        } else {
+          return {
+            success: false,
+            message: 'You are offline and no cached appointment data is available.'
+          };
+        }
+      }
+      
+      // Online - fetch from server with pagination params
+      console.log(`Fetching appointments with orders from server (page ${page}, pageSize ${pageSize})`);
+      const response = await apiClient.get('/appointments/with-orders', {
+        params: { page, pageSize }
+      });
+      
+      // Ensure data is an array
+      let appointmentsData = [];
+      let totalItems = 0;
+      
+      if (response.data && typeof response.data === 'object') {
+        // Handle the case where data is inside a 'data' property (common API pattern)
+        if (Array.isArray(response.data.data)) {
+          appointmentsData = response.data.data;
+          // Get total count from metadata if available
+          totalItems = response.data.meta?.totalCount || response.data.total || appointmentsData.length;
+          console.log('Found appointments in response.data.data array');
+        } else if (Array.isArray(response.data)) {
+          appointmentsData = response.data;
+          totalItems = appointmentsData.length;
+          console.log('Found appointments in response.data array');
+        } else {
+          console.log('Response data is not an array:', response.data);
+          appointmentsData = [];
+          totalItems = 0;
+        }
+      }
+      
+      // Process appointments with orders
+      const processedAppointments = appointmentsData.map((appointment, index) => {
+        // Get order data (if available)
+        const order = appointment.ordersList || {};
+        
+        // Use consistent ID field
+        const id = appointment.appointmentID?.toString() || String(index + 1);
+        
+        // Map fields to consistent structure
+        return {
+          id: id,
+          appointmentId: id,
+          orderID: appointment.orderID || order.orderid,
+          orderNumber: appointment.orderID?.toString() || 'Unknown',
+          address: appointment.location || order.fullAddress || 'No address provided',
+          client: appointment.client || (order.client || order.clientsName || 'Client name pending'),
+          date: appointment.startTime || order.orderdate || new Date().toISOString(),
+          policyNo: order.policy || '',
+          policyNumber: order.policy || '',
+          sumInsured: order.sumInsured || 0,
+          broker: order.broker || '',
+          notes: appointment.comments || '',
+          status: appointment.meetingStatus || 'scheduled',
+          Invite_Status: appointment.inviteStatus || 'booked',
+          // Preserve original data
+          originalAppointment: appointment,
+          originalOrder: order
+        };
+      });
+      
+      console.log(`Processed ${processedAppointments.length} appointments with orders (page ${page})`);
+      
+      // Cache all fetched data for offline use
+      const cachedResponse = await offlineStorage.getDataForKey('appointmentsWithOrders');
+      // Extract data array from response, or use empty array if null/undefined
+      const existingCachedData = cachedResponse?.data || [];
+      
+      // Create a map of existing appointments by ID for quick lookup
+      const existingAppointmentsMap = new Map();
+      
+      // Safely iterate over the array (check if it's iterable first)
+      if (Array.isArray(existingCachedData)) {
+        existingCachedData.forEach(app => {
+          if (app && app.id) {
+            existingAppointmentsMap.set(app.id, app);
+          }
+        });
+      } else {
+        console.log('No valid cached appointments found or cache is not an array');
+      }
+      
+      // Merge new appointments with existing ones (replacing duplicates)
+      processedAppointments.forEach(app => {
+        existingAppointmentsMap.set(app.id, app);
+      });
+      
+      // Convert map back to array
+      const updatedCacheData = Array.from(existingAppointmentsMap.values());
+      
+      // Cache the merged result
+      await offlineStorage.storeDataForKey('appointmentsWithOrders', updatedCacheData);
+      console.log(`Cached ${updatedCacheData.length} total appointments with orders`);
+      
+      // Calculate pagination info
+      const totalPages = Math.ceil(totalItems / pageSize);
+      const hasMore = page < totalPages;
+      
+      return {
+        ...response,
+        data: processedAppointments,
+        pagination: {
+          page,
+          pageSize,
+          totalItems,
+          totalPages,
+          hasMore
+        }
+      };
+    } catch (error) {
+      console.error('Error fetching appointments with orders:', error);
+      return error.success === false ? error : { success: false, message: error.message, data: [] };
+    }
+  },
+
+  /**
+   * Get appointments with orders by status
+   * @param {string} status - Status of appointments to fetch
+   * @param {Object} options - Pagination options
+   * @param {number} options.page - Page number (1-based)
+   * @param {number} options.pageSize - Number of items per page
+   * @returns {Promise<Object>} Response with filtered appointments
+   */
+  getAppointmentsWithOrdersByStatus: async (status, options = {}) => {
+    try {
+      // Set default pagination values
+      const page = options.page || 1;
+      const pageSize = options.pageSize || 10;
+      
+      // First get appointments with orders for the current page
+      const response = await appointmentsApi.getAppointmentsWithOrders({ page, pageSize });
+      
+      if (!response.success) {
+        return { ...response, data: [] };
+      }
+      
+      // Ensure we have an array to work with
+      const appointmentsArray = Array.isArray(response.data) ? response.data : [];
+      
+      if (appointmentsArray.length === 0) {
+        console.log(`No appointments found to filter by ${status} status`);
+        return {
+          success: true,
+          data: [],
+          message: 'No appointments available',
+          pagination: response.pagination || { page, pageSize, totalItems: 0, totalPages: 0, hasMore: false }
+        };
+      }
+      
+      console.log(`Filtering ${appointmentsArray.length} appointments by status: ${status}`);
+      
+      // Helper function to determine appointment status based on various fields
+      const getAppointmentStatus = (appointment) => {
+        // First check inviteStatus (from the API) or Invite_Status (our normalized field)
+        if (appointment.inviteStatus) {
+          return appointment.inviteStatus.toLowerCase();
+        }
+        if (appointment.Invite_Status) {
+          return appointment.Invite_Status.toLowerCase();
+        }
+        
+        // Check the meetingStatus or status fields
+        if (appointment.meetingStatus) {
+          return appointment.meetingStatus.toLowerCase();
+        }
+        if (appointment.status) {
+          return appointment.status.toLowerCase();
+        }
+        
+        // Fallback to default status based on order status if available
+        if (appointment.originalOrder && appointment.originalOrder.orderStatus) {
+          const orderStatus = appointment.originalOrder.orderStatus.toLowerCase();
+          if (orderStatus === 'completed' || orderStatus === 'done') {
+            return 'completed';
+          }
+          if (orderStatus === 'in progress' || orderStatus === 'started') {
+            return 'in-progress';
+          }
+          return 'booked';
+        }
+        
+        // Default to booked
+        return 'booked';
+      };
+      
+      // Filter by status with enhanced logic
+      const filteredData = appointmentsArray.filter(appointment => {
+        if (!appointment) return false;
+        
+        const appointmentStatus = getAppointmentStatus(appointment);
+        
+        switch(status) {
+          case 'scheduled':
+            return appointmentStatus === 'scheduled' || 
+                   appointmentStatus === 'pending' || 
+                   appointmentStatus === 'booked' ||
+                   appointmentStatus === 'assigned';
+          
+          case 'in-progress':
+            return appointmentStatus === 'in-progress' || 
+                   appointmentStatus === 'in_progress' ||
+                   appointmentStatus === 'started';
+          
+          case 'completed':
+            return appointmentStatus === 'completed' ||
+                   appointmentStatus === 'done';
+            
+          default:
+            return true;
+        }
+      });
+      
+      // Ensure no duplicate IDs in the filtered data
+      const deduplicatedData = [];
+      const seenIds = new Set();
+      
+      filteredData.forEach((appointment, index) => {
+        const id = appointment.id?.toString() || `${status}-appointment-${index + 1}`;
+        
+        if (!seenIds.has(id)) {
+          seenIds.add(id);
+          deduplicatedData.push(appointment);
+        } else {
+          // Create a copy with a unique ID for duplicate entries
+          deduplicatedData.push({
+            ...appointment,
+            id: `${id}-duplicate-${index}`,
+            appointmentId: `${appointment.appointmentId || id}-duplicate-${index}`
+          });
+        }
+      });
+      
+      console.log(`Filtered to ${deduplicatedData.length} ${status} appointments (after deduplication)`);
+      
+      // Return the filtered data with appropriate pagination info
+      const finalData = deduplicatedData;
+      const paginationInfo = {
+        ...response.pagination,
+        totalItems: response.pagination.totalItems || 0, // Preserve the original total count
+        totalPages: Math.ceil((response.pagination.totalItems || 0) / pageSize),
+        hasMore: page < Math.ceil((response.pagination.totalItems || 0) / pageSize)
+      };
+      
+      // Remove auto-fetching of more data - this was causing multiple API calls
+      // The UI will now explicitly request the next page when the user clicks "Next"
+      
+      return {
+        ...response,
+        data: finalData,
+        pagination: paginationInfo
+      };
+    } catch (error) {
+      console.error(`Error fetching ${status} appointments with orders:`, error);
+      return error.success === false ? error : { 
+        success: false, 
+        message: error.message || `Failed to get ${status} appointments with orders`,
+        data: []
+      };
+    }
+  },
+
+  /**
+   * Get appointments using the list-view endpoint with status filtering
+   * @param {Object} options - Search and pagination options
+   * @param {string} options.status - Status filter ('Booked', 'In-Progress', 'Completed')
+   * @param {string} options.surveyor - Surveyor ID to filter by (optional)
+   * @param {number} options.page - Page number (1-based)
+   * @param {number} options.pageSize - Number of items per page
+   * @returns {Promise<Object>} Response with filtered appointments
+   */
+  getAppointmentsByListView: async (options = {}) => {
+    try {
+      // Set default values
+      const page = options.page || 1;
+      const pageSize = options.pageSize || 10;
+      const status = options.status || 'Booked'; // Default to 'Booked' for scheduled appointments
+      const surveyor = options.surveyor || null;
+
+      // Check if we're online first
+      const isOnline = connectionUtils.isConnected();
+      console.log(`Connection status before fetching appointments by list-view: ${isOnline ? 'Online' : 'Offline'}`);
+      
+      // If offline, get from storage and filter
+      if (!isOnline) {
+        const cachedResponse = await offlineStorage.getDataForKey('appointmentsByListView');
+        if (cachedResponse && cachedResponse.data) {
+          console.log(`Using cached list-view appointments (offline)`);
+          
+          // Extract data and filter by status
+          const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
+          const filteredData = cachedData.filter(appointment => 
+            appointment.inviteStatus === status && 
+            (!surveyor || appointment.surveyorID === surveyor)
+          );
+          
+          // Calculate pagination
+          const startIndex = (page - 1) * pageSize;
+          const endIndex = startIndex + pageSize;
+          const paginatedData = filteredData.slice(startIndex, endIndex);
+          
+          return {
+            success: true,
+            data: paginatedData,
+            pagination: {
+              page,
+              pageSize,
+              totalItems: filteredData.length,
+              totalPages: Math.ceil(filteredData.length / pageSize),
+              hasMore: endIndex < filteredData.length
+            },
+            fromCache: true
+          };
+        } else {
+          return {
+            success: false,
+            message: 'You are offline and no cached appointment data is available.'
+          };
+        }
+      }
+      
+      // Online - fetch from server with parameters
+      console.log(`Fetching appointments from list-view with status: ${status}, page: ${page}`);
+      
+      // Build query parameters
+      const params = {
+        page,
+        pageSize,
+        inviteStatus: status
+      };
+      
+      // Add surveyor parameter if provided
+      if (surveyor) {
+        params.surveyor = surveyor;
+      }
+      
+      // Make the API call with parameters - try with direct axios call to troubleshoot
+      console.log(`Calling API endpoint with params: ${JSON.stringify(params)}`);
+      console.log(`API base URL is: ${API_CONFIG.BASE_URL}`);
+      
+      try {
+        // First try with direct axios call
+        const fullUrl = 'http://192.168.0.102:5000/api/appointments/list-view';
+        console.log(`Making direct axios call to: ${fullUrl}`);
+        const response = await axios.get(fullUrl, { 
+          params,
+          timeout: 30000, // 30 second timeout
+          headers: API_CONFIG.HEADERS
+        });
+        console.log('API call successful');
+        
+        // If we got here, the response was successful
+        const axiosResponse = {
+          success: true,
+          data: response.data,
+          status: response.status
+        };
+        
+        // Ensure data is an array
+        let appointmentsData = [];
+        let totalItems = 0;
+        
+        if (axiosResponse.data && typeof axiosResponse.data === 'object') {
+          // Handle the case where data is inside a 'data' property (common API pattern)
+          if (Array.isArray(axiosResponse.data.data)) {
+            appointmentsData = axiosResponse.data.data;
+            // Get total count from metadata if available
+            totalItems = axiosResponse.data.meta?.totalCount || axiosResponse.data.total || appointmentsData.length;
+            console.log('Found appointments in response.data.data array');
+          } else if (Array.isArray(axiosResponse.data)) {
+            appointmentsData = axiosResponse.data;
+            totalItems = appointmentsData.length;
+            console.log('Found appointments in response.data array');
+          } else {
+            console.log('Response data is not an array:', axiosResponse.data);
+            appointmentsData = [];
+            totalItems = 0;
+          }
+        }
+        
+        // Process appointments
+        const processedAppointments = appointmentsData.map((appointment, index) => {
+          // Use consistent ID field with index as suffix to ensure uniqueness
+          const baseId = appointment.AppointmentID?.toString() || String(index + 1);
+          const id = `${baseId}`;
+          
+          // Map fields directly from the flat API response structure
+          return {
+            id: id,
+            appointmentId: id,
+            appointmentIndex: index, // Add index for additional uniqueness if needed by components
+            orderID: appointment.OrderID,
+            orderNumber: appointment.OrderID?.toString() || 'Unknown',
+            address: appointment.Location || 'No address provided',
+            client: appointment.Client || 'Client name pending',
+            date: appointment.Start_Time || new Date().toISOString(),
+            policyNo: appointment.Policy || '',
+            policyNumber: appointment.Policy || '',
+            sumInsured: appointment['Sum Insured'] || 0,
+            broker: appointment.Broker || '',
+            notes: appointment.Comments || '',
+            status: appointment.Meeting_Status || 'scheduled',
+            Invite_Status: appointment.Invite_Status || status,
+            surveyor: appointment.Surveyor || '',
+            surveyorID: appointment.SurveyorID || null,
+            category: appointment.Category || '',
+            fullAddress: appointment.FullAddress || appointment.Location || '',
+            region: appointment.Region || '',
+            city: appointment.City || '',
+            insurer: appointment.Insurer || '',
+            orderStatus: appointment['Order Status'] || '',
+            dateModified: appointment.date_modified || appointment.DateModified || null,
+            lastEdited: appointment.date_modified || appointment.DateModified || null,
+            // Store original data for reference
+            originalData: appointment
+          };
+        });
+        
+        console.log(`Processed ${processedAppointments.length} appointments from list-view (page ${page})`);
+        
+        // Cache all fetched data for offline use
+        const cachedResponse = await offlineStorage.getDataForKey('appointmentsByListView');
+        // Extract data array from response, or use empty array if null/undefined
+        const existingCachedData = cachedResponse?.data || [];
+        
+        // Create a map of existing appointments by ID for quick lookup
+        const existingAppointmentsMap = new Map();
+        
+        // Safely iterate over the array (check if it's iterable first)
+        if (Array.isArray(existingCachedData)) {
+          existingCachedData.forEach(app => {
+            if (app && app.id) {
+              existingAppointmentsMap.set(app.id, app);
+            }
+          });
+        } else {
+          console.log('No valid cached appointments found or cache is not an array');
+        }
+        
+        // Merge new appointments with existing ones (replacing duplicates)
+        processedAppointments.forEach(app => {
+          existingAppointmentsMap.set(app.id, app);
+        });
+        
+        // Convert map back to array
+        const updatedCacheData = Array.from(existingAppointmentsMap.values());
+        
+        // Cache the merged result
+        await offlineStorage.storeDataForKey('appointmentsByListView', updatedCacheData);
+        console.log(`Cached ${updatedCacheData.length} total appointments from list-view`);
+        
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalItems / pageSize);
+        const hasMore = page < totalPages;
+        
+        return {
+          ...axiosResponse,
+          data: processedAppointments,
+          pagination: {
+            page,
+            pageSize,
+            totalItems,
+            totalPages,
+            hasMore
+          }
+        };
+      } catch (error) {
+        console.error('Error fetching appointments from list-view:', error);
+        return error.success === false ? error : { success: false, message: error.message, data: [] };
+      }
+    } catch (error) {
+      console.error('Error fetching appointments from list-view:', error);
+      return error.success === false ? error : { success: false, message: error.message, data: [] };
     }
   }
 };

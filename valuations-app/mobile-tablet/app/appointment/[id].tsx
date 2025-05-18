@@ -85,7 +85,7 @@ export default function AppointmentDetails() {
         const appointmentData: Appointment = {
           id: response.data.id || response.data.appointmentId || appointmentId,
           address: response.data.address || 'Unknown address',
-          client: response.data.clientName || response.data.client || 'Unknown client',
+          client: response.data.clientsName || response.data.client || 'Unknown client',
           phone: response.data.phoneNumber || response.data.phone || 'N/A',
           email: response.data.emailAddress || response.data.email || 'N/A',
           date: response.data.appointmentDate || response.data.date || new Date().toISOString().split('T')[0] + ' 09:00',

@@ -5,8 +5,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { logNavigation } from '../../utils/logger';
 import api from '../../api';
+// Import the API response type to fix TypeScript errors
+import { ApiResponse, Appointment as ApiAppointment } from '../../api/index.d';
 
-// Define the appointment type
+// Define the appointment type with order fields
 interface Appointment {
   id: string;
   address: string;
@@ -16,6 +18,14 @@ interface Appointment {
   orderNumber: string;
   lastEdited: string;
   status?: string;
+  Invite_Status?: string;
+  sumInsured?: number;
+  broker?: string;
+  // New fields from the API
+  orderID?: number | string;
+  dateModified?: string | null;
+  originalOrder?: any;
+  originalAppointment?: any;
 }
 
 // Fallback mock data in case API fails
@@ -58,8 +68,14 @@ export default function InProgressAppointmentsScreen() {
       setLoading(true);
       setError(null);
       
-      // Use our API client to get appointments with 'in-progress' status
-      const response = await api.getAppointmentsByStatus('in-progress');
+      // Use the new list-view API endpoint with 'In-Progress' status
+      // @ts-ignore - this method exists but TypeScript might not recognize it
+      const response = await api.getAppointmentsByListView({
+        status: 'In-Progress',
+        page: 1,
+        pageSize: 50, // Load more per page since we're not implementing pagination here yet
+        surveyor: null // No surveyor filter by default
+      });
       
       if (response.success && response.data) {
         console.log(`Loaded ${Array.isArray(response.data) ? response.data.length : 0} in-progress appointments`);
@@ -67,20 +83,22 @@ export default function InProgressAppointmentsScreen() {
         // Ensure response.data is an array
         const appointmentsArray = Array.isArray(response.data) ? response.data : [];
         
-        // Map API response to our Appointment interface if needed
-        const mappedData: Appointment[] = appointmentsArray.map((item: any) => ({
-          id: item.id || item.appointmentId || '',
-          address: item.address || '',
-          client: item.clientName || item.client || '',
-          date: item.appointmentDate || item.date || '',
-          policyNo: item.policyNumber || item.policyNo || '',
-          orderNumber: item.orderNumber || '',
-          lastEdited: item.lastEdited || item.lastModified || new Date().toISOString().split('T')[0],
-          status: item.status || 'in-progress'
-        }));
+        // Process appointments to ensure they have lastEdited field
+        const processedData = appointmentsArray.map((appointment: ApiAppointment) => {
+          // lastEdited should now be directly available from the API response
+          // Use the mapped field directly without needing to check multiple sources
+          const lastEdited = appointment.lastEdited || 
+                            appointment.dateModified || 
+                            new Date().toISOString().split('T')[0];
+          
+          return {
+            ...appointment,
+            lastEdited
+          };
+        });
         
-        setAppointments(mappedData);
-        setFilteredAppointments(mappedData);
+        setAppointments(processedData);
+        setFilteredAppointments(processedData);
       } else {
         console.error('Failed to load in-progress appointments:', response.message);
         setError('Failed to load appointments. Using fallback data.');
@@ -105,9 +123,10 @@ export default function InProgressAppointmentsScreen() {
       const query = searchQuery.toLowerCase();
       const filtered = appointments.filter(
         appointment => 
-          appointment.client.toLowerCase().includes(query) ||
-          appointment.address.toLowerCase().includes(query) ||
-          appointment.orderNumber.toLowerCase().includes(query)
+          (appointment.client && appointment.client.toLowerCase().includes(query)) ||
+          (appointment.address && appointment.address.toLowerCase().includes(query)) ||
+          (appointment.orderNumber && appointment.orderNumber.toLowerCase().includes(query)) ||
+          (appointment.policyNo && appointment.policyNo.toLowerCase().includes(query))
       );
       setFilteredAppointments(filtered);
     }
@@ -124,6 +143,30 @@ export default function InProgressAppointmentsScreen() {
     });
   };
 
+  const formatCurrency = (value?: number) => {
+    if (value === undefined || value === null) return '';
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: 'ZAR',
+      maximumFractionDigits: 0
+    }).format(value);
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '';
+    
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-ZA', {
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric'
+      });
+    } catch (e) {
+      return dateString;
+    }
+  };
+
   const renderAppointmentItem = ({ item }: { item: Appointment }) => (
     <Card 
       style={styles.appointmentCard}
@@ -132,24 +175,38 @@ export default function InProgressAppointmentsScreen() {
       <Card.Content>
         <View style={styles.appointmentHeader}>
           <MaterialCommunityIcons name="map-marker" size={20} color="#f39c12" style={styles.icon} />
-          <Text style={styles.appointmentAddress}>{item.address}</Text>
+          <Text style={styles.appointmentAddress}>{item.address || 'No address'}</Text>
         </View>
         
         <View style={styles.appointmentDetails}>
           <View style={styles.detailRow}>
             <MaterialCommunityIcons name="account" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>{item.client}</Text>
+            <Text style={styles.detailText}>{item.client || 'No client name'}</Text>
           </View>
           
           <View style={styles.detailRow}>
             <MaterialCommunityIcons name="calendar-edit" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Last edited: {item.lastEdited}</Text>
+            <Text style={styles.detailText}>Last edited: {formatDate(item.lastEdited) || 'Unknown'}</Text>
           </View>
           
           <View style={styles.detailRow}>
             <MaterialCommunityIcons name="file-document-outline" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Order: {item.orderNumber}</Text>
+            <Text style={styles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
           </View>
+
+          {item.policyNo && (
+            <View style={styles.detailRow}>
+              <MaterialCommunityIcons name="shield" size={16} color="#7f8c8d" style={styles.detailIcon} />
+              <Text style={styles.detailText}>Policy: {item.policyNo}</Text>
+            </View>
+          )}
+          
+          {item.sumInsured && item.sumInsured > 0 && (
+            <View style={styles.detailRow}>
+              <MaterialCommunityIcons name="currency-usd" size={16} color="#7f8c8d" style={styles.detailIcon} />
+              <Text style={styles.detailText}>Sum Insured: {formatCurrency(item.sumInsured)}</Text>
+            </View>
+          )}
         </View>
         
         <Button 
@@ -158,7 +215,7 @@ export default function InProgressAppointmentsScreen() {
           style={styles.continueButton}
           labelStyle={styles.buttonLabel}
         >
-          Continue Survey
+          <Text style={styles.buttonText}>Continue Survey</Text>
         </Button>
       </Card.Content>
     </Card>
@@ -175,7 +232,7 @@ export default function InProgressAppointmentsScreen() {
       
       <View style={styles.container}>
         <Searchbar
-          placeholder="Search by client, address or order no."
+          placeholder="Search by client, address, policy or order no."
           onChangeText={setSearchQuery}
           value={searchQuery}
           style={styles.searchBar}
@@ -196,14 +253,14 @@ export default function InProgressAppointmentsScreen() {
               style={styles.retryButton}
               buttonColor="#f39c12"
             >
-              Retry
+              <Text style={styles.buttonText}>Retry</Text>
             </Button>
           </View>
         ) : filteredAppointments.length > 0 ? (
           <FlatList
             data={filteredAppointments}
             renderItem={renderAppointmentItem}
-            keyExtractor={(item, index) => item.id ? String(item.id) : `appointment-${index}`}
+            keyExtractor={(item, index) => item.id ? `in-progress-${item.id}-${index}` : `in-progress-${index}`}
             contentContainerStyle={styles.listContainer}
             refreshing={loading}
             onRefresh={fetchAppointments}
@@ -277,6 +334,10 @@ const styles = StyleSheet.create({
   buttonLabel: {
     fontSize: 12,
     marginVertical: 0,
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 14,
   },
   loadingContainer: {
     flex: 1,
