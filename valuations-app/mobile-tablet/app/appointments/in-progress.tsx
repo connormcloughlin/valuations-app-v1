@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, FlatList, Text } from 'react-native';
+import { StyleSheet, View, FlatList, Text, ActivityIndicator } from 'react-native';
 import { Card, Button, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { logNavigation } from '../../utils/logger';
+import api from '../../api';
 
 // Define the appointment type
 interface Appointment {
@@ -14,10 +15,11 @@ interface Appointment {
   policyNo: string;
   orderNumber: string;
   lastEdited: string;
+  status?: string;
 }
 
-// Mock appointment data - would come from API in a real app
-const appointmentData: Appointment[] = [
+// Fallback mock data in case API fails
+const fallbackData: Appointment[] = [
   { 
     id: '1003', 
     address: '789 Pine Rd', 
@@ -41,14 +43,67 @@ const appointmentData: Appointment[] = [
 export default function InProgressAppointmentsScreen() {
   logNavigation('In-Progress Appointments');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredAppointments, setFilteredAppointments] = useState(appointmentData);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fetch appointments from API
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const fetchAppointments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Use our API client to get appointments with 'in-progress' status
+      const response = await api.getAppointmentsByStatus('in-progress');
+      
+      if (response.success && response.data) {
+        console.log(`Loaded ${Array.isArray(response.data) ? response.data.length : 0} in-progress appointments`);
+        
+        // Ensure response.data is an array
+        const appointmentsArray = Array.isArray(response.data) ? response.data : [];
+        
+        // Map API response to our Appointment interface if needed
+        const mappedData: Appointment[] = appointmentsArray.map((item: any) => ({
+          id: item.id || item.appointmentId || '',
+          address: item.address || '',
+          client: item.clientName || item.client || '',
+          date: item.appointmentDate || item.date || '',
+          policyNo: item.policyNumber || item.policyNo || '',
+          orderNumber: item.orderNumber || '',
+          lastEdited: item.lastEdited || item.lastModified || new Date().toISOString().split('T')[0],
+          status: item.status || 'in-progress'
+        }));
+        
+        setAppointments(mappedData);
+        setFilteredAppointments(mappedData);
+      } else {
+        console.error('Failed to load in-progress appointments:', response.message);
+        setError('Failed to load appointments. Using fallback data.');
+        setAppointments(fallbackData);
+        setFilteredAppointments(fallbackData);
+      }
+    } catch (err) {
+      console.error('Error fetching in-progress appointments:', err);
+      setError('Error loading appointments. Using fallback data.');
+      setAppointments(fallbackData);
+      setFilteredAppointments(fallbackData);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter appointments based on search query
   useEffect(() => {
     if (searchQuery.trim() === '') {
-      setFilteredAppointments(appointmentData);
+      setFilteredAppointments(appointments);
     } else {
       const query = searchQuery.toLowerCase();
-      const filtered = appointmentData.filter(
+      const filtered = appointments.filter(
         appointment => 
           appointment.client.toLowerCase().includes(query) ||
           appointment.address.toLowerCase().includes(query) ||
@@ -56,12 +111,16 @@ export default function InProgressAppointmentsScreen() {
       );
       setFilteredAppointments(filtered);
     }
-  }, [searchQuery]);
+  }, [searchQuery, appointments]);
 
   const navigateToSurvey = (id: string) => {
+    // Make sure the ID is properly formatted for navigation
+    const navigationId = id === '1' ? '1' : id;
+    console.log(`Navigating to survey for ID: ${navigationId}`);
+    
     router.push({
       pathname: '/survey/[id]',
-      params: { id }
+      params: { id: navigationId }
     });
   };
 
@@ -123,12 +182,31 @@ export default function InProgressAppointmentsScreen() {
           iconColor="#f39c12"
         />
         
-        {filteredAppointments.length > 0 ? (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#f39c12" />
+            <Text style={styles.loadingText}>Loading in-progress surveys...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Button 
+              mode="contained" 
+              onPress={fetchAppointments} 
+              style={styles.retryButton}
+              buttonColor="#f39c12"
+            >
+              Retry
+            </Button>
+          </View>
+        ) : filteredAppointments.length > 0 ? (
           <FlatList
             data={filteredAppointments}
             renderItem={renderAppointmentItem}
-            keyExtractor={item => item.id}
+            keyExtractor={(item, index) => item.id ? String(item.id) : `appointment-${index}`}
             contentContainerStyle={styles.listContainer}
+            refreshing={loading}
+            onRefresh={fetchAppointments}
           />
         ) : (
           <View style={styles.emptyContainer}>
@@ -199,6 +277,29 @@ const styles = StyleSheet.create({
   buttonLabel: {
     fontSize: 12,
     marginVertical: 0,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#7f8c8d',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: '#e74c3c',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 10,
   },
   emptyContainer: {
     flex: 1,

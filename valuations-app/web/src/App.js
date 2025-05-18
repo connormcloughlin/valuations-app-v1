@@ -15,6 +15,7 @@ import PropertyDetails from './pages/PropertyDetails';
 import NewOrder from './pages/NewOrder';
 import OrderDetails from './pages/OrderDetails';
 import Appointments from './pages/Appointments';
+import BookAppointment from './pages/BookAppointment';
 import Billing from './pages/Billing';
 import Reports from './pages/Reports';
 import Profile from './pages/Profile';
@@ -58,7 +59,9 @@ function App() {
                         <Route path="orders/:orderId" element={<OrderDetails />} />
                         <Route path="orders/:orderId/edit" element={<EditOrder />} />
                         <Route path="orders/:orderId/contents-valuation" element={<ContentsValuation />} />
+                        <Route path="orders/:orderId/book-appointment" element={<BookAppointment />} />
                         <Route path="appointments" element={<Appointments />} />
+                        <Route path="appointments/new" element={<BookAppointment />} />
                         <Route path="billing" element={<Billing />} />
                         <Route path="reports" element={<Reports />} />
                         <Route path="profile" element={<Profile />} />

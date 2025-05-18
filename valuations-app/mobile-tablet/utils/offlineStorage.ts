@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   TEMPLATE_CATEGORIES: 'template_categories_',
   TEMPLATE_ITEMS: 'template_items_',
   LAST_SYNC: 'last_sync_timestamp',
+  APPOINTMENTS: 'appointments',
 };
 
 // Store API data in AsyncStorage
@@ -78,6 +79,26 @@ export const getTemplateItems = async (categoryId: string): Promise<any | null> 
   return await getApiData(`${STORAGE_KEYS.TEMPLATE_ITEMS}${categoryId}`);
 };
 
+// Store data for any key
+export const storeDataForKey = async (key: string, data: any): Promise<void> => {
+  await storeApiData(key, data);
+};
+
+// Get data for any key
+export const getDataForKey = async (key: string): Promise<any | null> => {
+  return await getApiData(key);
+};
+
+// Store appointments data
+export const storeAppointments = async (data: any): Promise<void> => {
+  await storeApiData(STORAGE_KEYS.APPOINTMENTS, data);
+};
+
+// Get appointments data
+export const getAppointments = async (): Promise<any | null> => {
+  return await getApiData(STORAGE_KEYS.APPOINTMENTS);
+};
+
 // Clear all offline data (useful for debugging or resetting cache)
 export const clearAllOfflineData = async (): Promise<void> => {
   try {
@@ -86,7 +107,8 @@ export const clearAllOfflineData = async (): Promise<void> => {
       key.startsWith(STORAGE_KEYS.RISK_TEMPLATES) || 
       key.startsWith(STORAGE_KEYS.TEMPLATE_SECTIONS) ||
       key.startsWith(STORAGE_KEYS.TEMPLATE_CATEGORIES) ||
-      key.startsWith(STORAGE_KEYS.TEMPLATE_ITEMS)
+      key.startsWith(STORAGE_KEYS.TEMPLATE_ITEMS) ||
+      key.startsWith(STORAGE_KEYS.APPOINTMENTS)
     );
     
     if (apiKeys.length > 0) {
@@ -133,6 +155,10 @@ export default {
   getTemplateCategories,
   storeTemplateItems,
   getTemplateItems,
+  storeAppointments,
+  getAppointments,
+  storeDataForKey,
+  getDataForKey,
   clearAllOfflineData,
   isDataStale,
   updateLastSyncTimestamp,

@@ -1,12 +1,29 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, ScrollView, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { Card, Button, Divider, List } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../utils/logger';
+import api from '../../api';
 
-// Mock appointment data - in real app this would be fetched from API
-const appointmentsData = {
+// Interface for appointment data
+interface Appointment {
+  id: string;
+  address: string;
+  client: string;
+  phone: string;
+  email: string;
+  date: string;
+  policyNo: string;
+  sumInsured: string;
+  broker: string;
+  notes: string;
+  orderNumber: string;
+  [key: string]: any; // For any additional properties from API
+}
+
+// Fallback mock data in case API fails
+const fallbackData: Record<string, Appointment> = {
   '1001': { 
     id: '1001',
     address: '123 Main St', 
@@ -39,12 +56,80 @@ export default function AppointmentDetails() {
   logNavigation('Appointment Detail');
   const params = useLocalSearchParams();
   const { id } = params;
-  const appointmentId = id as string;
   
-  const appointment = appointmentsData[appointmentId];
-  const [note, setNote] = useState(appointment?.notes || '');
+  // Convert ID string to handle potential index offset (0 -> 1)
+  const rawAppointmentId = id as string;
+  const appointmentId = rawAppointmentId === '0' ? '1' : rawAppointmentId;
+  
+  const [appointment, setAppointment] = useState<Appointment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  useEffect(() => {
+    console.log(`Loading appointment details for ID: ${appointmentId} (original ID: ${rawAppointmentId})`);
+    fetchAppointmentDetails();
+  }, [appointmentId]);
+  
+  const fetchAppointmentDetails = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Use API client to get appointment by ID
+      const response = await api.getAppointmentById(appointmentId);
+      
+      if (response && response.success && response.data) {
+        console.log(`Successfully fetched details for appointment ${appointmentId}`);
+        
+        // Map API response to our Appointment interface
+        const appointmentData: Appointment = {
+          id: response.data.id || response.data.appointmentId || appointmentId,
+          address: response.data.address || 'Unknown address',
+          client: response.data.clientName || response.data.client || 'Unknown client',
+          phone: response.data.phoneNumber || response.data.phone || 'N/A',
+          email: response.data.emailAddress || response.data.email || 'N/A',
+          date: response.data.appointmentDate || response.data.date || new Date().toISOString().split('T')[0] + ' 09:00',
+          policyNo: response.data.policyNumber || response.data.policyNo || 'N/A',
+          sumInsured: response.data.sumInsured || 'N/A',
+          broker: response.data.broker || 'N/A',
+          notes: response.data.notes || 'No notes available',
+          orderNumber: response.data.orderNumber || 'N/A',
+        };
+        
+        setAppointment(appointmentData);
+      } else {
+        console.error(`Failed to load appointment ${appointmentId}:`, response?.message || 'Unknown error');
+        setError('Failed to load appointment. Using fallback data.');
+        
+        // Check if fallback data is available for this ID
+        if (fallbackData[appointmentId]) {
+          setAppointment(fallbackData[appointmentId]);
+        } else {
+          // No fallback data for this specific ID
+          setError('Appointment not found. Please check the appointment ID.');
+          setAppointment(null);
+        }
+      }
+    } catch (err) {
+      console.error(`Error fetching appointment ${appointmentId}:`, err);
+      setError('Error loading appointment. Using fallback data.');
+      
+      // Check if fallback data is available for this ID
+      if (fallbackData[appointmentId]) {
+        setAppointment(fallbackData[appointmentId]);
+      } else {
+        // No fallback data for this specific ID
+        setError('Appointment not found. Please check the appointment ID.');
+        setAppointment(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const startSurvey = () => {
+    if (!appointment) return;
+    
     // Navigate to survey with pre-populated client data
     router.push({
       pathname: '/survey/new',
@@ -60,7 +145,7 @@ export default function AppointmentDetails() {
     });
   };
   
-  if (!appointment) {
+  if (loading) {
     return (
       <>
         <Stack.Screen
@@ -70,10 +155,37 @@ export default function AppointmentDetails() {
           }}
         />
         <View style={[styles.container, styles.centered]}>
-          <Text>Appointment not found</Text>
+          <ActivityIndicator size="large" color="#4a90e2" />
+          <Text style={styles.loadingText}>Loading appointment details...</Text>
+        </View>
+      </>
+    );
+  }
+  
+  if (error || !appointment) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            title: 'Appointment Details',
+            headerTitleStyle: { fontWeight: '600' }
+          }}
+        />
+        <View style={[styles.container, styles.centered]}>
+          <MaterialCommunityIcons name="alert-circle-outline" size={64} color="#e74c3c" />
+          <Text style={styles.errorText}>{error || 'Appointment not found'}</Text>
           <Button mode="contained" style={styles.actionButton} onPress={() => router.back()}>
             Go Back
           </Button>
+          {error && (
+            <Button 
+              mode="outlined" 
+              style={styles.retryButton} 
+              onPress={fetchAppointmentDetails}
+            >
+              Retry
+            </Button>
+          )}
         </View>
       </>
     );
@@ -254,6 +366,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#34495e',
     marginLeft: 4,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#7f8c8d',
+  },
+  errorText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#e74c3c',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    marginTop: 8,
+    borderColor: '#3498db',
   },
   divider: {
     marginVertical: 16,
