@@ -5,6 +5,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../utils/logger';
 import api from '../../api';
+import { API_BASE_URL } from '../../constants/apiConfig';
 
 // Define types for API responses
 interface ApiResponse<T> {
@@ -15,12 +16,11 @@ interface ApiResponse<T> {
 }
 
 interface RiskTemplate {
-  id?: string;
-  risktemplateid?: string;
-  templateid?: string;
-  name?: string;
-  templatename?: string;
-  description?: string;
+  riskassessmentid?: string;
+  assessmentid?: number;
+  assessmenttypeid?: number;
+  assessmenttypename?: string;
+  // ... other fields from the API response ...
 }
 
 type SurveyData = {
@@ -47,6 +47,44 @@ const CustomHeader = () => {
       <View style={{width: 80}} />
     </View>
   );
+};
+
+// Helper function to fetch templates by order ID
+const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<RiskTemplate[]>> => {
+  try {
+    // Direct access to axios instance or fetch
+    const baseUrl = API_BASE_URL;
+    const endpoint = `${baseUrl}/risk-assessment-master/by-order/${orderId}`;
+    
+    console.log(`Direct API call to: ${endpoint}`);
+    
+    // Using fetch for direct API call
+    const response = await fetch(endpoint);
+    
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+    
+    const responseData = await response.json();
+    
+    // Ensure we return an array, even if API returns different structure
+    const templatesArray = Array.isArray(responseData) ? responseData : 
+                          responseData.data && Array.isArray(responseData.data) ? responseData.data :
+                          responseData.templates && Array.isArray(responseData.templates) ? responseData.templates : [];
+    
+    return {
+      success: true,
+      data: templatesArray,
+      status: response.status
+    };
+  } catch (error) {
+    console.error(`Error in direct API call: ${error instanceof Error ? error.message : String(error)}`);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to fetch templates',
+      status: 0
+    };
+  }
 };
 
 export default function NewSurveyScreen() {
@@ -94,33 +132,70 @@ export default function NewSurveyScreen() {
           ...prev,
           ...newData
         }));
+        
+        // Check if we have an order number and fetch templates immediately
+        if (newData.orderNumber) {
+          console.log(`Order number ${newData.orderNumber} found in params, fetching templates now`);
+          fetchTemplates(newData.orderNumber);
+        }
       }
     }
   }, []);
 
-  // Fetch templates on mount
+  // Fetch templates on mount - only if we don't have an order number from params
   useEffect(() => {
-    fetchTemplates();
+    // Don't fetch templates here if we're getting them from params
+    if (!params.orderNumber) {
+      fetchTemplates();
+    }
   }, []);
 
   // Fetch all available templates
-  const fetchTemplates = async () => {
+  const fetchTemplates = async (orderNumberParam?: string) => {
     try {
       setLoading(true);
       setTemplateError(null);
       
-      const response = await api.getRiskTemplates() as ApiResponse<RiskTemplate[]>;
+      let response;
+      
+      const orderNumber = orderNumberParam || surveyData.orderNumber;
+      
+      if (orderNumber) {
+        console.log(`Fetching templates for order: ${orderNumber}`);
+        
+        // Add detailed logging
+        response = await fetchTemplatesByOrderId(orderNumber);
+        console.log('Order-specific template response:', JSON.stringify(response, null, 2));
+        
+        if (!response.success || !response.data || response.data.length === 0) {
+          console.log('Order-specific template fetch failed, falling back to general templates');
+          response = await api.getRiskTemplates() as ApiResponse<RiskTemplate[]>;
+          console.log('General template response:', JSON.stringify(response, null, 2));
+        }
+      } else {
+        console.log('No order number available, fetching general templates');
+        response = await api.getRiskTemplates() as ApiResponse<RiskTemplate[]>;
+        console.log('General template response:', JSON.stringify(response, null, 2));
+      }
       
       if (!response.success || !response.data || response.data.length === 0) {
         setTemplateError('Failed to load risk templates');
         return;
       }
       
-      console.log(`Loaded ${response.data.length} templates`);
-      setTemplates(response.data);
+      // Log the first template to see its structure
+      if (response.data.length > 0) {
+        console.log('First template structure:', JSON.stringify(response.data[0], null, 2));
+      }
+      
+      const templatesArray = Array.isArray(response.data) ? response.data : [];
+      console.log(`Loaded ${templatesArray.length} templates`);
+      
+      setTemplates(templatesArray);
     } catch (err) {
       console.error('Error fetching templates:', err);
       setTemplateError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setTemplates([]);
     } finally {
       setLoading(false);
     }
@@ -135,53 +210,60 @@ export default function NewSurveyScreen() {
 
   // Start survey with the selected template
   const startSurveyWithTemplate = (template: RiskTemplate) => {
-    // Get the template ID - ensure we have a valid ID with fallbacks
-    const templateId = template.risktemplateid || template.templateid || template.id;
+    // Get the assessment ID using the correct field names
+    const assessmentId = template.riskassessmentid || String(template.assessmentid);
     
-    if (!templateId) {
-      console.error('Invalid template: No ID found', template);
+    if (!assessmentId) {
+      console.error('Invalid template: No assessmentId found', template);
       return;
     }
     
-    console.log(`Starting survey with template: ${templateId} - ${template.templatename || template.name}`);
-    
-    // Create a survey ID
-    const surveyId = 'SRV-' + Date.now();
+    console.log(`Starting survey with assessmentId: ${assessmentId} - ${template.assessmenttypename}`);
     
     // In a real app, save the survey data to local storage or API
     console.log('Starting survey:', { 
-      id: surveyId, 
+      assessmentId, 
       ...surveyData, 
-      templateId: templateId,
-      templateName: template.templatename || template.name
+      templateId: assessmentId,
+      templateName: template.assessmenttypename
     });
     
-    // Ensure templateId is properly converted to a string
-    const templateIdStr = String(templateId);
-    console.log(`Navigating to categories with templateId: ${templateIdStr}`);
-    
-    // Navigate to categories screen with the template
+    // Navigate to categories screen with the assessmentId
     router.push({
       pathname: '/survey/categories',
       params: { 
-        surveyId,
+        assessmentId,
         useHandwriting: surveyData.useHandwriting ? '1' : '0',
-        templateId: templateIdStr
+        templateId: assessmentId
       }
     });
   };
 
   // Render a template card with its own continue button
-  const renderTemplateCard = (template: RiskTemplate) => {
-    const templateId = template.risktemplateid || template.templateid || template.id;
-    const templateName = template.templatename || template.name || 'Unnamed Template';
+  const renderTemplateCard = (template: RiskTemplate, index: number) => {
+    // Log the template object to see what we're getting
+    console.log(`Rendering template ${index}:`, JSON.stringify(template, null, 2));
+    
+    // Get the template ID using the correct field names
+    const templateId = template.riskassessmentid || String(template.assessmentid);
+    if (!templateId) {
+      console.error('Template missing ID:', template);
+      return null;
+    }
+    
+    // Get the template name using the correct field name
+    const templateName = template.assessmenttypename;
+    if (!templateName) {
+      console.error('Template missing name:', template);
+      return null;
+    }
     
     return (
-      <Card key={templateId} style={styles.templateCard}>
+      <Card key={`template-card-${templateId}-${index}`} style={styles.templateCard}>
         <Card.Content>
           <Text style={styles.templateTitle}>{templateName}</Text>
-          {template.description && (
-            <Text style={styles.templateDescription}>{template.description}</Text>
+          {template.comments && (
+            <Text style={styles.templateDescription}>{template.comments}</Text>
           )}
           <Button 
             mode="contained" 

@@ -1,12 +1,10 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// API base URL
-const API_URL = 'http://192.168.0.102:5010/api';
+import { API_BASE_URL } from '../constants/apiConfig';
 
 // Create axios instance
 const axiosInstance = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -19,6 +17,9 @@ const STORAGE_KEYS = {
   TEMPLATE_SECTIONS: 'template_sections_',
   TEMPLATE_CATEGORIES: 'template_categories_',
   TEMPLATE_ITEMS: 'template_items_',
+  ASSESSMENT_SECTIONS: 'assessment_sections_',
+  ASSESSMENT_CATEGORIES: 'assessment_categories_',
+  ASSESSMENT_ITEMS: 'assessment_items_'
 };
 
 // API response interface
@@ -121,15 +122,17 @@ const getRiskTemplates = async (): Promise<ApiResponse> => {
   }
 };
 
-// Function to get risk template sections with simplified offline support
-const getRiskTemplateSections = async (templateId: string): Promise<ApiResponse> => {
+// Function to get risk assessment sections with simplified offline support
+const getRiskAssessmentSections = async (riskAssessmentId: string): Promise<ApiResponse> => {
   try {
     // Try to get data from API
-    const response = await axiosInstance.get(`/risk-template-sections/${templateId}`);
-    
+    console.log('Risk Assessment Sections Response Connor:', riskAssessmentId);
+    const response = await axiosInstance.get(`/risk-assessment-sections/assessment/${riskAssessmentId}`);
+    console.log('Risk Assessment Sections Response Connor:', response.data);
+
     if (response.data) {
       // Cache the response for offline use
-      await storeData(`${STORAGE_KEYS.TEMPLATE_SECTIONS}${templateId}`, response.data);
+      await storeData(`${STORAGE_KEYS.ASSESSMENT_SECTIONS}${riskAssessmentId}`, response.data);
       
       return {
         success: true,
@@ -142,11 +145,11 @@ const getRiskTemplateSections = async (templateId: string): Promise<ApiResponse>
   } catch (error) {
     // Try to get from cache if API call fails
     try {
-      console.log(`API error, checking cache for template sections (template ID: ${templateId})`);
-      const cachedData = await getData(`${STORAGE_KEYS.TEMPLATE_SECTIONS}${templateId}`);
+      console.log(`API error, checking cache for assessment sections (assessment ID: ${riskAssessmentId})`);
+      const cachedData = await getData(`${STORAGE_KEYS.ASSESSMENT_SECTIONS}${riskAssessmentId}`);
       
       if (cachedData) {
-        console.log('Using cached template sections data');
+        console.log('Using cached assessment sections data');
         return {
           success: true,
           data: cachedData.data,
@@ -158,6 +161,72 @@ const getRiskTemplateSections = async (templateId: string): Promise<ApiResponse>
       console.error('Cache retrieval error:', cacheError);
     }
     
+    return handleApiError(error);
+  }
+};
+
+// Function to get risk assessment categories with simplified offline support
+const getRiskAssessmentCategories = async (sectionId: string): Promise<ApiResponse> => {
+  try {
+    const response = await axiosInstance.get(`/risk-assessment-categories/section/${sectionId}`);
+    if (response.data) {
+      await storeData(`${STORAGE_KEYS.ASSESSMENT_CATEGORIES}${sectionId}`, response.data);
+      return {
+        success: true,
+        data: response.data,
+        status: response.status,
+      };
+    }
+    throw new Error('Empty response from API');
+  } catch (error) {
+    try {
+      console.log(`API error, checking cache for assessment categories (section ID: ${sectionId})`);
+      const cachedData = await getData(`${STORAGE_KEYS.ASSESSMENT_CATEGORIES}${sectionId}`);
+      if (cachedData) {
+        console.log('Using cached assessment categories data');
+        return {
+          success: true,
+          data: cachedData.data,
+          status: 200,
+          fromCache: true,
+        };
+      }
+    } catch (cacheError) {
+      console.error('Cache retrieval error:', cacheError);
+    }
+    return handleApiError(error);
+  }
+};
+
+// Function to get risk assessment items with simplified offline support
+const getRiskAssessmentItems = async (categoryId: string): Promise<ApiResponse> => {
+  try {
+    const response = await axiosInstance.get(`/risk-assessment-items/category/${categoryId}`);
+    if (response.data) {
+      await storeData(`${STORAGE_KEYS.ASSESSMENT_ITEMS}${categoryId}`, response.data);
+      return {
+        success: true,
+        data: response.data,
+        status: response.status,
+      };
+    }
+    throw new Error('Empty response from API');
+  } catch (error) {
+    try {
+      console.log(`API error, checking cache for assessment items (category ID: ${categoryId})`);
+      const cachedData = await getData(`${STORAGE_KEYS.ASSESSMENT_ITEMS}${categoryId}`);
+      if (cachedData) {
+        console.log('Using cached assessment items data');
+        return {
+          success: true,
+          data: cachedData.data,
+          status: 200,
+          fromCache: true,
+        };
+      }
+    } catch (cacheError) {
+      console.error('Cache retrieval error:', cacheError);
+    }
     return handleApiError(error);
   }
 };
@@ -252,7 +321,10 @@ const clearAllCachedData = async (): Promise<void> => {
       key.startsWith(STORAGE_KEYS.RISK_TEMPLATES) || 
       key.startsWith(STORAGE_KEYS.TEMPLATE_SECTIONS) ||
       key.startsWith(STORAGE_KEYS.TEMPLATE_CATEGORIES) ||
-      key.startsWith(STORAGE_KEYS.TEMPLATE_ITEMS)
+      key.startsWith(STORAGE_KEYS.TEMPLATE_ITEMS) ||
+      key.startsWith(STORAGE_KEYS.ASSESSMENT_SECTIONS) ||
+      key.startsWith(STORAGE_KEYS.ASSESSMENT_CATEGORIES) ||
+      key.startsWith(STORAGE_KEYS.ASSESSMENT_ITEMS)
     );
     
     if (apiKeys.length > 0) {
@@ -266,7 +338,9 @@ const clearAllCachedData = async (): Promise<void> => {
 
 export default {
   getRiskTemplates,
-  getRiskTemplateSections,
+  getRiskAssessmentSections,
+  getRiskAssessmentCategories,
+  getRiskAssessmentItems,
   getRiskTemplateCategories,
   getRiskTemplateItems,
   clearAllCachedData,

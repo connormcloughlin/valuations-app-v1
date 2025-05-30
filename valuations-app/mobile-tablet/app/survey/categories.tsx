@@ -7,6 +7,7 @@ import api from '../../api';
 import ConnectionStatus from '../../components/ConnectionStatus';
 import connectionUtils from '../../utils/connectionUtils';
 import { logNavigation } from '../../utils/logger';
+import { API_BASE_URL } from '../../constants/apiConfig';
 
 // Type definitions
 interface Category {
@@ -142,9 +143,9 @@ export default function CategoriesScreen() {
   // Get router instance
   const router = useRouter();
   
-  // Get template ID from route params
-  const params = useLocalSearchParams<{ templateId: string }>();
-  const templateIdParam = params.templateId;
+  // Get assessment ID from route params
+  const params = useLocalSearchParams<{ assessmentId: string }>();
+  const assessmentIdParam = params.assessmentId;
   
   // Log all params for debugging
   console.log('Categories Screen Params:', JSON.stringify(params));
@@ -182,7 +183,7 @@ export default function CategoriesScreen() {
       // Store the updated items for this category for persistence
       if (activeCategory) {
         const categoryId = activeCategory.id;
-        const templateId = templateIdParam || '';
+        const templateId = assessmentIdParam || '';
         
         setModifiedItems(prev => ({
           ...prev,
@@ -204,7 +205,7 @@ export default function CategoriesScreen() {
       // Store the updated items for this category for persistence
       if (activeCategory) {
         const categoryId = activeCategory.id;
-        const templateId = templateIdParam || '';
+        const templateId = assessmentIdParam || '';
         
         setModifiedItems(prev => ({
           ...prev,
@@ -237,7 +238,7 @@ export default function CategoriesScreen() {
       // Store the updated items for this category for persistence
       if (activeCategory) {
         const categoryId = activeCategory.id;
-        const templateId = templateIdParam || '';
+        const templateId = assessmentIdParam || '';
         
         setModifiedItems(prev => ({
           ...prev,
@@ -311,7 +312,7 @@ export default function CategoriesScreen() {
   // Effect for loading items based on activeCategory
   useEffect(() => {
     const fetchAndSetItems = async () => {
-      if (!activeCategory || !templateIdParam) {
+      if (!activeCategory || !assessmentIdParam) {
         setItems([]);
         setCurrentDropdownOptions([]);
         setLoadingItems(false);
@@ -320,7 +321,7 @@ export default function CategoriesScreen() {
 
       // Check if we have modified items for this category
       const categoryId = activeCategory.id;
-      const templateId = templateIdParam;
+      const templateId = assessmentIdParam;
       const savedItems = modifiedItems[templateId]?.[categoryId];
       
       if (savedItems) {
@@ -347,12 +348,12 @@ export default function CategoriesScreen() {
           return;
         }
 
-        console.log(`Fetching captured items for Category - Risk ID: ${categoryRiskId}, Template ID: ${templateIdParam}, Title: "${activeCategory.title}"`);
+        console.log(`Fetching captured items for Category - Risk ID: ${categoryRiskId}, Template ID: ${templateId}, Title: "${activeCategory.title}"`);
         
         // Make the actual API call to get items for this category
         try {
           // URL should be something like: /risk-templates/{templateId}/sections/{sectionId}/categories/{categoryId}/items
-          const endpoint = `/risk-templates/${templateIdParam}/categories/${categoryRiskId}/items`;
+          const endpoint = `/risk-templates/${templateId}/categories/${categoryRiskId}/items`;
           console.log(`API Request: Fetching items from endpoint: ${endpoint}`);
           
           // Use the specific API method for items instead of a generic get
@@ -411,11 +412,11 @@ export default function CategoriesScreen() {
     };
 
     fetchAndSetItems();
-  }, [activeCategory, templateIdParam, retryCounter, modifiedItems]);
+  }, [activeCategory, assessmentIdParam, retryCounter, modifiedItems]);
   
   // Fetch data from API
   useEffect(() => {
-    console.log('Effect triggered with templateId:', templateIdParam);
+    console.log('Effect triggered with assessmentId:', assessmentIdParam);
     
     async function fetchCategoriesData() {
       try {
@@ -425,11 +426,11 @@ export default function CategoriesScreen() {
         
         // Add info about what API we're using
         // setApiInfo('Connecting to API at 192.168.0.102:5000...');
-        console.log('Connecting to API at 192.168.0.102:5000...');
+        console.log(`Connecting to API at ${API_BASE_URL}...`);
         
-        // Check if we have a template ID from params
-        if (!templateIdParam) {
-          console.log('No template ID provided, fetching all templates');
+        // Check if we have a assessment ID from params
+        if (!assessmentIdParam) {
+          console.log('No assessment ID provided, fetching all assessments');
           
           // First, get all risk templates
           const templatesResponse = await api.getRiskTemplates() as ApiResponse<RiskTemplate[]>;
@@ -468,11 +469,11 @@ export default function CategoriesScreen() {
           
           setSelectedTemplate(templatesResponse.data[0]);
           console.log('Using first template ID:', firstTemplateId);
-          await loadTemplateSections(String(firstTemplateId));
+          await loadAssessmentSections(String(firstTemplateId));
         } else {
-          // Use the provided template ID from params
-          console.log('Using provided template ID from navigation params:', templateIdParam);
-          await loadTemplateSections(templateIdParam);
+          // Use the provided assessment ID from params
+          console.log('Using provided assessment ID from navigation params:', assessmentIdParam);
+          await loadAssessmentSections(assessmentIdParam);
           
           // Optionally, load template details
           try {
@@ -493,16 +494,16 @@ export default function CategoriesScreen() {
               });
               
               const template = templatesResponse.data.find(t => 
-                (String(t.risktemplateid) === templateIdParam) || 
-                (String(t.templateid) === templateIdParam) || 
-                (String(t.id) === templateIdParam)
+                (String(t.risktemplateid) === assessmentIdParam) || 
+                (String(t.templateid) === assessmentIdParam) || 
+                (String(t.id) === assessmentIdParam)
               );
               
               if (template) {
                 setSelectedTemplate(template);
                 console.log('Found template details:', template);
               } else {
-                console.warn('Could not find matching template for ID:', templateIdParam);
+                console.warn('Could not find matching template for ID:', assessmentIdParam);
               }
             }
           } catch (e) {
@@ -520,19 +521,19 @@ export default function CategoriesScreen() {
     }
     
     fetchCategoriesData();
-  }, [templateIdParam]);
+  }, [assessmentIdParam]);
   
   // Function to retry loading data
   const handleRetry = () => {
     setLoading(true);
     setError(null);
     
-    if (templateIdParam) {
-      console.log('Retrying with templateId:', templateIdParam);
+    if (assessmentIdParam) {
+      console.log('Retrying with assessmentId:', assessmentIdParam);
       fetchCategoriesData();
     } else {
-      console.warn('No templateId available for retry');
-      setError('No template ID available. Please go back and try again.');
+      console.warn('No assessmentId available for retry');
+      setError('No assessment ID available. Please go back and try again.');
       setLoading(false);
     }
   };
@@ -540,7 +541,7 @@ export default function CategoriesScreen() {
   // Function to fetch categories data
   const fetchCategoriesData = async () => {
     try {
-      await loadTemplateSections(templateIdParam || '');
+      await loadAssessmentSections(assessmentIdParam || '');
     } catch (err) {
       console.error('Error in fetchCategoriesData:', err);
       setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -548,21 +549,22 @@ export default function CategoriesScreen() {
   };
   
   // Function to load sections for a template
-  const loadTemplateSections = async (id: string) => {
-    console.log(`Fetching sections for template ID: ${id}`);
+  const loadAssessmentSections = async (riskAssessmentId: string) => {
+    console.log(`Fetching sections for assessment ID: ${riskAssessmentId}`);
     
-    if (!id) {
-      console.error('Cannot load template sections: No template ID provided');
-      setError('No template ID available. Please select a template first.');
+    if (!riskAssessmentId) {
+      console.error('Cannot load sections: No assessment ID provided');
+      setError('No assessment ID available. Please select an assessment first.');
       setLoading(false);
       return;
     }
+    console.log(`Before API call`);
     
-    // Get sections for this template using the updated API path
-    const sectionsResponse = await api.getRiskTemplateSections(id) as ApiResponse<TemplateSectionAPI[]>;
+    // Get sections for this assessment using the updated API path
+    const sectionsResponse = await api.getRiskAssessmentSections(riskAssessmentId) as ApiResponse<TemplateSectionAPI[]>;
     
     // Debug the API request
-    console.log(`API Request for sections - endpoint: /risk-templates/${id}/sections`);
+    console.log(`API Request for sections - endpoint: /risk-assessment-sections/assessment/${riskAssessmentId}`);
     
     // Check if we got data from cache
     if (sectionsResponse.fromCache) {
@@ -596,13 +598,12 @@ export default function CategoriesScreen() {
       console.log(`Section name: ${apiSection.sectionname || apiSection.name || 'Unnamed'}`);
       
       // Get categories for this section using the updated API path
-      const categoriesResponse = await api.getRiskTemplateCategories(
-        id,
+      const categoriesResponse = await api.getRiskAssessmentCategories(
         sectionId
       ) as ApiResponse<TemplateCategoryAPI[]>;
       
       // Debug the API request
-      console.log(`API Request for categories - endpoint: /risk-templates/${id}/sections/${sectionId}/categories`);
+      console.log(`API Request for categories - endpoint: /risk-assessment-categories/section/${sectionId}`);
       
       // Check if we got data from cache
       if (categoriesResponse.fromCache) {

@@ -43,10 +43,6 @@ interface ApiResponse {
   fromCache?: boolean;
 }
 
-interface CategoryIdMapping {
-  [key: string]: string;
-}
-
 export default function ItemsScreen() {
   logNavigation('Survey Items');
   
@@ -54,19 +50,11 @@ export default function ItemsScreen() {
   const router = useRouter();
   
   const params = useLocalSearchParams();
-  const { categoryId, categoryTitle, surveyId, useHandwriting, templateId } = params;
+  const { categoryId, categoryTitle, sectionId, assessmentId, useHandwriting } = params;
   
-  console.log('Route params:', { categoryId, categoryTitle, surveyId, useHandwriting, templateId });
+  console.log('Route params:', { categoryId, categoryTitle, sectionId, assessmentId });
   
-  // Add state for storing the actual category ID from the API
-  const [actualApiCategoryId, setActualApiCategoryId] = useState<string | null>(() => {
-    // Initial state computation
-    if (typeof categoryId === 'string' && categoryId.match(/^\d+$/)) {
-      console.log('Initializing with direct numeric categoryId:', categoryId);
-      return categoryId as string;
-    }
-    return null;
-  });
+  const handwritingEnabled = useHandwriting === '1';
   
   // State for offline and cache status
   const [isOffline, setIsOffline] = useState<boolean>(false);
@@ -88,77 +76,7 @@ export default function ItemsScreen() {
       clearInterval(intervalId);
     };
   }, []);
-  
-  // Process the categoryId to get the actual API ID to use
-  useEffect(() => {
-    // Simplified logging
-    console.log('Category params:', { categoryId, categoryTitle });
-    
-    // Process the categoryId to get the actual API ID to use
-    if (typeof categoryId === 'string') {
-      // First check if it's a direct numeric ID (highest priority)
-      if (categoryId.match(/^\d+$/)) {
-        console.log('Setting category ID from direct numeric ID:', categoryId);
-        setActualApiCategoryId(categoryId);
-        return; // Exit early since we have our ID
-      } else if (categoryId.length > 0 && !categoryId.includes('-')) {
-        // This is already the raw ID (should be just a number)
-        setActualApiCategoryId(categoryId);
-      } else if (categoryId.startsWith('cat-')) {
-        // For legacy/fallback support, extract from cat- format if needed
-        const match = categoryId.match(/cat-([\d.]+)/);
-        if (match && match[1]) {
-          const rawId = match[1].split('.')[0]; // Extract the numeric part before any decimal
-          if (rawId && !isNaN(parseInt(rawId))) {
-            setActualApiCategoryId(rawId);
-          }
-        }
-      }
-    }
-    
-    // Ensure we always have a fallback value for categoryId (run this only if we don't have an ID yet)
-    if (!actualApiCategoryId) {
-      setTimeout(() => {
-        setActualApiCategoryId(prevId => {
-          if (!prevId) {
-            // Default to "1" as a fallback to prevent errors
-            if (typeof categoryId === 'string' && categoryId.includes('ladies') || 
-                (typeof categoryTitle === 'string' && categoryTitle.toLowerCase().includes('ladies'))) {
-              return '2';
-            } else {
-              return '1'; 
-            }
-          }
-          return prevId;
-        });
-      }, 100);
-    }
-  }, [categoryId, categoryTitle, params.originalCategoryId]);
 
-  // Add a second useEffect to trigger the fetch once actualApiCategoryId is available
-  useEffect(() => {
-    if (actualApiCategoryId) {
-      console.log('Category ID is now available:', actualApiCategoryId);
-      fetchCategoryItems();
-    }
-  }, [actualApiCategoryId]);
-
-  // Create a better mapping for CategoryIDs to API IDs
-  const categoryApiMapping: Record<string, string> = {
-    // Clothing categories
-    'clothing': '1', // Main clothing category ID on the API server
-    'clothing-gents-boys': '1', // Assuming gents/boys is category 1
-    'clothing-ladies-girls': '2', // Assuming ladies/girls is category 2
-    'cat-1': '1', // Legacy mapping
-    // More specific clothing subcategory mappings
-    'clothing (gents / boys)': '1',
-    'clothing (ladies / girls)': '2',
-    // Furniture categories
-    'furniture': '3',
-    'cat-2': '3',
-    // Add more mappings as you discover them
-  };
-  
   const [showForm, setShowForm] = useState(false);
   const [predefinedItems, setPredefinedItems] = useState<Item[]>([]); // For storing category items from API
   const [userItems, setUserItems] = useState<Item[]>([]); // For storing user-added items
@@ -186,57 +104,13 @@ export default function ItemsScreen() {
   const [showCamera, setShowCamera] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
   
-  // Determine if handwriting mode is enabled from URL params
-  const handwritingEnabled = useHandwriting === '1';
-  
   const includeRooms = roomsForCategory[categoryId as string] || [];
   const hasRooms = includeRooms.length > 0;
-
-  // Normalize category ID to match the format in categoryItemsApi
-  const normalizeCategoryId = (id: string): string => {
-    console.log('Normalizing category ID:', id);
-    
-    // Map from URL param IDs to API IDs
-    const categoryIdMap: Record<string, string> = {
-      // Add any mappings needed
-      'clothing-gents-boys': 'a7',
-      'clothing-ladies-girls': 'a8',
-      'antiques': 'a1',
-      'domestic-appliances': 'b1',
-      'furniture': 'cat-2',
-      'cat1': 'cat-1', // Add fallback for cat1 -> cat-1
-    };
-
-    // Check if we have a mapping for this ID
-    if (categoryIdMap[id]) {
-      return categoryIdMap[id];
-    }
-
-    // Try to match based on the category title from params
-    const catTitle = (params.categoryTitle as string || '').toLowerCase();
-    console.log('Checking category title:', catTitle);
-    
-    if (catTitle.includes('gents') || catTitle.includes('boys')) {
-      return 'a7';
-    } else if (catTitle.includes('ladies') || catTitle.includes('girls')) {
-      return 'a8';
-    } else if (catTitle.includes('antiques')) {
-      return 'a1';
-    } else if (catTitle.includes('domestic') || catTitle.includes('appliances')) {
-      return 'b1';
-    } else if (catTitle.includes('furniture')) {
-      // Default to cat-1 for any clothing category 
-      return 'cat-1';
-    }
-
-    // If no mapping, return the original ID
-    return id;
-  };
 
   // Fetch items from API
   const fetchCategoryItems = async () => {
     // Make sure we have a category ID
-    const currentCategoryId = actualApiCategoryId;
+    const currentCategoryId = typeof categoryId === 'string' ? categoryId : Array.isArray(categoryId) ? categoryId[0] : '';
     setFromCache(false);
     
     if (!currentCategoryId) {
@@ -244,9 +118,7 @@ export default function ItemsScreen() {
       setError('Missing category ID. Please try again.');
       // Continue with fallback instead of returning
       try {
-        const normalizedCategoryId = normalizeCategoryId(categoryId as string);
-        console.log('Using normalized ID for fallback:', normalizedCategoryId);
-        const fallbackResponse = await categoryItemsApi.getCategoryItems(normalizedCategoryId);
+        const fallbackResponse = await categoryItemsApi.getCategoryItems(currentCategoryId as string);
         if (fallbackResponse.success) {
           const formattedItems = fallbackResponse.data.map((item: any) => ({
             ...item,
@@ -276,8 +148,8 @@ export default function ItemsScreen() {
     try {
       console.log(`Fetching items for category ID: ${currentCategoryId}`);
       
-      // Call the Risk Template Items API with the category ID
-      const response = await api.getRiskTemplateItems(currentCategoryId) as ApiResponse;
+      // Call the Risk Assessment Items API with the category ID
+      const response = await api.getRiskAssessmentItems(currentCategoryId as string) as ApiResponse;
       
       // Check if the data is from cache
       if (response.fromCache) {
@@ -288,15 +160,14 @@ export default function ItemsScreen() {
         // Transform the API items to match our interface
         const formattedItems = response.data.map((item: any) => {
           return {
-            id: item.id || item.itemId || item.item_id || `item-${Math.random().toString(36).substring(2, 9)}`,
-            type: item.itemprompt || item.type || item.itemName || item.item_name || item.name || item.title || '',
-            description: item.description || item.desc || '',
-            quantity: item.quantity?.toString() || '1',
-            price: item.price?.toString() || item.estimatedValue?.toString() || item.estimated_value?.toString() || '0',
-            room: item.room || '',
-            notes: item.notes || '',
-            model: item.model || '',
-            selection: item.selection || ''
+            id: item.id || item.riskassessmentitemid || '',
+            rank: item.rank || 0,
+            type: item.itemprompt || '',
+            description: '',
+            model: '',
+            selection: '',
+            quantity: 1,
+            price: 0,
           };
         });
         
@@ -306,9 +177,7 @@ export default function ItemsScreen() {
         console.log(`No items found for category ID ${currentCategoryId}, using fallback`);
         
         // Use fallback if API returns no items
-        const normalizedCategoryId = normalizeCategoryId(categoryId as string);
-        
-        const fallbackResponse = await categoryItemsApi.getCategoryItems(normalizedCategoryId);
+        const fallbackResponse = await categoryItemsApi.getCategoryItems(currentCategoryId as string);
         
         if (fallbackResponse.success) {
           const formattedItems = fallbackResponse.data.map((item: any) => ({
@@ -331,8 +200,7 @@ export default function ItemsScreen() {
       try {
         // Always try fallback on any error
         console.log('Error occurred, trying fallback data');
-        const normalizedCategoryId = normalizeCategoryId(categoryId as string);
-        const fallbackResponse = await categoryItemsApi.getCategoryItems(normalizedCategoryId);
+        const fallbackResponse = await categoryItemsApi.getCategoryItems(currentCategoryId as string);
         
         if (fallbackResponse.success) {
           const formattedItems = fallbackResponse.data.map((item: any) => ({

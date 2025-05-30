@@ -28,6 +28,9 @@ const api = {
   getRiskTemplateCategories: riskTemplatesApi.getRiskTemplateCategories,
   getRiskTemplateItems: riskTemplatesApi.getRiskTemplateItems,
   
+  // Risk assessment methods
+  getRiskAssessmentSections: riskTemplatesApi.getRiskAssessmentSections,
+  
   // Appointments methods
   getAppointments: appointmentsApi.getAppointments,
   getAppointmentById: appointmentsApi.getAppointmentById,

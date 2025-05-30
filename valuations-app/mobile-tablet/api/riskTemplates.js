@@ -92,7 +92,7 @@ const riskTemplatesApi = {
    * @param {string} templateId - ID of the risk template
    * @returns {Promise<Object>} Response with template sections
    */
-  getRiskTemplateSections: async (templateId) => {
+    getRiskTemplateSections: async (templateId) => {
     // Check if we're online first
     const isOnline = connectionUtils.isConnected();
     console.log(`Connection status before fetching sections: ${isOnline ? 'Online' : 'Offline'}`);
@@ -134,9 +134,7 @@ const riskTemplatesApi = {
       // Fix: Try multiple endpoint formats to handle different API structures
       let response;
       let endpoints = [
-        `/risk-template-sections/template/${templateId}`,
-        `/risk-templates/${templateId}/sections`,
-        `/risk-template/${templateId}/sections`
+        `/risk-assessment-sections/assessment/${templateId}`,
       ];
       
       // Log the endpoints we're trying
@@ -420,6 +418,83 @@ const riskTemplatesApi = {
       // No cache, return the error
       return error.success === false ? error : { 
         success: false, 
+        message: error.message || 'Network error',
+        status: error.status || 0
+      };
+    }
+  },
+
+  /**
+   * Get sections for a specific risk assessment with offline support
+   * @param {string} riskAssessmentId - ID of the risk assessment
+   * @returns {Promise<Object>} Response with assessment sections
+   */
+    getRiskAssessmentSections: async (riskAssessmentId) => {
+    const isOnline = connectionUtils.isConnected();
+    console.log(`Connection status before fetching assessment sections: ${isOnline ? 'Online' : 'Offline'}`);
+
+    let cachedData = null;
+    try {
+      cachedData = await offlineStorage.getAssessmentSections(riskAssessmentId);
+      console.log(`Retrieved cached sections for assessment ${riskAssessmentId}: ${cachedData ? 'Yes' : 'No'}`);
+    } catch (cacheError) {
+      console.error('Error reading cached assessment sections:', cacheError);
+    }
+
+    if (!isOnline) {
+      if (cachedData && cachedData.data) {
+        console.log(`Using ${cachedData.data.length} cached assessment sections (offline)`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200
+        };
+      } else {
+        console.error('Offline and no cached assessment sections available');
+        return {
+          success: false,
+          message: 'You are offline and no cached assessment sections data is available.',
+          status: 0
+        };
+      }
+    }
+
+    try {
+      console.log(`Fetching sections for assessment: ${riskAssessmentId}`);
+      let response;
+      let endpoint = `/risk-assessment-sections/assessment/${riskAssessmentId}`;
+      console.log(`Trying CONNOR endpoint: ${endpoint}`);
+      response = await apiClient.get(endpoint);
+       if (response.success) {
+        console.log(`Successful response from endpoint: ${endpoint}`);
+        console.log(`Response from endpoint: ${response.data}`);
+     
+        if (response.data) {
+          try {
+            await offlineStorage.storeAssessmentSections(riskAssessmentId, response.data);
+            console.log('Assessment sections cached successfully');
+          } catch (storageError) {
+            console.error('Error caching assessment sections:', storageError);
+          }
+        }
+        return response;
+      }
+      throw new Error('All assessment section endpoints failed');
+    } catch (error) {
+      console.error(`Error fetching assessment sections from server:`, error);
+      if (cachedData && cachedData.data) {
+        console.log(`Using ${cachedData.data.length} cached assessment sections (server error)`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200,
+          message: 'Using cached data due to server error'
+        };
+      }
+      return error.success === false ? error : {
+        success: false,
         message: error.message || 'Network error',
         status: error.status || 0
       };

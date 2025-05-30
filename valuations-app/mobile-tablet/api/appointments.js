@@ -3,6 +3,7 @@ import axios from 'axios';
 import offlineStorage from '../utils/offlineStorage';
 import connectionUtils from '../utils/connectionUtils';
 import { API_CONFIG } from './config';
+import { API_BASE_URL } from '../constants/apiConfig';
 
 /**
  * Appointment related API methods
@@ -149,8 +150,8 @@ const appointmentsApi = {
       // Convert ID to string for consistent comparison
       const idString = appointmentId.toString();
       
-      // If requested ID is '0', convert to '1' for API compatibility
-      const adjustedId = idString === '0' ? '1' : idString;
+      // If requested ID is '0', convert to '5297' for API compatibility
+      const adjustedId = idString === '0' ? '5297' : idString;
       
       // If offline, try to get from storage
       if (!isOnline) {
@@ -182,7 +183,9 @@ const appointmentsApi = {
       // Online - fetch from server
       console.log(`Fetching appointment with ID: ${adjustedId}`);
       try {
-        const response = await apiClient.get(`/appointments/${adjustedId}`);
+        // Try the with-order endpoint first (provides most complete data)
+        console.log(`Trying /appointments/${adjustedId}/with-order endpoint`);
+        const response = await apiClient.get(`/appointments/${adjustedId}/with-order`);
         
         // Handle potential nested data structure
         let appointmentData = response.data;
@@ -194,45 +197,143 @@ const appointmentsApi = {
         if (appointmentData && typeof appointmentData === 'object') {
           // Fix IDs
           if (appointmentData.id !== undefined && appointmentData.id.toString() === '0') {
-            appointmentData.id = '1';
+            appointmentData.id = '5297';
           }
           if (appointmentData.appointmentId !== undefined && appointmentData.appointmentId.toString() === '0') {
-            appointmentData.appointmentId = '1';
+            appointmentData.appointmentId = '5297';
+          }
+          
+          // Add ID if not present
+          if (!appointmentData.id && !appointmentData.appointmentId) {
+            appointmentData.id = adjustedId;
+            appointmentData.appointmentId = adjustedId;
+          }
+          
+          // Map appointmentID if it exists but id/appointmentId don't
+          if (appointmentData.appointmentID && (!appointmentData.id && !appointmentData.appointmentId)) {
+            appointmentData.id = appointmentData.appointmentID.toString();
+            appointmentData.appointmentId = appointmentData.appointmentID.toString();
           }
           
           // Normalize field names for consistency
           const address = appointmentData.address || 
                          appointmentData.location || 
                          appointmentData.property_address || 
+                         appointmentData.FullAddress ||
+                         (appointmentData.ordersList && appointmentData.ordersList.fullAddress) ||
                          'No address provided';
           
-          const client = appointmentData.client || 
-                        appointmentData.clientName || 
-                        appointmentData.customer_name || 
-                        'Unknown client';
+          // First check for client in the main object, then look in ordersList if it exists
+          let client = 'Unknown client';
+          if (appointmentData.client) {
+            client = appointmentData.client;
+          } else if (appointmentData.clientName) {
+            client = appointmentData.clientName;
+          } else if (appointmentData.clientsName) {
+            client = appointmentData.clientsName;
+          } else if (appointmentData.Client) {
+            client = appointmentData.Client;
+          } else if (appointmentData.ordersList && appointmentData.ordersList.client) {
+            client = appointmentData.ordersList.client;
+          } else if (appointmentData.ordersList && appointmentData.ordersList.clientsName) {
+            client = appointmentData.ordersList.clientsName;
+          } else if (appointmentData.ordersList && appointmentData.ordersList.Client) {
+            client = appointmentData.ordersList.Client;
+          } else if (appointmentData.customer_name) {
+            client = appointmentData.customer_name;
+          }
           
+          // Get the date from various possible fields
           const date = appointmentData.date || 
                       appointmentData.appointmentDate || 
                       appointmentData.startTime ||
+                      appointmentData.Start_Time ||
                       appointmentData.appointment_date || 
                       new Date().toISOString().split('T')[0];
           
+          // Extract order number from various fields
           const orderNumber = appointmentData.orderNumber || 
                              appointmentData.orderID || 
-                             appointmentData.order_id || 
+                             appointmentData.OrderID ||
+                             (appointmentData.ordersList ? appointmentData.ordersList.orderid : null) ||
                              'Unknown order';
+          
+          // Extract additional fields from the updated API response
+          const followUpDate = appointmentData.followUpDate || null;
+          const arrivalTime = appointmentData.arrivalTime || null;
+          const departureTime = appointmentData.departureTime || null;
+          const category = appointmentData.category || null;
+          const outOfTown = appointmentData.outoftown || 'No';
+          const surveyorComments = appointmentData.surveyorComments || null;
+          const surveyorEmail = appointmentData.surveyorEmail || null;
+          
+          // Get order details
+          const orderDetails = appointmentData.ordersList || {};
+          
+          // Get surveyor information
+          const surveyor = orderDetails.surveyor || null;
+          const surveyorID = orderDetails.surveyorID || null;
+          
+          // Get region and city
+          const region = orderDetails.region || null;
+          const city = orderDetails.city || null;
+          
+          // Get insurer and broker
+          const insurer = orderDetails.insurer || null;
+          const broker = orderDetails.broker || null;
+          
+          // Get policy and sum insured
+          const policy = orderDetails.policy || null;
+          const sumInsured = orderDetails.sumInsured || null;
+          
+          // Determine status of appointment (status, meeting status, invite status)
+          const status = appointmentData.status || appointmentData.meetingStatus || appointmentData.inviteStatus || 'booked';
+          const Invite_Status = appointmentData.inviteStatus || appointmentData.Invite_Status || status;
+          
+          // Get dates
+          const dateModified = appointmentData.dateModified || 
+                             (orderDetails.dateModified ? orderDetails.dateModified : null);
+          const orderDate = orderDetails.orderdate || null;
+          const dateCompleted = orderDetails.dateCompleted || null;
           
           // Update the appointment data with normalized fields
           appointmentData = {
             ...appointmentData,
+            id: adjustedId,
+            appointmentId: adjustedId,
             address,
             client,
             date,
             orderNumber,
-            // Preserve the original Invite_Status if available
-            Invite_Status: appointmentData.Invite_Status || appointmentData.status || 'booked',
-            // Keep the status field as a backup
-            status: appointmentData.status || appointmentData.Invite_Status || 'booked'
+            // Add status fields
+            Invite_Status,
+            status,
+            // Add dates
+            followUpDate,
+            arrivalTime, 
+            departureTime,
+            dateModified,
+            orderDate,
+            dateCompleted,
+            // Add category and out of town
+            category,
+            outOfTown,
+            // Add surveyor details
+            surveyor,
+            surveyorID,
+            surveyorComments,
+            surveyorEmail,
+            // Add location details
+            region,
+            city,
+            // Add insurance details
+            policy,
+            sumInsured,
+            insurer,
+            broker,
+            // Preserve original data
+            originalAppointment: appointmentData,
+            originalOrdersList: orderDetails
           };
         }
         
@@ -240,33 +341,115 @@ const appointmentsApi = {
           ...response,
           data: appointmentData
         };
-      } catch (endpointError) {
-        console.error(`Error with specific endpoint: ${endpointError.message}`);
+      } catch (withOrderError) {
+        console.error(`Error with /with-order endpoint: ${withOrderError.message}`);
         
-        // Fallback: try to get the appointment from the full list
-        console.log('Trying to get appointment from full list');
-        const allAppointmentsResponse = await appointmentsApi.getAppointments();
-        
-        if (allAppointmentsResponse.success && Array.isArray(allAppointmentsResponse.data)) {
-          const appointment = allAppointmentsResponse.data.find(a => 
-            a.id?.toString() === adjustedId || 
-            a.appointmentId?.toString() === adjustedId
-          );
+        // Try the basic appointment endpoint as fallback
+        try {
+          console.log(`Trying fallback to /appointments/${adjustedId} endpoint`);
+          const fallbackResponse = await apiClient.get(`/appointments/${adjustedId}`);
           
-          if (appointment) {
-            return {
-              success: true,
-              data: appointment,
-              message: 'Retrieved from appointments list'
+          let appointmentData = fallbackResponse.data;
+          if (fallbackResponse.data && fallbackResponse.data.data && typeof fallbackResponse.data.data === 'object') {
+            appointmentData = fallbackResponse.data.data;
+          }
+          
+          // Normalize data from fallback endpoint
+          if (appointmentData && typeof appointmentData === 'object') {
+            // Add ID if not present
+            if (!appointmentData.id && !appointmentData.appointmentId) {
+              appointmentData.id = adjustedId;
+              appointmentData.appointmentId = adjustedId;
+            }
+            
+            // Normalize field names for consistency
+            const address = appointmentData.address || 
+                           appointmentData.location || 
+                           appointmentData.property_address || 
+                           appointmentData.FullAddress ||
+                           'No address provided';
+            
+            // First check for client in the main object, then look in ordersList if it exists
+            let client = 'Unknown client';
+            if (appointmentData.client) {
+              client = appointmentData.client;
+            } else if (appointmentData.clientName) {
+              client = appointmentData.clientName;
+            } else if (appointmentData.clientsName) {
+              client = appointmentData.clientsName;
+            } else if (appointmentData.Client) {
+              client = appointmentData.Client;
+            } else if (appointmentData.ordersList && appointmentData.ordersList.client) {
+              client = appointmentData.ordersList.client;
+            } else if (appointmentData.ordersList && appointmentData.ordersList.clientsName) {
+              client = appointmentData.ordersList.clientsName;
+            } else if (appointmentData.ordersList && appointmentData.ordersList.Client) {
+              client = appointmentData.ordersList.Client;
+            } else if (appointmentData.customer_name) {
+              client = appointmentData.customer_name;
+            }
+            
+            const date = appointmentData.date || 
+                        appointmentData.appointmentDate || 
+                        appointmentData.startTime ||
+                        appointmentData.Start_Time ||
+                        appointmentData.appointment_date || 
+                        new Date().toISOString().split('T')[0];
+            
+            const orderNumber = appointmentData.orderNumber || 
+                               appointmentData.orderID || 
+                               appointmentData.OrderID ||
+                               appointmentData.order_id || 
+                               'Unknown order';
+            
+            // Update the appointment data with normalized fields
+            appointmentData = {
+              ...appointmentData,
+              id: adjustedId,
+              appointmentId: adjustedId,
+              address,
+              client,
+              date,
+              orderNumber,
+              // Preserve the original Invite_Status if available
+              Invite_Status: appointmentData.Invite_Status || appointmentData.status || 'booked',
+              // Keep the status field as a backup
+              status: appointmentData.status || appointmentData.Invite_Status || 'booked'
             };
           }
+          
+          return {
+            ...fallbackResponse,
+            data: appointmentData
+          };
+        } catch (fallbackError) {
+          console.error(`Error with fallback endpoint: ${fallbackError.message}`);
+          
+          // Both endpoint attempts failed, try getting from the full list
+          console.log('Trying to get appointment from full list');
+          const allAppointmentsResponse = await appointmentsApi.getAppointments();
+          
+          if (allAppointmentsResponse.success && Array.isArray(allAppointmentsResponse.data)) {
+            const appointment = allAppointmentsResponse.data.find(a => 
+              a.id?.toString() === adjustedId || 
+              a.appointmentId?.toString() === adjustedId
+            );
+            
+            if (appointment) {
+              return {
+                success: true,
+                data: appointment,
+                message: 'Retrieved from appointments list'
+              };
+            }
+          }
+          
+          // No appointment found
+          return {
+            success: false,
+            message: `Appointment with ID ${adjustedId} not found.`
+          };
         }
-        
-        // No appointment found
-        return {
-          success: false,
-          message: `Appointment with ID ${adjustedId} not found.`
-        };
       }
     } catch (error) {
       console.error(`Error fetching appointment ${appointmentId}:`, error);
@@ -772,11 +955,11 @@ const appointmentsApi = {
       
       // Make the API call with parameters - try with direct axios call to troubleshoot
       console.log(`Calling API endpoint with params: ${JSON.stringify(params)}`);
-      console.log(`API base URL is: ${API_CONFIG.BASE_URL}`);
+      console.log(`API base URL is: ${API_BASE_URL}`);
       
       try {
         // First try with direct axios call
-        const fullUrl = 'http://192.168.0.102:5000/api/appointments/list-view';
+        const fullUrl = `${API_BASE_URL.replace(/\/$/, '')}/appointments/list-view`;
         console.log(`Making direct axios call to: ${fullUrl}`);
         const response = await axios.get(fullUrl, { 
           params,

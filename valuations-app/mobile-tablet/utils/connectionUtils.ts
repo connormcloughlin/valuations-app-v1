@@ -2,6 +2,8 @@
  * Simple connection status utility that doesn't rely on external packages
  */
 
+import { API_BASE_URL } from '../constants/apiConfig';
+
 // Attempt to fetch a small resource to test connectivity
 export const checkConnection = async (): Promise<boolean> => {
   try {
@@ -12,7 +14,7 @@ export const checkConnection = async (): Promise<boolean> => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout for API check
       
-      const response = await fetch('http://192.168.0.102:5000/api/health', { 
+      const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/health`, { 
         method: 'HEAD',
         cache: 'no-store',
         signal: controller.signal

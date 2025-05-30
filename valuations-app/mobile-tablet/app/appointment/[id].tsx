@@ -6,6 +6,12 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../utils/logger';
 import api from '../../api';
 
+// Import types for TypeScript support
+import { ApiClient, ApiResponse, AppointmentData } from '../../types/api';
+
+// Cast the API client to the ApiClient interface to fix TypeScript errors
+const typedApi = api as unknown as ApiClient;
+
 // Interface for appointment data
 interface Appointment {
   id: string;
@@ -76,24 +82,38 @@ export default function AppointmentDetails() {
       setError(null);
       
       // Use API client to get appointment by ID
-      const response = await api.getAppointmentById(appointmentId);
+      const response = await typedApi.getAppointmentById(appointmentId);
       
       if (response && response.success && response.data) {
         console.log(`Successfully fetched details for appointment ${appointmentId}`);
         
+        // Extract client name from either top-level properties or ordersList
+        let clientName = 'Unknown client';
+        if (response.data.client) {
+          clientName = response.data.client;
+        } else if (response.data.clientsName) {
+          clientName = response.data.clientsName;
+        } else if (response.data.Client) {
+          clientName = response.data.Client;
+        } else if (response.data.ordersList && response.data.ordersList.client) {
+          clientName = response.data.ordersList.client;
+        } else if (response.data.ordersList && response.data.ordersList.clientsName) {
+          clientName = response.data.ordersList.clientsName;
+        }
+        
         // Map API response to our Appointment interface
         const appointmentData: Appointment = {
           id: response.data.id || response.data.appointmentId || appointmentId,
-          address: response.data.address || 'Unknown address',
-          client: response.data.clientsName || response.data.client || 'Unknown client',
-          phone: response.data.phoneNumber || response.data.phone || 'N/A',
-          email: response.data.emailAddress || response.data.email || 'N/A',
-          date: response.data.appointmentDate || response.data.date || new Date().toISOString().split('T')[0] + ' 09:00',
-          policyNo: response.data.policyNumber || response.data.policyNo || 'N/A',
-          sumInsured: response.data.sumInsured || 'N/A',
-          broker: response.data.broker || 'N/A',
-          notes: response.data.notes || 'No notes available',
-          orderNumber: response.data.orderNumber || 'N/A',
+          address: response.data.address || response.data.location || response.data.FullAddress || 'Unknown address',
+          client: clientName,
+          phone: response.data.phoneNumber || response.data.phone || response.data.Phone || 'N/A',
+          email: response.data.emailAddress || response.data.email || response.data.Email || 'N/A',
+          date: response.data.date || response.data.appointmentDate || response.data.startTime || response.data.Start_Time || new Date().toISOString().split('T')[0] + ' 09:00',
+          policyNo: response.data.policyNumber || response.data.policyNo || (response.data.ordersList?.policy ? String(response.data.ordersList.policy) : 'N/A'),
+          sumInsured: response.data.sumInsured ? String(response.data.sumInsured) : response.data['Sum Insured'] ? String(response.data['Sum Insured']) : (response.data.ordersList?.sumInsured ? String(response.data.ordersList.sumInsured) : 'N/A'),
+          broker: response.data.broker || response.data.Broker || (response.data.ordersList?.broker) || 'N/A',
+          notes: response.data.notes || response.data.Comments || response.data.comments || 'No notes available',
+          orderNumber: response.data.orderNumber ? String(response.data.orderNumber) : response.data.OrderID ? String(response.data.OrderID) : response.data.orderID ? String(response.data.orderID) : (response.data.ordersList?.orderid ? String(response.data.ordersList.orderid) : 'N/A'),
         };
         
         setAppointment(appointmentData);

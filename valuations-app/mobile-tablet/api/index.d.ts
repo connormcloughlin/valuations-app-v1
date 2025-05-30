@@ -76,7 +76,7 @@ declare const api: {
   deleteSurvey: (surveyId: string) => Promise<ApiResponse<any>>;
   uploadFile: (surveyId: string, fileData: any) => Promise<ApiResponse<any>>;
   getRiskTemplates: () => Promise<ApiResponse<RiskTemplate[]>>;
-  getRiskTemplateSections: (templateId: string) => Promise<ApiResponse<any>>;
+  getRiskAssessmentSections: (riskAssessmentId: string) => Promise<ApiResponse<any>>;
   getRiskTemplateCategories: (templateId: string, sectionId: string) => Promise<ApiResponse<any>>;
   getRiskTemplateItems: (categoryId: string) => Promise<ApiResponse<any>>;
   getAppointments: () => Promise<ApiResponse<Appointment[]>>;

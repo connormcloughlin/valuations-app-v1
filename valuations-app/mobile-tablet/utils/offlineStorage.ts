@@ -146,6 +146,16 @@ export const getLastSyncTimestamp = async (): Promise<number | null> => {
   }
 };
 
+// Store assessment sections data
+export const storeAssessmentSections = async (assessmentId: string, data: any): Promise<void> => {
+  await storeApiData(`assessment_sections_${assessmentId}`, data);
+};
+
+// Get assessment sections data
+export const getAssessmentSections = async (assessmentId: string): Promise<any | null> => {
+  return await getApiData(`assessment_sections_${assessmentId}`);
+};
+
 export default {
   storeRiskTemplates,
   getRiskTemplates,
@@ -163,4 +173,6 @@ export default {
   isDataStale,
   updateLastSyncTimestamp,
   getLastSyncTimestamp,
+  storeAssessmentSections,
+  getAssessmentSections,
 }; 
