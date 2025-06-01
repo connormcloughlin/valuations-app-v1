@@ -499,11 +499,15 @@ const riskTemplatesApi = {
         status: error.status || 0
       };
     }
-  }
-};
+  },
 
-getRiskAssessmentCategories: async (riskAssessmentSectionId) => {
-  const isOnline = connectionUtils.isConnected();
+  /**
+   * Get categories for a specific risk assessment section with offline support
+   * @param {string} riskAssessmentSectionId - ID of the risk assessment section
+   * @returns {Promise<Object>} Response with assessment categories
+   */
+  getRiskAssessmentCategories: async (riskAssessmentSectionId) => {
+    const isOnline = connectionUtils.isConnected();
   console.log(`Connection status before fetching assessment sections: ${isOnline ? 'Online' : 'Offline'}`);
 
   let cachedData = null;
@@ -572,7 +576,85 @@ getRiskAssessmentCategories: async (riskAssessmentSectionId) => {
       status: error.status || 0
     };
   }
+},
+
+  /**
+   * Get items for a specific risk assessment category with offline support
+   * @param {string} riskAssessmentCategoryId - ID of the risk assessment category
+   * @returns {Promise<Object>} Response with assessment items
+   */
+  getRiskAssessmentItems: async (riskAssessmentCategoryId) => {
+  const isOnline = connectionUtils.isConnected();
+  console.log(`Connection status before fetching assessment items: ${isOnline ? 'Online' : 'Offline'}`);
+  console.log(`riskAssessmentCategoryId: ${riskAssessmentCategoryId}`);
+
+let cachedData = null;
+try {
+  cachedData = await offlineStorage.getAssessmentItems(riskAssessmentCategoryId);
+  console.log(`Retrieved cached items for assessment ${riskAssessmentCategoryId}: ${cachedData ? 'Yes' : 'No'}`);
+} catch (cacheError) {
+  console.error('Error reading cached assessment items:', cacheError);
 }
-;
+
+if (!isOnline) {
+  if (cachedData && cachedData.data) {
+    console.log(`Using ${cachedData.data.length} cached assessment items (offline)`);
+    return {
+      success: true,
+      data: cachedData.data,
+      fromCache: true,
+      status: 200
+    };
+  } else {
+    console.error('Offline and no cached assessment items available');
+    return {
+      success: false,
+      message: 'You are offline and no cached assessment items data is available.',
+      status: 0
+    };
+  }
+}
+
+try {
+  console.log(`Fetching items for assessment: ${riskAssessmentCategoryId}`);
+  let response;
+  let endpoint = `/risk-assessment-items/category/${riskAssessmentCategoryId}`;
+  console.log(`Trying CONNOR endpoint: ${endpoint}`);
+  response = await apiClient.get(endpoint);
+   if (response.success) {
+    console.log(`Successful response from endpoint: ${endpoint}`);
+    console.log(`Response from endpoint: ${response.data}`);
+ 
+    if (response.data) {
+      try {
+        await offlineStorage.storeAssessmentItems(riskAssessmentCategoryId, response.data);
+        console.log('Assessment items cached successfully');
+      } catch (storageError) {
+        console.error('Error caching assessment items:', storageError);
+      }
+    }
+    return response;
+  }
+  throw new Error('All assessment items endpoints failed');
+} catch (error) {
+  console.error(`Error fetching assessment items from server:`, error);
+  if (cachedData && cachedData.data) {
+    console.log(`Using ${cachedData.data.length} cached assessment items (server error)`);
+    return {
+      success: true,
+      data: cachedData.data,
+      fromCache: true,
+      status: 200,
+      message: 'Using cached data due to server error'
+    };
+  }
+  return error.success === false ? error : {
+    success: false,
+    message: error.message || 'Network error',
+    status: error.status || 0
+  };
+}
+}
+};
 
 export default riskTemplatesApi; 

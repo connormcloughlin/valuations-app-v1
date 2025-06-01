@@ -1,3 +1,4 @@
+// If you see a type error for expo-blur, run: npm install --save-dev @types/expo-blur
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { StyleSheet } from 'react-native';

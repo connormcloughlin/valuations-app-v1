@@ -161,13 +161,15 @@ export default function ItemsScreen() {
         const formattedItems = response.data.map((item: any) => {
           return {
             id: item.id || item.riskassessmentitemid || '',
-            rank: item.rank || 0,
             type: item.itemprompt || '',
             description: '',
             model: '',
             selection: '',
-            quantity: 1,
-            price: 0,
+            quantity: item.quantity?.toString() || '1',
+            price: item.price?.toString() || '0',
+            room: '',
+            notes: '',
+            photo: item.photo || undefined,
           };
         });
         

@@ -104,6 +104,7 @@ export default function RootLayout() {
             <Stack.Screen name="appointments/in-progress" options={{ headerShown: true }} />
             <Stack.Screen name="appointments/completed" options={{ headerShown: true }} />
             <Stack.Screen name="+not-found" options={{ headerShown: true }} />
+            <Stack.Screen name="survey/sections-categories" />
           </Stack>
           <StatusBar style="auto" />
         </PaperProvider>

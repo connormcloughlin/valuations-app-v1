@@ -20,43 +20,62 @@ const mockSurveyData = {
   categories: [
     {
       id: 'cat-1',
-      title: 'CLOTHING (GENTS/BOYS)',
-      totalValue: 3500,
+      name: 'CLOTHING (GENTS/BOYS)',
+      value: 3500,
       items: [
-        { id: '1', description: 'Belts', quantity: 3, price: 300 },
-        { id: '2', description: 'Hats/Gloves/Scarves', quantity: 5, price: 1200 },
-        { id: '3', description: 'Shirts/T-Shirts', quantity: 25, price: 7500 },
-        { id: '4', description: 'Shoes/Trainers', quantity: 15, price: 9000 },
+        { id: '1', type: '', description: 'Belts', room: '', quantity: '3', price: '300', notes: '' },
+        { id: '2', type: '', description: 'Hats/Gloves/Scarves', room: '', quantity: '5', price: '1200', notes: '' },
+        { id: '3', type: '', description: 'Shirts/T-Shirts', room: '', quantity: '25', price: '7500', notes: '' },
+        { id: '4', type: '', description: 'Shoes/Trainers', room: '', quantity: '15', price: '9000', notes: '' },
       ]
     },
     {
       id: 'cat-2',
-      title: 'FURNITURE',
-      totalValue: 142000,
+      name: 'FURNITURE',
+      value: 142000,
       items: [
-        { id: '5', description: 'Dining Table', room: 'Dining', quantity: 1, price: 15000 },
-        { id: '6', description: 'Chairs', room: 'Dining', quantity: 8, price: 24000 },
-        { id: '7', description: 'Sofa', room: 'Lounge', quantity: 1, price: 25000 },
-        { id: '8', description: 'Coffee Table', room: 'Lounge', quantity: 1, price: 7000 },
-        { id: '9', description: 'Bed (Queen)', room: 'Main Bedroom', quantity: 1, price: 18000 },
+        { id: '5', type: '', description: 'Dining Table', room: 'Dining', quantity: '1', price: '15000', notes: '' },
+        { id: '6', type: '', description: 'Chairs', room: 'Dining', quantity: '8', price: '24000', notes: '' },
+        { id: '7', type: '', description: 'Sofa', room: 'Lounge', quantity: '1', price: '25000', notes: '' },
+        { id: '8', type: '', description: 'Coffee Table', room: 'Lounge', quantity: '1', price: '7000', notes: '' },
+        { id: '9', type: '', description: 'Bed (Queen)', room: 'Main Bedroom', quantity: '1', price: '18000', notes: '' },
       ]
     },
     {
       id: 'cat-8',
-      title: 'VALUABLE CARPETS',
-      totalValue: 45000,
+      name: 'VALUABLE CARPETS',
+      value: 45000,
       items: [
-        { id: '10', description: 'Persian Rug 4x6', quantity: 1, price: 45000 },
+        { id: '10', type: '', description: 'Persian Rug 4x6', room: '', quantity: '1', price: '45000', notes: '' },
       ]
     },
   ]
 };
 
+// Add types
+interface Item {
+  id: string;
+  type: string;
+  description: string;
+  room: string;
+  quantity: string;
+  price: string;
+  notes: string;
+  [key: string]: any;
+}
+interface Category {
+  id: string;
+  name: string;
+  items: Item[];
+  value: number;
+  [key: string]: any;
+}
+
 export default function SummaryScreen() {
   logNavigation('Survey Summary');
   const [expandedCategories, setExpandedCategories] = useState(mockSurveyData.categories.map(c => c.id));
   
-  const toggleCategory = (categoryId) => {
+  const toggleCategory = (categoryId: string) => {
     setExpandedCategories(prev => 
       prev.includes(categoryId)
         ? prev.filter(id => id !== categoryId)
@@ -65,14 +84,14 @@ export default function SummaryScreen() {
   };
   
   const totalValue = mockSurveyData.categories.reduce(
-    (sum, category) => sum + category.totalValue, 
+    (sum, category) => sum + category.value, 
     0
   );
   
-  const renderCategoryItems = (category) => {
+  const renderCategoryItems = (category: Category) => {
     if (category.id === 'cat-2') {
       // Group furniture items by room
-      const roomGroups = {};
+      const roomGroups: { [key: string]: Item[] } = {};
       category.items.forEach(item => {
         if (!roomGroups[item.room]) {
           roomGroups[item.room] = [];
@@ -85,7 +104,7 @@ export default function SummaryScreen() {
           <View style={styles.roomHeader}>
             <Text style={styles.roomTitle}>{room}</Text>
           </View>
-          {items.map(item => renderItem(item))}
+          {(items as Item[]).map((item: Item) => renderItem(item))}
         </View>
       ));
     } else {
@@ -93,7 +112,7 @@ export default function SummaryScreen() {
     }
   };
   
-  const renderItem = (item) => (
+  const renderItem = (item: Item) => (
     <View key={item.id} style={styles.itemRow}>
       <View style={styles.itemDetails}>
         <Text style={styles.itemDescription}>{item.description}</Text>
@@ -159,8 +178,8 @@ export default function SummaryScreen() {
                 onPress={() => toggleCategory(category.id)}
               >
                 <View style={styles.categoryTitleContainer}>
-                  <Text style={styles.categoryTitle}>{category.title}</Text>
-                  <Text style={styles.categoryTotal}>R {category.totalValue.toLocaleString()}</Text>
+                  <Text style={styles.categoryTitle}>{category.name}</Text>
+                  <Text style={styles.categoryTotal}>R {category.value.toLocaleString()}</Text>
                 </View>
                 <MaterialCommunityIcons
                   name={expandedCategories.includes(category.id) ? 'chevron-up' : 'chevron-down'}

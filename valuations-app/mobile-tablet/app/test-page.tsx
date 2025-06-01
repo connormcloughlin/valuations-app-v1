@@ -25,8 +25,28 @@ const useOrientation = () => {
   return { isLandscape, width, height };
 };
 
+// Add types
+interface Item {
+  id: string;
+  rank: number;
+  type: string;
+  description: string;
+  model: string;
+  selection: string;
+  quantity: number;
+  price: number;
+  [key: string]: any;
+}
+interface Category {
+  id: string;
+  name: string;
+  items: Item[];
+  value: number;
+  [key: string]: any;
+}
+
 // Category data with sample items
-const categoryData = {
+const categoryData: { [key: string]: Item[] } = {
   'CLOTHING (GENTS / BOYS)': [
     { id: '1', rank: 1, type: 'Belts', description: 'Leather belts', model: 'Designer', selection: 'Brown, Black', quantity: 2, price: 1200 },
     { id: '2', rank: 2, type: 'Hats / Gloves / Scarves', description: 'Winter accessories', model: 'Various', selection: 'Wool, Cotton', quantity: 4, price: 800 },
@@ -52,7 +72,7 @@ const categoryData = {
 };
 
 // Type options for dropdowns per category
-const typeOptions = {
+const typeOptions: { [key: string]: string[] } = {
   'CLOTHING (GENTS / BOYS)': ['Belts', 'Hats / Gloves / Scarves', 'Jackets / Blazers', 'Leather / Suede Jackets', 'Long Trousers / Jeans', 'Pullovers / Cardigans', 'Raincoats / Overcoats', 'Shirts / T-Shirts', 'Shoes / Boots', 'Shorts / Swimming Trunks', 'Socks / Underwear / Sleepwear', 'Sports Wear', 'Suits', 'Ties', 'Tracksuits'],
   'CLOTHING (LADIES / GIRLS)': ['Blouses', 'Dresses', 'Skirts', 'Pants', 'Sweaters', 'Coats', 'Shoes', 'Accessories'],
   'FURNITURE': ['Sofa', 'Dining Table', 'Chairs', 'Bed', 'Wardrobe', 'Desk', 'Bookshelf', 'Coffee Table'],
@@ -69,7 +89,7 @@ export default function CombinedView() {
   const [sortDirection, setSortDirection] = useState('asc');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
-  const [editingItem, setEditingItem] = useState(null);
+  const [editingItem, setEditingItem] = useState<string | null>(null);
   const [dropdownOptions, setDropdownOptions] = useState(typeOptions['CLOTHING (GENTS / BOYS)']);
   const [totalValue, setTotalValue] = useState(0);
 
@@ -107,7 +127,7 @@ export default function CombinedView() {
   };
 
   // Update an item field
-  const updateItemField = (itemId, field, value) => {
+  const updateItemField = (itemId: string, field: string, value: any) => {
     const updatedItems = items.map(item => {
       if (item.id === itemId) {
         return { ...item, [field]: value };
@@ -119,7 +139,7 @@ export default function CombinedView() {
   };
 
   // Delete an item
-  const deleteItem = (itemId) => {
+  const deleteItem = (itemId: string) => {
     Alert.alert(
       'Delete Item',
       'Are you sure you want to delete this item?',
@@ -141,7 +161,7 @@ export default function CombinedView() {
   };
 
   // Sort items
-  const sortItems = (by, direction) => {
+  const sortItems = (by: string, direction: string) => {
     const sortedItems = [...items].sort((a, b) => {
       if (by === 'rank') {
         return direction === 'asc' ? a.rank - b.rank : b.rank - a.rank;
@@ -162,8 +182,8 @@ export default function CombinedView() {
   };
 
   // Get cell width based on orientation
-  const getCellWidth = (field) => {
-    const baseWidths = {
+  const getCellWidth = (field: string) => {
+    const baseWidths: { [key: string]: number } = {
       rank: 50,
       type: isLandscape ? 150 : 130,
       description: isLandscape ? 150 : 120,

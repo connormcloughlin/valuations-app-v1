@@ -14,6 +14,8 @@ interface RiskTemplate {
   name?: string;
   templatename?: string;
   description?: string;
+  riskassessmentid?: string;
+  assessmentid?: string;
 }
 
 interface ApiResponse<T> {
@@ -71,6 +73,7 @@ export default function TemplatesScreen() {
   const handleSelectTemplate = (template: RiskTemplate) => {
     // Get the template ID using the properties available
     const templateId = template.risktemplateid || template.templateid || template.id;
+    const riskassessmentid = template.riskassessmentid || template.assessmentid || templateId;
     
     if (!templateId) {
       setError('Invalid template: No ID found');
@@ -80,46 +83,11 @@ export default function TemplatesScreen() {
     console.log(`Selected template: ${templateId} - ${template.templatename || template.name}`);
     setSelectedTemplate(templateId);
     setSelectedTemplateObj(template);
-  };
-  
-  // Navigate based on context
-  const navigateWithTemplate = () => {
-    if (!selectedTemplate) {
-      setError('Please select a risk template first');
-      return;
-    }
-    
-    // If we came from survey details page (no surveyId), go back there
-    if (fromSurveyDetails) {
-      // Save selected template to async storage or context API
-      // In a complete implementation, we would save this template to context/AsyncStorage
-      // Then, the new survey screen would retrieve it from there
 
-      // For now, we'll just create a new survey with this template
-      const templateId = selectedTemplate;
-      
-      // Go to categories directly with the selected template
-      router.push({
-        pathname: '/survey/categories',
-        params: { templateId }
-      });
-      
-      return;
-    }
-    
-    // Otherwise proceed to categories
-    // Combine template ID with any survey params passed to this screen
-    const navigationParams: Record<string, string> = { 
-      templateId: selectedTemplate 
-    };
-    
-    // Add any survey params
-    if (params.surveyId) navigationParams.surveyId = params.surveyId as string;
-    if (params.useHandwriting) navigationParams.useHandwriting = params.useHandwriting as string;
-    
+    // Navigate to the new sections-categories screen
     router.push({
-      pathname: '/survey/categories',
-      params: navigationParams
+      pathname: '/survey/SectionsCategories',
+      params: { riskassessmentid }
     });
   };
   
@@ -213,17 +181,6 @@ export default function TemplatesScreen() {
             showsVerticalScrollIndicator={false}
           />
         )}
-        
-        <View style={styles.buttonContainer}>
-          <Button
-            mode="contained"
-            style={styles.continueButton}
-            onPress={navigateWithTemplate}
-            disabled={!selectedTemplate}
-          >
-            {fromSurveyDetails ? 'Select Template' : 'Continue'}
-          </Button>
-        </View>
       </View>
     </>
   );
@@ -300,16 +257,5 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 8,
-  },
-  buttonContainer: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  continueButton: {
-    height: 50,
-    justifyContent: 'center',
-    backgroundColor: '#27ae60',
   },
 }); 

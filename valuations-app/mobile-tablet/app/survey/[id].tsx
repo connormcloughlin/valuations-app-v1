@@ -5,8 +5,30 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { logNavigation } from '../../utils/logger';
 
-// Mock survey data that would normally come from API or local storage
-const surveysData = {
+// Add Survey and Category types
+interface Category {
+  id: string;
+  name: string;
+  items: number;
+  value: number;
+}
+interface Survey {
+  id: string;
+  address: string;
+  client: string;
+  date: string;
+  policyNo: string;
+  sumInsured: string;
+  orderNumber: string;
+  lastEdited: string;
+  broker: string;
+  categories: Category[];
+  totalValue: number;
+  completedCategories: number;
+}
+
+// Add index signature to surveysData
+const surveysData: { [key: string]: Survey } = {
   '1003': {
     id: '1003',
     address: '789 Pine Rd',
@@ -76,8 +98,13 @@ export default function SurveyScreen() {
   };
   
   const continueSurvey = () => {
+    // router.push({
+    //   pathname: '/survey/categories',
+    //   params: { surveyId }
+    // });
+    // Use the new categories screen if needed
     router.push({
-      pathname: '/survey/categories',
+      pathname: '/survey/categories_old',
       params: { surveyId }
     });
   };
@@ -205,7 +232,7 @@ export default function SurveyScreen() {
               <Text style={styles.totalValue}>Total: R{survey.totalValue.toLocaleString()}</Text>
             </View>
             
-            {survey.categories.map((category) => (
+            {survey.categories.map((category: Category) => (
               <Card 
                 key={category.id} 
                 style={styles.categoryCard}

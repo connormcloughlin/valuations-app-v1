@@ -45,22 +45,30 @@ const mockValuations = [
   { id: '3', address: '789 Pine Rd', date: '2024-04-24', status: 'Pending Client' },
 ];
 
+// Add Survey type
+interface Survey {
+  id: string;
+  address: string;
+  date: string;
+  status: string;
+}
+
 export default function SurveyScreen() {
   logNavigation('Survey Tab');
-  const [surveys, setSurveys] = useState(mockValuations);
+  const [surveys, setSurveys] = useState<Survey[]>(mockValuations);
   
   const startNewSurvey = () => {
     router.push('/survey/new');
   };
   
-  const openSurvey = (survey) => {
+  const openSurvey = (survey: Survey) => {
     router.push({
       pathname: '/survey/[id]',
       params: { id: survey.id }
     });
   };
 
-  const renderSurveyCard = ({ item }) => (
+  const renderSurveyCard = ({ item }: { item: Survey }) => (
     <Card style={styles.card} onPress={() => openSurvey(item)}>
       <Card.Content>
         <View style={styles.cardHeader}>

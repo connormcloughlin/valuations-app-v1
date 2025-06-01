@@ -20,6 +20,7 @@ interface RiskTemplate {
   assessmentid?: number;
   assessmenttypeid?: number;
   assessmenttypename?: string;
+  comments?: string;
   // ... other fields from the API response ...
 }
 
@@ -230,12 +231,8 @@ export default function NewSurveyScreen() {
     
     // Navigate to categories screen with the assessmentId
     router.push({
-      pathname: '/survey/categories',
-      params: { 
-        assessmentId,
-        useHandwriting: surveyData.useHandwriting ? '1' : '0',
-        templateId: assessmentId
-      }
+      pathname: '/survey/SectionsCategories',
+      params: { riskassessmentid: assessmentId }
     });
   };
 
@@ -415,7 +412,7 @@ export default function NewSurveyScreen() {
                   <Text style={styles.errorText}>{templateError}</Text>
                   <Button 
                     mode="outlined" 
-                    onPress={fetchTemplates}
+                    onPress={() => fetchTemplates()}
                     style={styles.retryButton}
                   >
                     Retry
@@ -426,7 +423,7 @@ export default function NewSurveyScreen() {
               ) : (
                 <View style={styles.templatesContainer}>
                   <Text style={styles.templatesInstructions}>
-                    Select a template to continue with:
+                    Select a template to continue aaa with:
                   </Text>
                   {templates.map(renderTemplateCard)}
                 </View>

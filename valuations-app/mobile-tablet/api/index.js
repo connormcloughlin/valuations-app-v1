@@ -31,6 +31,7 @@ const api = {
   // Risk assessment methods
   getRiskAssessmentSections: riskTemplatesApi.getRiskAssessmentSections,
   getRiskAssessmentCategories: riskTemplatesApi.getRiskAssessmentCategories,
+  getRiskAssessmentItems: riskTemplatesApi.getRiskAssessmentItems,
   
   // Appointments methods
   getAppointments: appointmentsApi.getAppointments,

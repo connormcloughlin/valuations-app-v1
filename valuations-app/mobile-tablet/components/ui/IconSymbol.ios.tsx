@@ -1,3 +1,4 @@
+// If you see a type error for expo-symbols, run: npm install --save-dev @types/expo-symbols
 import { SymbolView, SymbolViewProps, SymbolWeight } from 'expo-symbols';
 import { StyleProp, ViewStyle } from 'react-native';
 
