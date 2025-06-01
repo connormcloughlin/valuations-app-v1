@@ -17,6 +17,7 @@ interface Category {
 const SectionsCategoriesScreen = () => {
   const params = useLocalSearchParams();
   const riskassessmentid = params.riskassessmentid as string;
+  const appointmentStatus = (params.status || params.appointmentStatus || '').toString().toLowerCase();
 
   console.log('[SectionsCategoriesScreen] Params:', params);
   console.log('[SectionsCategoriesScreen] riskassessmentid:', riskassessmentid);
@@ -133,68 +134,96 @@ const SectionsCategoriesScreen = () => {
   }, [expandedSection]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff', marginTop: 24, marginBottom: 32 }}>
+    <View style={{ flex: 1, backgroundColor: 'linear-gradient(180deg, #f0f4fa 0%, #e9eef6 100%)', paddingTop: 24, paddingBottom: 32 }}>
+      <Text style={{ fontSize: 26, fontWeight: 'bold', marginLeft: 24, marginBottom: 12, color: '#1976d2', letterSpacing: 0.5 }}>Sections & Categories</Text>
       {/* Sections as horizontal tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 16 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 20, paddingHorizontal: 16 }}>
         {sections.map(section => (
           <TouchableOpacity
             key={section.id}
             style={{
-              paddingVertical: 10,
-              paddingHorizontal: 24,
-              borderBottomWidth: 3,
-              borderBottomColor: expandedSection === section.id ? '#1976d2' : 'transparent',
-              backgroundColor: expandedSection === section.id ? '#e3f0fc' : '#f7f7fa',
+              paddingVertical: 8,
+              paddingHorizontal: 22,
               marginRight: 8,
-              borderTopLeftRadius: 8,
-              borderTopRightRadius: 8,
+              borderRadius: 12,
+              backgroundColor: expandedSection === section.id ? '#1976d2' : '#fff',
+              shadowColor: '#1976d2',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: expandedSection === section.id ? 0.18 : 0.08,
+              shadowRadius: 6,
+              elevation: expandedSection === section.id ? 4 : 1,
+              borderBottomWidth: expandedSection === section.id ? 0 : 2,
+              borderBottomColor: expandedSection === section.id ? 'transparent' : '#e0e0e0',
+              transform: [{ scale: expandedSection === section.id ? 1.04 : 1 }],
             }}
+            activeOpacity={0.85}
             onPress={() => {
               if (expandedSection !== section.id) {
                 setExpandedSection(section.id);
                 setExpandedCategory(null);
                 setItems({});
-                // Auto-fetch categories if not loaded
                 if (!categories[section.id] && !categoriesLoading[section.id]) {
                   fetchCategories(section.id);
                 }
               }
             }}
           >
-            <Text style={{ fontWeight: 'bold', color: expandedSection === section.id ? '#1976d2' : '#333' }}>{section.title}</Text>
+            <Text style={{ fontWeight: 'bold', fontSize: 12, color: expandedSection === section.id ? '#fff' : '#1976d2', letterSpacing: 0.2 }}>{section.title}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
       {/* Categories and items for the selected section */}
       {expandedSection && (
-        <View style={{ flex: 1, flexDirection: 'row' }}>
+        <View style={{ flex: 1, flexDirection: 'row', marginHorizontal: 16, backgroundColor: '#fff', borderRadius: 18, shadowColor: '#1976d2', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.10, shadowRadius: 8, elevation: 2, padding: 12 }}>
           {/* Categories vertical list */}
-          <View style={{ minWidth: 180, marginRight: 16 }}>
-            {categoriesLoading[expandedSection] && <Text>Loading categories...</Text>}
-            {categoriesError[expandedSection] && <Text style={{ color: 'red' }}>{categoriesError[expandedSection]}</Text>}
+          <View style={{ minWidth: 150, marginRight: 12, paddingVertical: 4, borderRightWidth: 1, borderRightColor: '#e3e8f0', justifyContent: 'flex-start' }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 12, marginBottom: 6, color: '#1976d2', marginLeft: 6 }}>Categories</Text>
+            {categoriesLoading[expandedSection] && <Text style={{ marginLeft: 8, color: '#888' }}>Loading categories...</Text>}
+            {categoriesError[expandedSection] && <Text style={{ color: 'red', marginLeft: 8 }}>{categoriesError[expandedSection]}</Text>}
             {categories[expandedSection]?.map(category => (
-              <View key={category.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eee', flexDirection: 'row', alignItems: 'center' }}>
-                <Text
-                  style={{ fontWeight: 'bold', flex: 1, color: expandedCategory === category.id ? '#1976d2' : undefined }}
-                  onPress={() => {
-                    setExpandedCategory(category.id);
-                    if (!items[category.id] && !itemsLoading[category.id]) {
-                      fetchItems(category.id);
-                    }
-                  }}
-                >
-                  {category.title}
-                </Text>
-              </View>
+              <TouchableOpacity
+                key={category.id}
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 10,
+                  borderRadius: 7,
+                  marginVertical: 2,
+                  marginHorizontal: 2,
+                  backgroundColor: expandedCategory === category.id ? '#e3f0fc' : 'transparent',
+                  borderWidth: expandedCategory === category.id ? 1.5 : 0,
+                  borderColor: expandedCategory === category.id ? '#1976d2' : 'transparent',
+                  shadowColor: '#1976d2',
+                  shadowOpacity: expandedCategory === category.id ? 0.10 : 0,
+                  shadowRadius: 4,
+                  elevation: expandedCategory === category.id ? 2 : 0,
+                }}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setExpandedCategory(category.id);
+                  if (!items[category.id] && !itemsLoading[category.id]) {
+                    fetchItems(category.id);
+                  }
+                }}
+              >
+                <Text style={{ fontWeight: expandedCategory === category.id ? 'bold' : '500', color: expandedCategory === category.id ? '#1976d2' : '#333', fontSize: 11 }}>{category.title}</Text>
+              </TouchableOpacity>
             ))}
           </View>
           {/* Items grid view for the selected category */}
-          <View style={{ flex: 1 }}>
-            {expandedCategory && itemsLoading[expandedCategory] && <Text>Loading items...</Text>}
-            {expandedCategory && itemsError[expandedCategory] && <Text style={{ color: 'red' }}>{itemsError[expandedCategory]}</Text>}
+          <View style={{ flex: 1, padding: 8, minHeight: 320 }}>
+            {expandedCategory && itemsLoading[expandedCategory] && <Text style={{ color: '#888', marginTop: 16 }}>Loading items...</Text>}
+            {expandedCategory && itemsError[expandedCategory] && <Text style={{ color: 'red', marginTop: 16 }}>{itemsError[expandedCategory]}</Text>}
             {expandedCategory && items[expandedCategory] && (
-              <ItemsTable items={items[expandedCategory]} onDeleteItem={() => {}} />
+              <View style={{ backgroundColor: '#f7fafd', borderRadius: 12, padding: 12, shadowColor: '#1976d2', shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 }}>
+                <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e3e8f0', marginBottom: 8, paddingBottom: 6 }}>
+                  {['Type', 'Description', 'Model', 'Selection', 'Quantity', 'Price (R)'].map(col => (
+                    <Text key={col} style={{ flex: 1, fontWeight: 'bold', color: '#1976d2', fontSize: 15, minWidth: 100 }}>{col}</Text>
+                  ))}
+                </View>
+                <ItemsTable items={items[expandedCategory]} onDeleteItem={() => {}} editable={appointmentStatus !== 'completed'} />
+              </View>
             )}
+            {!expandedCategory && <Text style={{ color: '#bbb', fontSize: 16, marginTop: 32, textAlign: 'center' }}>Select a category to view items</Text>}
           </View>
         </View>
       )}
