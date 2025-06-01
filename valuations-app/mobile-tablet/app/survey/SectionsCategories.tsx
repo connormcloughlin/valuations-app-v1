@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Modal, Button, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, Modal, Button, StyleSheet, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Collapsible } from '../../components/Collapsible';
 import api from '../../api';
@@ -126,38 +126,78 @@ const SectionsCategoriesScreen = () => {
       .finally(() => setItemsLoading(prev => ({ ...prev, [categoryId]: false })));
   };
 
+  // After setExpandedSection or section change, clear expandedCategory and items
+  useEffect(() => {
+    setExpandedCategory(null);
+    setItems({});
+  }, [expandedSection]);
+
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#fff', marginTop: 24, marginBottom: 32 }}>
-      {sectionsLoading && <Text>Loading sections...</Text>}
-      {sectionsError && <Text style={{ color: 'red' }}>{sectionsError}</Text>}
-      {sections.map(section => {
-        console.log('[SectionsCategoriesScreen] Rendering section:', section);
-        return (
-          <Collapsible
+    <View style={{ flex: 1, backgroundColor: '#fff', marginTop: 24, marginBottom: 32 }}>
+      {/* Sections as horizontal tabs */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 16 }}>
+        {sections.map(section => (
+          <TouchableOpacity
             key={section.id}
-            title={section.title}
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 24,
+              borderBottomWidth: 3,
+              borderBottomColor: expandedSection === section.id ? '#1976d2' : 'transparent',
+              backgroundColor: expandedSection === section.id ? '#e3f0fc' : '#f7f7fa',
+              marginRight: 8,
+              borderTopLeftRadius: 8,
+              borderTopRightRadius: 8,
+            }}
+            onPress={() => {
+              if (expandedSection !== section.id) {
+                setExpandedSection(section.id);
+                setExpandedCategory(null);
+                setItems({});
+                // Auto-fetch categories if not loaded
+                if (!categories[section.id] && !categoriesLoading[section.id]) {
+                  fetchCategories(section.id);
+                }
+              }
+            }}
           >
-            <Button title="Load Categories" onPress={() => fetchCategories(section.id)} />
-            {categoriesLoading[section.id] && <Text>Loading categories...</Text>}
-            {categoriesError[section.id] && <Text style={{ color: 'red' }}>{categoriesError[section.id]}</Text>}
-            {categories[section.id]?.map(category => {
-              console.log('[SectionsCategoriesScreen] Rendering category:', category);
-              return (
-                <View key={category.id} style={{ marginLeft: 16, marginBottom: 8 }}>
-                  <Text style={{ fontWeight: 'bold' }}>{category.title}</Text>
-                  <Button title="Load Items" onPress={() => fetchItems(category.id)} />
-                  {itemsLoading[category.id] && <Text>Loading items...</Text>}
-                  {itemsError[category.id] && <Text style={{ color: 'red' }}>{itemsError[category.id]}</Text>}
-                  {items[category.id] && (
-                    <ItemsTable items={items[category.id]} onDeleteItem={() => {}} />
-                  )}
-                  <Button title="Add Item" onPress={() => { setAddItemCategoryId(category.id); setShowAddItemModal(true); }} />
-                </View>
-              );
-            })}
-          </Collapsible>
-        );
-      })}
+            <Text style={{ fontWeight: 'bold', color: expandedSection === section.id ? '#1976d2' : '#333' }}>{section.title}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      {/* Categories and items for the selected section */}
+      {expandedSection && (
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          {/* Categories vertical list */}
+          <View style={{ minWidth: 180, marginRight: 16 }}>
+            {categoriesLoading[expandedSection] && <Text>Loading categories...</Text>}
+            {categoriesError[expandedSection] && <Text style={{ color: 'red' }}>{categoriesError[expandedSection]}</Text>}
+            {categories[expandedSection]?.map(category => (
+              <View key={category.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eee', flexDirection: 'row', alignItems: 'center' }}>
+                <Text
+                  style={{ fontWeight: 'bold', flex: 1, color: expandedCategory === category.id ? '#1976d2' : undefined }}
+                  onPress={() => {
+                    setExpandedCategory(category.id);
+                    if (!items[category.id] && !itemsLoading[category.id]) {
+                      fetchItems(category.id);
+                    }
+                  }}
+                >
+                  {category.title}
+                </Text>
+              </View>
+            ))}
+          </View>
+          {/* Items grid view for the selected category */}
+          <View style={{ flex: 1 }}>
+            {expandedCategory && itemsLoading[expandedCategory] && <Text>Loading items...</Text>}
+            {expandedCategory && itemsError[expandedCategory] && <Text style={{ color: 'red' }}>{itemsError[expandedCategory]}</Text>}
+            {expandedCategory && items[expandedCategory] && (
+              <ItemsTable items={items[expandedCategory]} onDeleteItem={() => {}} />
+            )}
+          </View>
+        </View>
+      )}
       {/* Add Item Modal (placeholder) */}
       <Modal visible={showAddItemModal} onRequestClose={() => setShowAddItemModal(false)}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -165,9 +205,14 @@ const SectionsCategoriesScreen = () => {
           <Button title="Close" onPress={() => setShowAddItemModal(false)} />
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 };
+
+function FetchCategoriesOnExpand({ fetch }: { fetch: () => void }) {
+  useEffect(() => { fetch(); }, []);
+  return null;
+}
 
 export default SectionsCategoriesScreen;
 
