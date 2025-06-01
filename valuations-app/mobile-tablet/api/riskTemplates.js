@@ -502,4 +502,77 @@ const riskTemplatesApi = {
   }
 };
 
+getRiskAssessmentCategories: async (riskAssessmentSectionId) => {
+  const isOnline = connectionUtils.isConnected();
+  console.log(`Connection status before fetching assessment sections: ${isOnline ? 'Online' : 'Offline'}`);
+
+  let cachedData = null;
+  try {
+    cachedData = await offlineStorage.getAssessmentCategories(riskAssessmentSectionId);
+    console.log(`Retrieved cached categories for assessment ${riskAssessmentSectionId}: ${cachedData ? 'Yes' : 'No'}`);
+  } catch (cacheError) {
+    console.error('Error reading cached assessment categories:', cacheError);
+  }
+
+  if (!isOnline) {
+    if (cachedData && cachedData.data) {
+      console.log(`Using ${cachedData.data.length} cached assessment categories (offline)`);
+      return {
+        success: true,
+        data: cachedData.data,
+        fromCache: true,
+        status: 200
+      };
+    } else {
+      console.error('Offline and no cached assessment categories available');
+      return {
+        success: false,
+        message: 'You are offline and no cached assessment categories  data is available.',
+        status: 0
+      };
+    }
+  }
+
+  try {
+    console.log(`Fetching categories for assessment: ${riskAssessmentSectionId}`);
+    let response;
+    let endpoint = `/risk-assessment-categories/section/${riskAssessmentSectionId}`;
+    console.log(`Trying CONNOR endpoint: ${endpoint}`);
+    response = await apiClient.get(endpoint);
+     if (response.success) {
+      console.log(`Successful response from endpoint: ${endpoint}`);
+      console.log(`Response from endpoint: ${response.data}`);
+   
+      if (response.data) {
+        try {
+          await offlineStorage.storeAssessmentCategories(riskAssessmentSectionId, response.data);
+          console.log('Assessment categories cached successfully');
+        } catch (storageError) {
+          console.error('Error caching assessment categories:', storageError);
+        }
+      }
+      return response;
+    }
+    throw new Error('All assessment categories endpoints failed');
+  } catch (error) {
+    console.error(`Error fetching assessment categories from server:`, error);
+    if (cachedData && cachedData.data) {
+      console.log(`Using ${cachedData.data.length} cached assessment categories (server error)`);
+      return {
+        success: true,
+        data: cachedData.data,
+        fromCache: true,
+        status: 200,
+        message: 'Using cached data due to server error'
+      };
+    }
+    return error.success === false ? error : {
+      success: false,
+      message: error.message || 'Network error',
+      status: error.status || 0
+    };
+  }
+}
+;
+
 export default riskTemplatesApi; 

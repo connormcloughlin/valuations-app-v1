@@ -169,6 +169,7 @@ const getRiskAssessmentSections = async (riskAssessmentId: string): Promise<ApiR
 const getRiskAssessmentCategories = async (sectionId: string): Promise<ApiResponse> => {
   try {
     const response = await axiosInstance.get(`/risk-assessment-categories/section/${sectionId}`);
+    console.log('Categories API response for section', sectionId, ':', response.data);
     if (response.data) {
       await storeData(`${STORAGE_KEYS.ASSESSMENT_CATEGORIES}${sectionId}`, response.data);
       return {
@@ -182,6 +183,7 @@ const getRiskAssessmentCategories = async (sectionId: string): Promise<ApiRespon
     try {
       console.log(`API error, checking cache for assessment categories (section ID: ${sectionId})`);
       const cachedData = await getData(`${STORAGE_KEYS.ASSESSMENT_CATEGORIES}${sectionId}`);
+      console.log('Categories cache response for section', sectionId, ':', cachedData);
       if (cachedData) {
         console.log('Using cached assessment categories data');
         return {
@@ -235,7 +237,7 @@ const getRiskAssessmentItems = async (categoryId: string): Promise<ApiResponse> 
 const getRiskTemplateCategories = async (templateId: string, sectionId: string): Promise<ApiResponse> => {
   try {
     // Try to get data from API
-    const response = await axiosInstance.get(`/risk-template-categories/${templateId}/${sectionId}`);
+    const response = await axiosInstance.get(`/risk-assessment-categories/section/${sectionId}`);
     
     if (response.data) {
       // Cache the response for offline use
@@ -276,7 +278,7 @@ const getRiskTemplateCategories = async (templateId: string, sectionId: string):
 const getRiskTemplateItems = async (categoryId: string): Promise<ApiResponse> => {
   try {
     // Try to get data from API
-    const response = await axiosInstance.get(`/risk-template-items/category/${categoryId}`);
+    const response = await axiosInstance.get(`/risk-assessment-items/category/${categoryId}`);
     
     if (response.data) {
       // Cache the response for offline use

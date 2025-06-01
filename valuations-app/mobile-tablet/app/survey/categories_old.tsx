@@ -580,13 +580,14 @@ export default function CategoriesScreen() {
     }
     
     console.log(`Retrieved ${sectionsResponse.data.length} sections`);
+    console.log('Sections API raw data:', sectionsResponse.data);
     
     // Build sections data with categories
     const sections: Section[] = [];
     
     // For each section, get categories
     for (const apiSection of sectionsResponse.data) {
-      // Use the correct property name based on API response
+      console.log('Section object:', apiSection);
       const sectionId = apiSection.id || apiSection.sectionid || apiSection.risktemplatesectionid || '';
       
       if (!sectionId) {

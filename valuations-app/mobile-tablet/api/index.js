@@ -30,6 +30,7 @@ const api = {
   
   // Risk assessment methods
   getRiskAssessmentSections: riskTemplatesApi.getRiskAssessmentSections,
+  getRiskAssessmentCategories: riskTemplatesApi.getRiskAssessmentCategories,
   
   // Appointments methods
   getAppointments: appointmentsApi.getAppointments,
