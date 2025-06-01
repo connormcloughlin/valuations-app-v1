@@ -30,19 +30,25 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Types
 export interface Item {
-  id: string;
-  type: string;
-  description: string;
-  room: string;
-  quantity: string;
+  riskassessmentitemid: string | number;
+  riskassessmentcategoryid: string;
+  itemprompt: string;
+  itemtype: string;
+  rank: string;
+  commaseparatedlist: string;
+  selectedanswer: string;
+  qty: string;
   price: string;
-  notes: string;
-  photo?: string;
-  make?: string;
-  model?: string;
-  selection?: string;
-  serialNumber?: string;
-  categoryId: string;
+  description: string;
+  model: string;
+  location: string;
+  assessmentregisterid: string;
+  assessmentregistertypeid: string;
+  isactive: string;
+  createdby: string;
+  createddate: string;
+  modifiedby: string;
+  modifieddate: string;
 }
 
 // Room data for categories
@@ -94,7 +100,7 @@ export const itemUtils = {
   calculateTotalValue: (items: Item[]): number => {
     return items.reduce((total, item) => {
       const price = parseFloat(item.price) || 0;
-      const quantity = parseInt(item.quantity) || 1;
+      const quantity = parseInt(item.qty) || 1;
       return total + (price * quantity);
     }, 0);
   },
@@ -509,7 +515,7 @@ export const PredefinedItemsList: React.FC<{
           style={styles.predefinedItem}
           onPress={() => onSelectItem(item)}
         >
-          <Text style={styles.predefinedItemText}>{item.description || item.type}</Text>
+          <Text style={styles.predefinedItemText}>{item.description || item.itemtype}</Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -535,72 +541,159 @@ export const ItemsTable: React.FC<{
   onDeleteItem: (id: string) => void;
   showRoom?: boolean;
   showMakeModel?: boolean;
-}> = ({ items, onDeleteItem, showRoom = false, showMakeModel = false }) => (
-  <Card style={styles.card}>
-    <Card.Title title="Added Items" />
-    <DataTable>
-      <DataTable.Header style={styles.tableHeader}>
-        <DataTable.Title>Description</DataTable.Title>
-        <DataTable.Title numeric>Qty</DataTable.Title>
-        <DataTable.Title numeric>Price</DataTable.Title>
-        <DataTable.Title numeric>Total</DataTable.Title>
-        <DataTable.Title style={{ justifyContent: 'flex-end' }}>
-          <Text>{''}</Text>
-        </DataTable.Title>
-      </DataTable.Header>
-      
-      {items.filter(item => parseFloat(item.quantity || '0') > 0 && parseFloat(item.price || '0') > 0).map((item) => {
-        const quantity = parseInt(item.quantity || '1', 10);
-        const price = parseFloat(item.price || '0');
-        const total = quantity * price;
-        
-        return (
-          <DataTable.Row key={item.id}>
-            <DataTable.Cell>
-              <View style={styles.itemDescriptionCell}>
-                {item.photo && <View style={styles.photoIndicator} />}
-                <View>
-                  <Text>{item.description || item.type}</Text>
-                  {showMakeModel && (item.make || item.model) && (
-                    <Text style={styles.itemDetail}>
-                      {item.make}{item.make && item.model ? ' - ' : ''}{item.model}
-                    </Text>
-                  )}
-                  {showRoom && item.room && (
-                    <Text style={styles.itemDetail}>Room: {item.room}</Text>
-                  )}
-                </View>
-              </View>
-            </DataTable.Cell>
-            <DataTable.Cell numeric>{quantity}</DataTable.Cell>
-            <DataTable.Cell numeric>{formatCurrency(price)}</DataTable.Cell>
-            <DataTable.Cell numeric>{formatCurrency(total)}</DataTable.Cell>
-            <DataTable.Cell style={styles.rowActions}>
-              <IconButton
-                icon="delete"
-                size={20}
-                onPress={() => onDeleteItem(item.id)}
-                iconColor="#e74c3c"
-              />
-            </DataTable.Cell>
-          </DataTable.Row>
-        );
-      })}
-      
-      <DataTable.Row style={styles.totalRow}>
-        <DataTable.Cell><Text style={styles.totalLabel}>Total</Text></DataTable.Cell>
-        <DataTable.Cell><Text>{''}</Text></DataTable.Cell>
-        <DataTable.Cell><Text>{''}</Text></DataTable.Cell>
-        <DataTable.Cell numeric>
-          <Text style={styles.totalValue}>
-            {formatCurrency(itemUtils.calculateTotalValue(items))}
-          </Text>
-        </DataTable.Cell>
-        <DataTable.Cell><Text>{''}</Text></DataTable.Cell>
-      </DataTable.Row>
-    </DataTable>
-  </Card>
-);
+  editable?: boolean;
+}> = ({ items, onDeleteItem, showRoom = false, showMakeModel = false, editable = true }) => {
+  // Local state for editing quantity/price
+  const [editItems, setEditItems] = useState<{ [id: string]: { quantity: string; price: string; make?: string; model?: string; serialNumber?: string } }>({});
+
+  const handleEdit = (id: string, field: 'quantity' | 'price' | 'make' | 'model' | 'serialNumber', value: string) => {
+    setEditItems(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        [field]: value,
+      },
+    }));
+  };
+
+  return (
+    <Card style={styles.card}>
+      <Card.Title title="Added Items" />
+      <ScrollView horizontal>
+        <View style={{ flexDirection: 'row' }}>
+          <ScrollView style={{ maxHeight: 400 }}>
+            <DataTable>
+              <DataTable.Header style={styles.tableHeader}>
+                <DataTable.Title style={{ width: 180 }}>Description</DataTable.Title>
+                <DataTable.Title style={{ width: 180 }}>Make</DataTable.Title>
+                <DataTable.Title style={{ width: 180 }}>Model</DataTable.Title>
+                <DataTable.Title style={{ width: 180 }}>Serial Number</DataTable.Title>
+                <DataTable.Title numeric style={{ width: 100 }}>Qty</DataTable.Title>
+                <DataTable.Title numeric style={{ width: 120 }}>Price</DataTable.Title>
+                <DataTable.Title numeric style={{ width: 120 }}>Total</DataTable.Title>
+                <DataTable.Title style={{ width: 60, justifyContent: 'flex-end' }}>
+                  <Text>{''}</Text>
+                </DataTable.Title>
+              </DataTable.Header>
+              {items.map((item) => {
+                const quantity = editItems[String(item.riskassessmentitemid)]?.quantity ?? item.qty;
+                const price = editItems[String(item.riskassessmentitemid)]?.price ?? item.price;
+                const make = editItems[String(item.riskassessmentitemid)]?.make ?? item.description ?? '';
+                const model = editItems[String(item.riskassessmentitemid)]?.model ?? item.model ?? '';
+                const serialNumber = editItems[String(item.riskassessmentitemid)]?.serialNumber ?? item.assessmentregisterid ?? '';
+                const total = (parseInt(quantity || '1', 10) || 1) * (parseFloat(price || '0') || 0);
+                return (
+                  <DataTable.Row key={item.riskassessmentitemid}>
+                    <DataTable.Cell style={{ width: 180 }}>
+                      <View style={styles.itemDescriptionCell}>
+                        <View>
+                          {/* Description is always read-only, now using itemprompt */}
+                          <Text numberOfLines={2} ellipsizeMode="tail" style={{ flexWrap: 'wrap', width: 180 }}>{item.itemprompt}</Text>
+                          {showRoom && item.location && (
+                            <Text style={styles.itemDetail}>Room: {item.location}</Text>
+                          )}
+                        </View>
+                      </View>
+                    </DataTable.Cell>
+                    <DataTable.Cell style={{ width: 180 }}>
+                      {editable ? (
+                        <PaperTextInput
+                          value={make}
+                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'make', v)}
+                          style={{ width: 180, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
+                          theme={{ colors: { text: '#222' } }}
+                        />
+                      ) : (
+                        <Text>{make}</Text>
+                      )}
+                    </DataTable.Cell>
+                    <DataTable.Cell style={{ width: 180 }}>
+                      {editable ? (
+                        <PaperTextInput
+                          value={model}
+                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'model', v)}
+                          style={{ width: 180, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
+                          theme={{ colors: { text: '#222' } }}
+                        />
+                      ) : (
+                        <Text>{model}</Text>
+                      )}
+                    </DataTable.Cell>
+                    <DataTable.Cell style={{ width: 180 }}>
+                      {editable ? (
+                        <PaperTextInput
+                          value={serialNumber}
+                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'serialNumber', v)}
+                          style={{ width: 180, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
+                          theme={{ colors: { text: '#222' } }}
+                        />
+                      ) : (
+                        <Text>{serialNumber}</Text>
+                      )}
+                    </DataTable.Cell>
+                    <DataTable.Cell numeric style={{ width: 100 }}>
+                      {editable ? (
+                        <PaperTextInput
+                          value={quantity}
+                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'quantity', v)}
+                          keyboardType="numeric"
+                          style={{ width: 100, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
+                          theme={{ colors: { text: '#222' } }}
+                        />
+                      ) : (
+                        <Text>{quantity}</Text>
+                      )}
+                    </DataTable.Cell>
+                    <DataTable.Cell numeric style={{ width: 120 }}>
+                      {editable ? (
+                        <PaperTextInput
+                          value={price}
+                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'price', v)}
+                          keyboardType="numeric"
+                          style={{ width: 120, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
+                          theme={{ colors: { text: '#222' } }}
+                        />
+                      ) : (
+                        <Text>{price}</Text>
+                      )}
+                    </DataTable.Cell>
+                    <DataTable.Cell numeric style={{ width: 120 }}>
+                      <Text>{formatCurrency(total)}</Text>
+                    </DataTable.Cell>
+                    <DataTable.Cell style={{ width: 60 }}>
+                      {editable && (
+                        <IconButton
+                          icon="delete"
+                          size={20}
+                          onPress={() => onDeleteItem(String(item.riskassessmentitemid))}
+                          iconColor="#e74c3c"
+                        />
+                      )}
+                    </DataTable.Cell>
+                  </DataTable.Row>
+                );
+              })}
+              <DataTable.Row style={styles.totalRow}>
+                <DataTable.Cell style={{ width: 180 }}><Text style={styles.totalLabel}>Total</Text></DataTable.Cell>
+                <DataTable.Cell style={{ width: 180 }}><Text>{''}</Text></DataTable.Cell>
+                <DataTable.Cell style={{ width: 180 }}><Text>{''}</Text></DataTable.Cell>
+                <DataTable.Cell style={{ width: 180 }}><Text>{''}</Text></DataTable.Cell>
+                <DataTable.Cell style={{ width: 100 }}><Text>{''}</Text></DataTable.Cell>
+                <DataTable.Cell style={{ width: 120 }}><Text>{''}</Text></DataTable.Cell>
+                <DataTable.Cell numeric style={{ width: 120 }}>
+                  <Text style={styles.totalValue}>
+                    {formatCurrency(itemUtils.calculateTotalValue(items))}
+                  </Text>
+                </DataTable.Cell>
+                <DataTable.Cell style={{ width: 60 }}><Text>{''}</Text></DataTable.Cell>
+              </DataTable.Row>
+            </DataTable>
+          </ScrollView>
+        </View>
+      </ScrollView>
+    </Card>
+  );
+};
 
 /**
  * Dynamic form component that generates fields based on category configuration
@@ -670,12 +763,12 @@ export const DynamicForm: React.FC<{
             <View style={styles.quantityField}>
               <FormInputField
                 label="Quantity"
-                value={item.quantity}
-                onChangeText={(value) => handleFieldChange('quantity', value)}
+                value={item.qty}
+                onChangeText={(value) => handleFieldChange('qty', value)}
                 keyboardType="numeric"
                 placeholder="1"
                 handwritingEnabled={handwritingEnabled}
-                onHandwriting={onHandwriting ? () => onHandwriting('quantity') : undefined}
+                onHandwriting={onHandwriting ? () => onHandwriting('qty') : undefined}
               />
             </View>
           )}

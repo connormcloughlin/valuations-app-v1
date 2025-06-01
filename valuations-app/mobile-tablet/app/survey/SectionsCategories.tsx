@@ -101,21 +101,31 @@ const SectionsCategoriesScreen = () => {
       .then((res: any) => {
         console.log('[SectionsCategoriesScreen] getRiskAssessmentItems response:', res);
         if (res.success && res.data) {
-          setItems(prev => ({ ...prev, [categoryId]: res.data.map((item: any) => ({
-            id: item.id || item.itemid || item.riskassessmentitemid || '',
-            type: item.type || item.itemtype || '',
-            description: item.description || '',
-            quantity: String(item.quantity || '1'),
-            price: String(item.price || '0'),
-            room: item.room || '',
-            notes: item.notes || '',
-            categoryId: categoryId,
-            make: item.make || '',
-            model: item.model || '',
-            selection: item.selection || '',
-            serialNumber: item.serialNumber || '',
-            photo: item.photo || undefined,
-          })) }));
+          setItems(prev => ({
+            ...prev,
+            [categoryId]: res.data.map((item: any) => ({
+              riskassessmentitemid: item.riskassessmentitemid ?? '',
+              riskassessmentcategoryid: item.riskassessmentcategoryid ?? '',
+              itemprompt: item.itemprompt ?? '',
+              itemtype: item.itemtype ?? '',
+              rank: item.rank ?? '',
+              commaseparatedlist: item.commaseparatedlist ?? '',
+              selectedanswer: item.selectedanswer ?? '',
+              qty: item.qty ?? '',
+              price: item.price ?? '',
+              description: item.description ?? '',
+              model: item.model ?? '',
+              location: item.location ?? '',
+              assessmentregisterid: item.assessmentregisterid ?? '',
+              assessmentregistertypeid: item.assessmentregistertypeid ?? '',
+              isactive: item.isactive ?? '',
+              createdby: item.createdby ?? '',
+              createddate: item.createddate ?? '',
+              modifiedby: item.modifiedby ?? '',
+              modifieddate: item.modifieddate ?? '',
+              id: item.riskassessmentitemid ?? item.id ?? '', // for UI key
+            }))
+          }));
         } else {
           setItemsError(prev => ({ ...prev, [categoryId]: res.message || 'Failed to load items' }));
         }
@@ -215,11 +225,6 @@ const SectionsCategoriesScreen = () => {
             {expandedCategory && itemsError[expandedCategory] && <Text style={{ color: 'red', marginTop: 16 }}>{itemsError[expandedCategory]}</Text>}
             {expandedCategory && items[expandedCategory] && (
               <View style={{ backgroundColor: '#f7fafd', borderRadius: 12, padding: 12, shadowColor: '#1976d2', shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 }}>
-                <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e3e8f0', marginBottom: 8, paddingBottom: 6 }}>
-                  {['Type', 'Description', 'Model', 'Selection', 'Quantity', 'Price (R)'].map(col => (
-                    <Text key={col} style={{ flex: 1, fontWeight: 'bold', color: '#1976d2', fontSize: 15, minWidth: 100 }}>{col}</Text>
-                  ))}
-                </View>
                 <ItemsTable items={items[expandedCategory]} onDeleteItem={() => {}} editable={appointmentStatus !== 'completed'} />
               </View>
             )}
