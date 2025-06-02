@@ -27,6 +27,7 @@ import Svg, { Path } from 'react-native-svg';
 import { getCategoryConfig, CategoryConfig, CategoryField } from '../../../config/categories';
 import i18n, { t, formatCurrency } from '../../../utils/i18n';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { API_BASE_URL } from '../../../constants/apiConfig';
 
 // Types
 export interface Item {
@@ -539,26 +540,141 @@ export const EmptyState: React.FC = () => (
 export const ItemsTable: React.FC<{
   items: Item[];
   onDeleteItem: (id: string) => void;
+  categoryId: string;
   showRoom?: boolean;
   showMakeModel?: boolean;
   editable?: boolean;
-}> = ({ items, onDeleteItem, showRoom = false, showMakeModel = false, editable = true }) => {
-  // Local state for editing quantity/price
+  onRefresh?: () => void;
+}> = ({ items, onDeleteItem, categoryId, showRoom = false, showMakeModel = false, editable = true, onRefresh }) => {
   const [editItems, setEditItems] = useState<{ [id: string]: { quantity: string; price: string; make?: string; model?: string; serialNumber?: string } }>({});
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [saveMessage, setSaveMessage] = useState('');
 
+  // Save to local storage on every edit
   const handleEdit = (id: string, field: 'quantity' | 'price' | 'make' | 'model' | 'serialNumber', value: string) => {
-    setEditItems(prev => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [field]: value,
-      },
-    }));
+    setEditItems(prev => {
+      const updated = {
+        ...prev,
+        [id]: {
+          ...prev[id],
+          [field]: value,
+        },
+      };
+      // Update local storage with merged edits
+      const updatedItems = items.map(item => {
+        if (String(item.riskassessmentitemid) === id) {
+          return {
+            ...item,
+            qty: updated[id]?.quantity ?? item.qty,
+            price: updated[id]?.price ?? item.price,
+            description: updated[id]?.make ?? item.description,
+            model: updated[id]?.model ?? item.model,
+            assessmentregisterid: updated[id]?.serialNumber ?? item.assessmentregisterid,
+          };
+        }
+        return item;
+      });
+      itemUtils.saveUserItems(updatedItems, categoryId);
+      return updated;
+    });
   };
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = Object.keys(editItems).length > 0;
+
+  // Save handler
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveStatus('idle');
+    setSaveMessage('');
+    try {
+      const updates = Object.entries(editItems);
+      for (const [id, changes] of updates) {
+        const item = items.find(i => String(i.riskassessmentitemid) === id);
+        if (!item) continue;
+        // Build payload with all required fields and correct types
+        const updated = {
+          riskassessmentitemid: Number(item.riskassessmentitemid) || 0,
+          riskassessmentcategoryid: Number(item.riskassessmentcategoryid) || 0,
+          itemprompt: item.itemprompt || '',
+          itemtype: Number(item.itemtype) || 0,
+          rank: Number(item.rank) || 0,
+          commaseparatedlist: item.commaseparatedlist || '',
+          selectedanswer: item.selectedanswer || '',
+          qty: Number(changes.quantity ?? item.qty) || 0,
+          price: Number(changes.price ?? item.price) || 0,
+          description: changes.make ?? item.description ?? '',
+          model: changes.model ?? item.model ?? '',
+          location: item.location || '',
+          assessmentregisterid: Number(item.assessmentregisterid) || 0,
+          assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
+          datecreated: (item as any).datecreated || new Date().toISOString(),
+          createdbyid: (item as any).createdbyid || item.createdby || '',
+          dateupdated: new Date().toISOString(),
+          updatedbyid: (item as any).updatedbyid || item.modifiedby || '',
+          issynced: (item as any).issynced ?? false,
+          syncversion: (item as any).syncversion || 0,
+          deviceid: (item as any).deviceid || '',
+          syncstatus: (item as any).syncstatus || '',
+          synctimestamp: (item as any).synctimestamp || new Date().toISOString(),
+          hasphoto: (item as any).hasphoto ?? false,
+          latitude: Number((item as any).latitude) || 0,
+          longitude: Number((item as any).longitude) || 0,
+          notes: (item as any).notes || '',
+        };
+        // Use API_BASE_URL
+        const url = `${API_BASE_URL}/risk-assessment-items/${item.riskassessmentitemid}`;
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated),
+        });
+        if (!response.ok) {
+          const errorBody = await response.text();
+          console.error('Failed to update item:', response.status, errorBody);
+          setSaveStatus('error');
+          setSaveMessage(`Failed to save changes: ${errorBody}`);
+          setSaving(false);
+          return;
+        }
+      }
+      setSaveStatus('success');
+      setSaveMessage('Changes saved successfully.');
+      setEditItems({});
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      setSaveStatus('error');
+      setSaveMessage('Failed to save changes.');
+      console.error('Failed to save changes:', e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save button component
+  const SaveButton = () => (
+    <View>
+      <Button
+        mode="contained"
+        onPress={handleSave}
+        disabled={!hasUnsavedChanges || saving}
+        loading={saving}
+        style={{ marginVertical: 8, backgroundColor: '#1976d2', borderRadius: 8 }}
+        contentStyle={{ height: 48 }}
+        labelStyle={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}
+      >
+        {saving ? 'Saving...' : 'Save Changes'}
+      </Button>
+      {saveStatus === 'success' && <Text style={{ color: 'green', marginTop: 8 }}>{saveMessage}</Text>}
+      {saveStatus === 'error' && <Text style={{ color: 'red', marginTop: 8 }}>{saveMessage}</Text>}
+    </View>
+  );
 
   return (
     <Card style={styles.card}>
       <Card.Title title="Added Items" />
+      <SaveButton />
       <ScrollView horizontal>
         <View style={{ flexDirection: 'row' }}>
           <ScrollView style={{ maxHeight: 400 }}>
@@ -691,6 +807,7 @@ export const ItemsTable: React.FC<{
           </ScrollView>
         </View>
       </ScrollView>
+      <SaveButton />
     </Card>
   );
 };

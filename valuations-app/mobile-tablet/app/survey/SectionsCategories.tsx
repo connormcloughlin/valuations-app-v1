@@ -127,8 +127,8 @@ const SectionsCategoriesScreen = () => {
               rank: item.rank ?? '',
               commaseparatedlist: item.commaseparatedlist ?? '',
               selectedanswer: item.selectedanswer ?? '',
-              qty: item.qty ?? '',
-              price: item.price ?? '',
+              qty: item.qty != null ? String(item.qty) : '',
+              price: item.price != null ? String(item.price) : '',
               description: item.description ?? '',
               model: item.model ?? '',
               location: item.location ?? '',
@@ -246,7 +246,13 @@ const SectionsCategoriesScreen = () => {
             {expandedCategory && itemsError[expandedCategory] && <Text style={{ color: 'red', marginTop: 16 }}>{itemsError[expandedCategory]}</Text>}
             {expandedCategory && items[expandedCategory] && (
               <View style={{ backgroundColor: '#f7fafd', borderRadius: 12, padding: 12, shadowColor: '#1976d2', shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 }}>
-                <ItemsTable items={items[expandedCategory]} onDeleteItem={() => {}} editable={appointmentStatus !== 'completed'} />
+                <ItemsTable
+                  items={items[expandedCategory]}
+                  onDeleteItem={() => {}}
+                  editable={appointmentStatus !== 'completed'}
+                  categoryId={expandedCategory}
+                  onRefresh={() => fetchItems(expandedCategory)}
+                />
               </View>
             )}
             {!expandedCategory && <Text style={{ color: '#bbb', fontSize: 16, marginTop: 32, textAlign: 'center' }}>Select a category to view items</Text>}
