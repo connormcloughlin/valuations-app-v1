@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Modal, Button, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Modal, Button, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Collapsible } from '../../components/Collapsible';
 import api from '../../api';
@@ -12,6 +12,20 @@ interface Section {
 interface Category {
   id: string;
   title: string;
+}
+
+// Orientation hook
+function useOrientation() {
+  const [dimensions, setDimensions] = React.useState({ window: Dimensions.get('window') });
+  React.useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions({ window });
+    });
+    return () => subscription.remove();
+  }, []);
+  const { width, height } = dimensions.window;
+  const isLandscape = width > height;
+  return { isLandscape, width, height };
 }
 
 const SectionsCategoriesScreen = () => {
@@ -37,6 +51,8 @@ const SectionsCategoriesScreen = () => {
   // For add item modal
   const [addItemCategoryId, setAddItemCategoryId] = useState<string|null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
+
+  const { isLandscape, height } = useOrientation();
 
   // Fetch sections on mount
   useEffect(() => {
@@ -186,38 +202,43 @@ const SectionsCategoriesScreen = () => {
       {expandedSection && (
         <View style={{ flex: 1, flexDirection: 'row', marginHorizontal: 16, backgroundColor: '#fff', borderRadius: 18, shadowColor: '#1976d2', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.10, shadowRadius: 8, elevation: 2, padding: 12 }}>
           {/* Categories vertical list */}
-          <View style={{ minWidth: 150, marginRight: 12, paddingVertical: 4, borderRightWidth: 1, borderRightColor: '#e3e8f0', justifyContent: 'flex-start' }}>
+          <View style={{ minWidth: 150, maxWidth: 220, marginRight: 12, paddingVertical: 4, borderRightWidth: 1, borderRightColor: '#e3e8f0', justifyContent: 'flex-start', flexShrink: 0 }}>
             <Text style={{ fontWeight: 'bold', fontSize: 12, marginBottom: 6, color: '#1976d2', marginLeft: 6 }}>Categories</Text>
             {categoriesLoading[expandedSection] && <Text style={{ marginLeft: 8, color: '#888' }}>Loading categories...</Text>}
             {categoriesError[expandedSection] && <Text style={{ color: 'red', marginLeft: 8 }}>{categoriesError[expandedSection]}</Text>}
-            {categories[expandedSection]?.map(category => (
-              <TouchableOpacity
-                key={category.id}
-                style={{
-                  paddingVertical: 8,
-                  paddingHorizontal: 10,
-                  borderRadius: 7,
-                  marginVertical: 2,
-                  marginHorizontal: 2,
-                  backgroundColor: expandedCategory === category.id ? '#e3f0fc' : 'transparent',
-                  borderWidth: expandedCategory === category.id ? 1.5 : 0,
-                  borderColor: expandedCategory === category.id ? '#1976d2' : 'transparent',
-                  shadowColor: '#1976d2',
-                  shadowOpacity: expandedCategory === category.id ? 0.10 : 0,
-                  shadowRadius: 4,
-                  elevation: expandedCategory === category.id ? 2 : 0,
-                }}
-                activeOpacity={0.85}
-                onPress={() => {
-                  setExpandedCategory(category.id);
-                  if (!items[category.id] && !itemsLoading[category.id]) {
-                    fetchItems(category.id);
-                  }
-                }}
-              >
-                <Text style={{ fontWeight: expandedCategory === category.id ? 'bold' : '500', color: expandedCategory === category.id ? '#1976d2' : '#333', fontSize: 11 }}>{category.title}</Text>
-              </TouchableOpacity>
-            ))}
+            <ScrollView
+              style={{ flexGrow: 1, maxHeight: isLandscape ? height * 0.75 : height * 0.6, minHeight: 80 }}
+              showsVerticalScrollIndicator={true}
+            >
+              {categories[expandedSection]?.map(category => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={{
+                    paddingVertical: 8,
+                    paddingHorizontal: 10,
+                    borderRadius: 7,
+                    marginVertical: 2,
+                    marginHorizontal: 2,
+                    backgroundColor: expandedCategory === category.id ? '#e3f0fc' : 'transparent',
+                    borderWidth: expandedCategory === category.id ? 1.5 : 0,
+                    borderColor: expandedCategory === category.id ? '#1976d2' : 'transparent',
+                    shadowColor: '#1976d2',
+                    shadowOpacity: expandedCategory === category.id ? 0.10 : 0,
+                    shadowRadius: 4,
+                    elevation: expandedCategory === category.id ? 2 : 0,
+                  }}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    setExpandedCategory(category.id);
+                    if (!items[category.id] && !itemsLoading[category.id]) {
+                      fetchItems(category.id);
+                    }
+                  }}
+                >
+                  <Text style={{ fontWeight: expandedCategory === category.id ? 'bold' : '500', color: expandedCategory === category.id ? '#1976d2' : '#333', fontSize: 11 }}>{category.title}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
           {/* Items grid view for the selected category */}
           <View style={{ flex: 1, padding: 8, minHeight: 320 }}>

@@ -258,17 +258,21 @@ export default function NewSurveyScreen() {
     return (
       <Card key={`template-card-${templateId}-${index}`} style={styles.templateCard}>
         <Card.Content>
-          <Text style={styles.templateTitle}>{templateName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <Text style={styles.templateTitle}>{templateName}</Text>
+            <Button
+              mode="contained"
+              compact
+              style={{ marginLeft: 12, paddingVertical: 0, paddingHorizontal: 10, minWidth: 0, height: 37, backgroundColor: '#4a90e2' }}
+              labelStyle={{ fontSize: 18, color: '#fff' }}
+              onPress={() => startSurveyWithTemplate(template)}
+            >
+              Continue
+            </Button>
+          </View>
           {template.comments && (
             <Text style={styles.templateDescription}>{template.comments}</Text>
           )}
-          <Button 
-            mode="contained" 
-            style={styles.templateButton}
-            onPress={() => startSurveyWithTemplate(template)}
-          >
-            Continue with this Template
-          </Button>
         </Card.Content>
       </Card>
     );
