@@ -247,11 +247,11 @@ const SectionsCategoriesScreen = () => {
             {expandedCategory && items[expandedCategory] && (
               <View style={{ backgroundColor: '#f7fafd', borderRadius: 12, padding: 12, shadowColor: '#1976d2', shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 }}>
                 <ItemsTable
-                  items={items[expandedCategory]}
-                  onDeleteItem={() => {}}
-                  editable={appointmentStatus !== 'completed'}
                   categoryId={expandedCategory}
+                  editable={appointmentStatus !== 'completed'}
                   onRefresh={() => fetchItems(expandedCategory)}
+                  showRoom={true}
+                  showMakeModel={true}
                 />
               </View>
             )}

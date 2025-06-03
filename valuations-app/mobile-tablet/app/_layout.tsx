@@ -11,6 +11,7 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ConnectionStatus from '../components/ConnectionStatus';
 import connectionUtils from '../utils/connectionUtils';
+import { initializeDatabase } from '../utils/db';
 
 import { useColorScheme } from '../hooks/useColorScheme';
 import { useOrientation } from '../hooks/useOrientation';
@@ -48,6 +49,19 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [loaded]);
+
+  // Initialize database
+  useEffect(() => {
+    const initDatabase = async () => {
+      try {
+        await initializeDatabase();
+        console.log('Database initialized successfully');
+      } catch (error) {
+        console.error('Error initializing database:', error);
+      }
+    };
+    initDatabase();
+  }, []);
 
   useEffect(() => {
     async function unlockOrientation() {
@@ -104,7 +118,7 @@ export default function RootLayout() {
             <Stack.Screen name="appointments/in-progress" options={{ headerShown: true }} />
             <Stack.Screen name="appointments/completed" options={{ headerShown: true }} />
             <Stack.Screen name="+not-found" options={{ headerShown: true }} />
-            <Stack.Screen name="survey/sections-categories" />
+            <Stack.Screen name="survey/SectionsCategories" />
           </Stack>
           <StatusBar style="auto" />
         </PaperProvider>

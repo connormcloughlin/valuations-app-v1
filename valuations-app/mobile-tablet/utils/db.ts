@@ -1,97 +1,168 @@
-import * as SQLite from "expo-sqlite";
+import * as SQLite from 'expo-sqlite';
 
-const db = SQLite.openDatabase("valuations.db");
+// Initialize database using the new async API
+let db: SQLite.SQLiteDatabase;
+
+interface SQLiteResult {
+  rows: {
+    _array: any[];
+    length: number;
+  };
+  rowsAffected: number;
+  insertId?: number | null;
+}
+
+// Initialize the database
+export async function initializeDatabase() {
+  try {
+    console.log('Initializing database...');
+    db = await SQLite.openDatabaseAsync('valuations.db');
+    console.log('Database opened successfully');
+    await createTables();
+    return db;
+  } catch (error) {
+    console.error('Error initializing database:', error);
+    throw error;
+  }
+}
 
 // Helper to run SQL with promise
-export function runSql(sql: string, params: any[] = []): Promise<any> {
-  return new Promise((resolve, reject) => {
-    db.transaction((tx: any) => {
-      tx.executeSql(
-        sql,
-        params,
-        (_: any, result: any) => resolve(result),
-        (_: any, error: any) => {
-          reject(error);
-          return false;
+export async function runSql(sql: string, params: any[] = []): Promise<SQLiteResult> {
+  try {
+    console.log('Executing SQL:', sql, 'with params:', params);
+    
+    if (sql.trim().toLowerCase().startsWith('select')) {
+      // For SELECT queries, use getAllAsync
+      const result = await db.getAllAsync(sql, params);
+      return {
+        rows: {
+          _array: result,
+          length: result.length
         },
-      );
-    });
-  });
+        rowsAffected: 0,
+        insertId: null
+      };
+    } else {
+      // For other queries, use runAsync
+      const result = await db.runAsync(sql, params);
+      return {
+        rows: { _array: [], length: 0 },
+        rowsAffected: result.changes,
+        insertId: result.lastInsertRowId
+      };
+    }
+  } catch (error) {
+    console.error('Error executing SQL:', error);
+    throw error;
+  }
 }
 
 // Create all tables
 export async function createTables() {
-  // Appointments
-  await runSql(`
-    CREATE TABLE IF NOT EXISTS appointments (
-      appointmentID INTEGER PRIMARY KEY,
-      orderID INTEGER,
-      startTime TEXT,
-      endTime TEXT,
-      followUpDate TEXT,
-      arrivalTime TEXT,
-      departureTime TEXT,
-      inviteStatus TEXT,
-      meetingStatus TEXT,
-      location TEXT,
-      comments TEXT,
-      category TEXT,
-      outoftown TEXT,
-      surveyorComments TEXT,
-      eventId TEXT,
-      surveyorEmail TEXT,
-      dateModified TEXT,
-      pending_sync INTEGER DEFAULT 0
+  try {
+    console.log('Starting database table creation...');
+    
+    // Create tables using execAsync for DDL operations
+    console.log('Creating appointments table...');
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS appointments (
+        appointmentID INTEGER PRIMARY KEY,
+        orderID INTEGER,
+        startTime TEXT,
+        endTime TEXT,
+        followUpDate TEXT,
+        arrivalTime TEXT,
+        departureTime TEXT,
+        inviteStatus TEXT,
+        meetingStatus TEXT,
+        location TEXT,
+        comments TEXT,
+        category TEXT,
+        outoftown TEXT,
+        surveyorComments TEXT,
+        eventId TEXT,
+        surveyorEmail TEXT,
+        dateModified TEXT,
+        pending_sync INTEGER DEFAULT 0
+      );
+    `);
+    
+    console.log('Creating risk_assessment_master table...');
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS risk_assessment_master (
+        riskassessmentid INTEGER PRIMARY KEY,
+        assessmenttypename TEXT,
+        surveydate TEXT,
+        clientnumber TEXT,
+        comments TEXT,
+        totalvalue REAL,
+        iscomplete INTEGER,
+        pending_sync INTEGER DEFAULT 0
+      );
+    `);
+    
+    console.log('Creating risk_assessment_items table...');
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS risk_assessment_items (
+        riskassessmentitemid INTEGER PRIMARY KEY,
+        riskassessmentcategoryid INTEGER,
+        itemprompt TEXT,
+        itemtype INTEGER,
+        rank INTEGER,
+        commaseparatedlist TEXT,
+        selectedanswer TEXT,
+        qty INTEGER,
+        price REAL,
+        description TEXT,
+        model TEXT,
+        location TEXT,
+        assessmentregisterid INTEGER,
+        assessmentregistertypeid INTEGER,
+        datecreated TEXT,
+        createdbyid TEXT,
+        dateupdated TEXT,
+        updatedbyid TEXT,
+        issynced INTEGER,
+        syncversion INTEGER,
+        deviceid TEXT,
+        syncstatus TEXT,
+        synctimestamp TEXT,
+        hasphoto INTEGER,
+        latitude REAL,
+        longitude REAL,
+        notes TEXT,
+        pending_sync INTEGER DEFAULT 0
+      );
+    `);
+    
+    // Verify tables were created
+    console.log('Verifying tables...');
+    const tables = await runSql("SELECT name FROM sqlite_master WHERE type='table'");
+    console.log('Tables in database:', tables.rows._array);
+    
+    // Test database access
+    console.log('Testing database access...');
+    await runSql(
+      `INSERT INTO risk_assessment_items (
+        riskassessmentitemid,
+        riskassessmentcategoryid,
+        itemprompt,
+        itemtype,
+        rank
+      ) VALUES (?, ?, ?, ?, ?)`,
+      [0, 0, 'TEST', 1, 1]
     );
-  `);
-
-  // Risk Assessment Master
-  await runSql(`
-    CREATE TABLE IF NOT EXISTS risk_assessment_master (
-      riskassessmentid INTEGER PRIMARY KEY,
-      assessmenttypename TEXT,
-      surveydate TEXT,
-      clientnumber TEXT,
-      comments TEXT,
-      totalvalue REAL,
-      iscomplete INTEGER,
-      pending_sync INTEGER DEFAULT 0
-    );
-  `);
-
-  // Risk Assessment Items
-  await runSql(`
-    CREATE TABLE IF NOT EXISTS risk_assessment_items (
-      riskassessmentitemid INTEGER PRIMARY KEY,
-      riskassessmentcategoryid INTEGER,
-      itemprompt TEXT,
-      itemtype INTEGER,
-      rank INTEGER,
-      commaseparatedlist TEXT,
-      selectedanswer TEXT,
-      qty INTEGER,
-      price REAL,
-      description TEXT,
-      model TEXT,
-      location TEXT,
-      assessmentregisterid INTEGER,
-      assessmentregistertypeid INTEGER,
-      datecreated TEXT,
-      createdbyid TEXT,
-      dateupdated TEXT,
-      updatedbyid TEXT,
-      issynced INTEGER,
-      syncversion INTEGER,
-      deviceid TEXT,
-      syncstatus TEXT,
-      synctimestamp TEXT,
-      hasphoto INTEGER,
-      latitude REAL,
-      longitude REAL,
-      notes TEXT,
-      pending_sync INTEGER DEFAULT 0
-    );
-  `);
+    
+    const testSelect = await runSql('SELECT * FROM risk_assessment_items WHERE riskassessmentitemid = 0');
+    console.log('Test record:', testSelect.rows._array);
+    
+    await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = 0');
+    console.log('Database initialization completed successfully');
+    
+  } catch (error) {
+    console.error('Error creating database tables:', error);
+    throw error;
+  }
 }
 
 // --- Types ---
@@ -216,22 +287,91 @@ export async function deleteRiskAssessmentMaster(id: number) {
 
 // --- CRUD for Risk Assessment Items ---
 export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
-  await runSql(
-    `INSERT OR REPLACE INTO risk_assessment_items (
-      riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank, commaseparatedlist, selectedanswer,
-      qty, price, description, model, location, assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
-      dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus, synctimestamp, hasphoto, latitude, longitude, notes, pending_sync
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      i.riskassessmentitemid, i.riskassessmentcategoryid, i.itemprompt, i.itemtype, i.rank, i.commaseparatedlist, i.selectedanswer,
-      i.qty, i.price, i.description, i.model, i.location, i.assessmentregisterid, i.assessmentregistertypeid, i.datecreated, i.createdbyid,
-      i.dateupdated, i.updatedbyid, i.issynced, i.syncversion, i.deviceid, i.syncstatus, i.synctimestamp, i.hasphoto, i.latitude, i.longitude, i.notes, i.pending_sync ?? 1
-    ]
-  );
+  try {
+    // Log the item being inserted
+    console.log('Attempting to insert Risk Assessment Item:', {
+      id: i.riskassessmentitemid,
+      categoryId: i.riskassessmentcategoryid,
+      prompt: i.itemprompt,
+      type: i.itemtype,
+      rank: i.rank
+    });
+
+    // Use parameterized query for better safety and reliability
+    const sql = `
+      INSERT OR REPLACE INTO risk_assessment_items (
+        riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
+        commaseparatedlist, selectedanswer, qty, price, description, model, location,
+        assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
+        dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
+        synctimestamp, hasphoto, latitude, longitude, notes, pending_sync
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `;
+
+    const params = [
+      i.riskassessmentitemid,
+      i.riskassessmentcategoryid,
+      i.itemprompt,
+      i.itemtype,
+      i.rank,
+      i.commaseparatedlist,
+      i.selectedanswer,
+      i.qty,
+      i.price,
+      i.description,
+      i.model,
+      i.location,
+      i.assessmentregisterid,
+      i.assessmentregistertypeid,
+      i.datecreated,
+      i.createdbyid,
+      i.dateupdated,
+      i.updatedbyid,
+      i.issynced ? 1 : 0,
+      i.syncversion,
+      i.deviceid,
+      i.syncstatus,
+      i.synctimestamp,
+      i.hasphoto ? 1 : 0,
+      i.latitude,
+      i.longitude,
+      i.notes,
+      i.pending_sync ?? 1
+    ];
+
+    await runSql(sql, params);
+    
+    // Verify the insert by fetching the item back
+    const verifyResult = await runSql(
+      'SELECT * FROM risk_assessment_items WHERE riskassessmentitemid = ?',
+      [i.riskassessmentitemid]
+    );
+    console.log('Verification query result:', verifyResult);
+    
+    if (!verifyResult.rows._array.length) {
+      throw new Error('Item was not inserted successfully');
+    }
+    
+    console.log('Successfully inserted and verified item');
+    
+  } catch (error) {
+    console.error('Error inserting risk assessment item:', error);
+    throw error;
+  }
 }
 export async function getAllRiskAssessmentItems(): Promise<RiskAssessmentItem[]> {
-  const res = await runSql('SELECT * FROM risk_assessment_items');
-  return res.rows._array;
+  try {
+    console.log('Fetching all risk assessment items from SQLite');
+    const res = await runSql('SELECT * FROM risk_assessment_items');
+    console.log('SQLite query result:', res);
+    console.log('Number of items found:', res.rows._array.length);
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching risk assessment items from SQLite:', error);
+    return [];
+  }
 }
 export async function getRiskAssessmentItemById(id: number): Promise<RiskAssessmentItem | undefined> {
   const res = await runSql('SELECT * FROM risk_assessment_items WHERE riskassessmentitemid = ?', [id]);
@@ -242,4 +382,91 @@ export async function updateRiskAssessmentItem(i: RiskAssessmentItem) {
 }
 export async function deleteRiskAssessmentItem(id: number) {
   await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [id]);
+}
+
+// Get all items that need to be synced to the server
+export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmentItem[]> {
+  try {
+    console.log('Fetching pending sync risk assessment items from SQLite');
+    const res = await runSql('SELECT * FROM risk_assessment_items WHERE pending_sync = 1');
+    console.log('Pending sync items found:', res.rows._array.length);
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching pending sync risk assessment items:', error);
+    return [];
+  }
+}
+
+// Mark risk assessment items as synced (clear pending_sync flag)
+export async function markRiskAssessmentItemsAsSynced(itemIds: number[]) {
+  try {
+    for (const id of itemIds) {
+      await runSql(
+        'UPDATE risk_assessment_items SET pending_sync = 0, synctimestamp = ? WHERE riskassessmentitemid = ?',
+        [new Date().toISOString(), id]
+      );
+    }
+    console.log('Marked items as synced:', itemIds);
+  } catch (error) {
+    console.error('Error marking risk assessment items as synced:', error);
+    throw error;
+  }
+}
+
+// Get all appointments that need to be synced to the server
+export async function getPendingSyncAppointments() {
+  try {
+    console.log('Fetching pending sync appointments from SQLite');
+    const res = await runSql('SELECT * FROM appointments WHERE pending_sync = 1');
+    console.log('Pending sync appointments found:', res.rows._array.length);
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching pending sync appointments:', error);
+    return [];
+  }
+}
+
+// Mark appointments as synced (clear pending_sync flag)
+export async function markAppointmentsAsSynced(appointmentIds: number[]) {
+  try {
+    for (const id of appointmentIds) {
+      await runSql(
+        'UPDATE appointments SET pending_sync = 0, dateModified = ? WHERE appointmentID = ?',
+        [new Date().toISOString(), id]
+      );
+    }
+    console.log('Marked appointments as synced:', appointmentIds);
+  } catch (error) {
+    console.error('Error marking appointments as synced:', error);
+    throw error;
+  }
+}
+
+// Get all risk assessment masters that need to be synced to the server
+export async function getPendingSyncRiskAssessmentMasters(): Promise<RiskAssessmentMaster[]> {
+  try {
+    console.log('Fetching pending sync risk assessment masters from SQLite');
+    const res = await runSql('SELECT * FROM risk_assessment_master WHERE pending_sync = 1');
+    console.log('Pending sync masters found:', res.rows._array.length);
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching pending sync risk assessment masters:', error);
+    return [];
+  }
+}
+
+// Mark risk assessment masters as synced (clear pending_sync flag)
+export async function markRiskAssessmentMastersAsSynced(masterIds: number[]) {
+  try {
+    for (const id of masterIds) {
+      await runSql(
+        'UPDATE risk_assessment_master SET pending_sync = 0 WHERE riskassessmentid = ?',
+        [id]
+      );
+    }
+    console.log('Marked masters as synced:', masterIds);
+  } catch (error) {
+    console.error('Error marking risk assessment masters as synced:', error);
+    throw error;
+  }
 }

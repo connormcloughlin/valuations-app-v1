@@ -127,7 +127,8 @@ const getRiskAssessmentSections = async (riskAssessmentId: string): Promise<ApiR
   try {
     // Try to get data from API
     console.log('Risk Assessment Sections Response Connor:', riskAssessmentId);
-    const response = await axiosInstance.get(`/risk-assessment-sections/assessment/${riskAssessmentId}`);
+    //const response = await axiosInstance.get(`/risk-assessment-sections/assessment/${riskAssessmentId}`);
+    const response = await axiosInstance.get(`/risk-assessment-master/sections/${riskAssessmentId}`);
     console.log('Risk Assessment Sections Response Connor:', response.data);
 
     if (response.data) {
@@ -229,6 +230,34 @@ const getRiskAssessmentItems = async (categoryId: string): Promise<ApiResponse> 
     } catch (cacheError) {
       console.error('Cache retrieval error:', cacheError);
     }
+    return handleApiError(error);
+  }
+};
+
+// Function to sync local changes back to the server
+const syncChanges = async (syncData: {
+  riskAssessmentItems?: any[];
+  riskAssessmentMasters?: any[];
+  appointments?: any[];
+  syncTimestamp?: string;
+}): Promise<ApiResponse> => {
+  try {
+    console.log('Syncing changes to server:', {
+      riskAssessmentItems: syncData.riskAssessmentItems?.length || 0,
+      riskAssessmentMasters: syncData.riskAssessmentMasters?.length || 0,
+      appointments: syncData.appointments?.length || 0,
+      syncTimestamp: syncData.syncTimestamp
+    });
+
+    const response = await axiosInstance.post('/sync/changes', syncData);
+    
+    return {
+      success: true,
+      data: response.data,
+      status: response.status,
+    };
+  } catch (error) {
+    console.error('Error syncing changes to server:', error);
     return handleApiError(error);
   }
 };
@@ -346,4 +375,5 @@ export default {
   getRiskTemplateCategories,
   getRiskTemplateItems,
   clearAllCachedData,
+  syncChanges
 }; 

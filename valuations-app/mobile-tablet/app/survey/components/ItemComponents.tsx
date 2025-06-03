@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -10,7 +10,8 @@ import {
   GestureResponderEvent,
   PanResponder,
   Modal,
-  Dimensions
+  Dimensions,
+  Alert
 } from 'react-native';
 import { 
   Button, 
@@ -28,6 +29,53 @@ import { getCategoryConfig, CategoryConfig, CategoryField } from '../../../confi
 import i18n, { t, formatCurrency } from '../../../utils/i18n';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../../constants/apiConfig';
+import api from '../../../api';
+import riskAssessmentSyncService from '../../../services/riskAssessmentSyncService';
+import {
+  getAllRiskAssessmentItems,
+  insertRiskAssessmentItem,
+  updateRiskAssessmentItem,
+  deleteRiskAssessmentItem,
+  RiskAssessmentItem,
+} from '../../../utils/db';
+
+// Types for API response
+interface ApiItem {
+  riskassessmentitemid: string | number;
+  riskassessmentcategoryid: string | number;
+  itemprompt?: string;
+  itemtype?: number;
+  rank?: number;
+  commaseparatedlist?: string;
+  selectedanswer?: string;
+  qty?: number;
+  price?: number;
+  description?: string;
+  model?: string;
+  location?: string;
+  assessmentregisterid?: number;
+  assessmentregistertypeid?: number;
+  datecreated?: string;
+  createdbyid?: string;
+  dateupdated?: string;
+  updatedbyid?: string;
+  issynced?: number;
+  syncversion?: number;
+  deviceid?: string;
+  syncstatus?: string;
+  synctimestamp?: string;
+  hasphoto?: number;
+  latitude?: number;
+  longitude?: number;
+  notes?: string;
+}
+
+interface ApiResponse {
+  success: boolean;
+  data?: ApiItem[];
+  status?: number;
+  message?: string;
+}
 
 // Types
 export interface Item {
@@ -538,52 +586,165 @@ export const EmptyState: React.FC = () => (
 );
 
 export const ItemsTable: React.FC<{
-  items: Item[];
-  onDeleteItem: (id: string) => void;
   categoryId: string;
   showRoom?: boolean;
   showMakeModel?: boolean;
   editable?: boolean;
   onRefresh?: () => void;
-}> = ({ items, onDeleteItem, categoryId, showRoom = false, showMakeModel = false, editable = true, onRefresh }) => {
-  const [editItems, setEditItems] = useState<{ [id: string]: { quantity: string; price: string; make?: string; model?: string; serialNumber?: string } }>({});
+}> = ({ categoryId, showRoom = false, showMakeModel = false, editable = true, onRefresh }) => {
+  const [items, setItems] = useState<RiskAssessmentItem[]>([]);
+  const [editItems, setEditItems] = useState<{ [key: string]: any }>({});
+  const [autoSavedItems, setAutoSavedItems] = useState<{ [key: string]: boolean }>({});
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [saveMessage, setSaveMessage] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [syncMessage, setSyncMessage] = useState('');
+  const [pendingChangesCount, setPendingChangesCount] = useState(0);
 
-  // Save to local storage on every edit
-  const handleEdit = (id: string, field: 'quantity' | 'price' | 'make' | 'model' | 'serialNumber', value: string) => {
-    setEditItems(prev => {
-      const updated = {
-        ...prev,
-        [id]: {
-          ...prev[id],
-          [field]: value,
-        },
-      };
-      // Update local storage with merged edits
-      const updatedItems = items.map(item => {
-        if (String(item.riskassessmentitemid) === id) {
-          return {
-            ...item,
-            qty: updated[id]?.quantity ?? item.qty,
-            price: updated[id]?.price ?? item.price,
-            description: updated[id]?.make ?? item.description,
-            model: updated[id]?.model ?? item.model,
-            assessmentregisterid: updated[id]?.serialNumber ?? item.assessmentregisterid,
-          };
+  useEffect(() => {
+    refreshItems();
+  }, [categoryId]);
+
+  // Load pending changes count
+  useEffect(() => {
+    const loadPendingChangesCount = async () => {
+      const count = await riskAssessmentSyncService.getPendingChangesCount();
+      setPendingChangesCount(count.total);
+    };
+    
+    loadPendingChangesCount();
+  }, [items]); // Reload when items change
+
+  const refreshItems = async () => {
+    console.log('Refreshing items for category:', categoryId);
+    try {
+      // Get items from SQLite
+      const localItems = await getAllRiskAssessmentItems();
+      const categoryItems = localItems.filter(item => 
+        String(item.riskassessmentcategoryid) === String(categoryId)
+      );
+      
+      // If no items found in SQLite for this category, fetch from API
+      if (categoryItems.length === 0) {
+        console.log('No items in SQLite for category, fetching from API:', categoryId);
+        const apiResponse = await api.getRiskAssessmentItems(categoryId);
+        
+        if (apiResponse?.success && Array.isArray(apiResponse.data)) {
+          console.log('Got items from API, storing in SQLite:', apiResponse.data.length);
+          
+          // Store each item in SQLite
+          for (const item of apiResponse.data) {
+            const sqliteItem = {
+              riskassessmentitemid: Number(item.riskassessmentitemid),
+              riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
+              itemprompt: item.itemprompt || '',
+              itemtype: Number(item.itemtype) || 0,
+              rank: Number(item.rank) || 0,
+              commaseparatedlist: item.commaseparatedlist || '',
+              selectedanswer: item.selectedanswer || '',
+              qty: Number(item.qty) || 0,
+              price: Number(item.price) || 0,
+              description: item.description || '',
+              model: item.model || '',
+              location: item.location || '',
+              assessmentregisterid: Number(item.assessmentregisterid) || 0,
+              assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
+              datecreated: item.datecreated || new Date().toISOString(),
+              createdbyid: item.createdbyid || '',
+              dateupdated: item.dateupdated || new Date().toISOString(),
+              updatedbyid: item.updatedbyid || '',
+              issynced: Number(item.issynced) || 0,
+              syncversion: Number(item.syncversion) || 0,
+              deviceid: item.deviceid || '',
+              syncstatus: item.syncstatus || '',
+              synctimestamp: item.synctimestamp || new Date().toISOString(),
+              hasphoto: Number(item.hasphoto) || 0,
+              latitude: Number(item.latitude) || 0,
+              longitude: Number(item.longitude) || 0,
+              notes: item.notes || '',
+              pending_sync: 0
+            };
+            
+            await insertRiskAssessmentItem(sqliteItem);
+          }
+          
+          // Get updated items from SQLite
+          const updatedLocalItems = await getAllRiskAssessmentItems();
+          const updatedCategoryItems = updatedLocalItems.filter(item => 
+            String(item.riskassessmentcategoryid) === String(categoryId)
+          );
+          setItems(updatedCategoryItems);
+        } else {
+          console.log('No items found in API for category:', categoryId);
+          setItems([]);
         }
-        return item;
-      });
-      itemUtils.saveUserItems(updatedItems, categoryId);
-      return updated;
-    });
+      } else {
+        console.log('Using existing SQLite items for category:', categoryItems.length);
+        setItems(categoryItems);
+      }
+      
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      console.error('Error refreshing items:', error);
+      setItems([]);
+    }
   };
 
-  // Check if there are unsaved changes
-  const hasUnsavedChanges = Object.keys(editItems).length > 0;
+  const handleEdit = (id: string, field: 'quantity' | 'price' | 'make' | 'model' | 'serialNumber' | 'description', value: string) => {
+    setEditItems(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        [field]: value,
+      },
+    }));
+  };
 
-  // Save handler
+  // Auto-save function that saves changes to SQLite without refreshing UI
+  const autoSaveItem = async (id: string) => {
+    const changes = editItems[id];
+    if (!changes) return; // No changes to save
+
+    try {
+      const item = items.find(i => String(i.riskassessmentitemid) === id);
+      if (!item) return;
+
+      console.log('Auto-saving item:', id, changes);
+
+      const updated: RiskAssessmentItem = {
+        ...item,
+        qty: Number(changes.quantity ?? item.qty) || 0,
+        price: Number(changes.price ?? item.price) || 0,
+        description: changes.make ?? item.description ?? '',
+        model: changes.model ?? item.model ?? '',
+        itemprompt: changes.description ?? item.itemprompt ?? '',
+        assessmentregisterid: Number(changes.serialNumber ?? item.assessmentregisterid) || 0,
+        pending_sync: 1,
+        dateupdated: new Date().toISOString(),
+      };
+
+      await updateRiskAssessmentItem(updated);
+      
+      // Mark as auto-saved but keep the changes visible
+      setAutoSavedItems(prev => ({ ...prev, [id]: true }));
+      
+      // Update the items array in state to reflect the saved changes without calling refreshItems
+      setItems(prevItems => 
+        prevItems.map(prevItem => 
+          String(prevItem.riskassessmentitemid) === id ? updated : prevItem
+        )
+      );
+
+      console.log('Auto-saved item successfully:', id);
+    } catch (error) {
+      console.error('Auto-save failed for item:', id, error);
+    }
+  };
+
+  const hasUnsavedChanges = Object.keys(editItems).some(id => !autoSavedItems[id]);
+
   const handleSave = async () => {
     setSaving(true);
     setSaveStatus('idle');
@@ -591,58 +752,12 @@ export const ItemsTable: React.FC<{
     try {
       const updates = Object.entries(editItems);
       for (const [id, changes] of updates) {
-        const item = items.find(i => String(i.riskassessmentitemid) === id);
-        if (!item) continue;
-        // Build payload with all required fields and correct types
-        const updated = {
-          riskassessmentitemid: Number(item.riskassessmentitemid) || 0,
-          riskassessmentcategoryid: Number(item.riskassessmentcategoryid) || 0,
-          itemprompt: item.itemprompt || '',
-          itemtype: Number(item.itemtype) || 0,
-          rank: Number(item.rank) || 0,
-          commaseparatedlist: item.commaseparatedlist || '',
-          selectedanswer: item.selectedanswer || '',
-          qty: Number(changes.quantity ?? item.qty) || 0,
-          price: Number(changes.price ?? item.price) || 0,
-          description: changes.make ?? item.description ?? '',
-          model: changes.model ?? item.model ?? '',
-          location: item.location || '',
-          assessmentregisterid: Number(item.assessmentregisterid) || 0,
-          assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
-          datecreated: (item as any).datecreated || new Date().toISOString(),
-          createdbyid: (item as any).createdbyid || item.createdby || '',
-          dateupdated: new Date().toISOString(),
-          updatedbyid: (item as any).updatedbyid || item.modifiedby || '',
-          issynced: (item as any).issynced ?? false,
-          syncversion: (item as any).syncversion || 0,
-          deviceid: (item as any).deviceid || '',
-          syncstatus: (item as any).syncstatus || '',
-          synctimestamp: (item as any).synctimestamp || new Date().toISOString(),
-          hasphoto: (item as any).hasphoto ?? false,
-          latitude: Number((item as any).latitude) || 0,
-          longitude: Number((item as any).longitude) || 0,
-          notes: (item as any).notes || '',
-        };
-        // Use API_BASE_URL
-        const url = `${API_BASE_URL}/risk-assessment-items/${item.riskassessmentitemid}`;
-        const response = await fetch(url, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updated),
-        });
-        if (!response.ok) {
-          const errorBody = await response.text();
-          console.error('Failed to update item:', response.status, errorBody);
-          setSaveStatus('error');
-          setSaveMessage(`Failed to save changes: ${errorBody}`);
-          setSaving(false);
-          return;
-        }
+        await autoSaveItem(id);
       }
       setSaveStatus('success');
-      setSaveMessage('Changes saved successfully.');
+      setSaveMessage('Changes saved locally.');
       setEditItems({});
-      if (onRefresh) onRefresh();
+      setAutoSavedItems({});
     } catch (e) {
       setSaveStatus('error');
       setSaveMessage('Failed to save changes.');
@@ -652,34 +767,192 @@ export const ItemsTable: React.FC<{
     }
   };
 
-  // Save button component
-  const SaveButton = () => (
-    <View>
-      <Button
-        mode="contained"
-        onPress={handleSave}
-        disabled={!hasUnsavedChanges || saving}
-        loading={saving}
-        style={{ marginVertical: 8, backgroundColor: '#1976d2', borderRadius: 8 }}
-        contentStyle={{ height: 48 }}
-        labelStyle={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}
-      >
-        {saving ? 'Saving...' : 'Save Changes'}
-      </Button>
-      {saveStatus === 'success' && <Text style={{ color: 'green', marginTop: 8 }}>{saveMessage}</Text>}
-      {saveStatus === 'error' && <Text style={{ color: 'red', marginTop: 8 }}>{saveMessage}</Text>}
-    </View>
-  );
+  const handleDelete = async (id: string) => {
+    await deleteRiskAssessmentItem(Number(id));
+    await refreshItems();
+  };
+
+  const handleAddNewItem = async () => {
+    console.log('Creating new item for category:', categoryId);
+    const newItem: RiskAssessmentItem = {
+      riskassessmentitemid: Date.now(),
+      riskassessmentcategoryid: Number(categoryId),
+      itemprompt: '',
+      itemtype: 0,
+      rank: items.length + 1,
+      commaseparatedlist: '',
+      selectedanswer: '',
+      qty: 1,
+      price: 0,
+      description: '',
+      model: '',
+      location: '',
+      assessmentregisterid: 0,
+      assessmentregistertypeid: 0,
+      datecreated: new Date().toISOString(),
+      createdbyid: '',
+      dateupdated: new Date().toISOString(),
+      updatedbyid: '',
+      issynced: 0,
+      syncversion: 0,
+      deviceid: '',
+      syncstatus: '',
+      synctimestamp: new Date().toISOString(),
+      hasphoto: 0,
+      latitude: 0,
+      longitude: 0,
+      notes: '',
+      pending_sync: 1,
+    };
+    console.log('About to insert new item:', newItem);
+    try {
+      await insertRiskAssessmentItem(newItem);
+      console.log('Successfully inserted new item');
+      
+      // Add the new item to the items array directly without refreshing
+      setItems(prevItems => [...prevItems, newItem]);
+      
+    } catch (error) {
+      console.error('Failed to insert new item:', error);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncStatus('idle');
+    setSyncMessage('');
+    
+    try {
+      console.log('=== ITEMSTABLE: STARTING SYNC PROCESS ===');
+      console.log('Current items in table:', items.length);
+      console.log('Current edit state:', editItems);
+      console.log('Auto-saved items:', autoSavedItems);
+      
+      const result = await riskAssessmentSyncService.syncPendingChanges();
+      
+      if (result.success) {
+        setSyncStatus('success');
+        if (result.synced && (result.synced.riskAssessmentItems > 0 || result.synced.appointments > 0 || result.synced.riskAssessmentMasters > 0)) {
+          setSyncMessage(`Successfully synced ${result.synced.riskAssessmentItems} risk assessment items, ${result.synced.riskAssessmentMasters} assessments, and ${result.synced.appointments} appointments.`);
+        } else {
+          setSyncMessage(result.message || 'No pending changes to sync.');
+        }
+        
+        // Clear auto-saved state and edit state after successful sync
+        setAutoSavedItems({});
+        setEditItems({});
+        
+        // Update pending count
+        const count = await riskAssessmentSyncService.getPendingChangesCount();
+        setPendingChangesCount(count.total);
+        
+        // Show success alert
+        Alert.alert(
+          'Sync Complete',
+          result.message || `Successfully synced ${(result.synced?.riskAssessmentItems || 0) + (result.synced?.riskAssessmentMasters || 0) + (result.synced?.appointments || 0)} items to server.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        setSyncStatus('error');
+        setSyncMessage(result.error || 'Sync failed');
+        
+        // Show error alert
+        Alert.alert(
+          'Sync Failed',
+          result.error || 'Failed to sync changes to server. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      setSyncStatus('error');
+      setSyncMessage('Unexpected error during sync');
+      console.error('Sync error:', error);
+      
+      Alert.alert(
+        'Sync Error',
+        'An unexpected error occurred during sync. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Debug function to inspect current sync payload (accessible from console)
+  (window as any).inspectSyncPayload = async () => {
+    console.log('=== SYNC PAYLOAD INSPECTOR ===');
+    try {
+      const count = await riskAssessmentSyncService.getPendingChangesCount();
+      console.log('Pending changes count:', count);
+      
+      // This will trigger all the logging without actually syncing
+      console.log('This is what would be sent to sync...');
+      // Note: To see the actual payload, you would need to call the sync service
+      // but we don't want to actually sync, just inspect
+    } catch (error) {
+      console.error('Error inspecting sync payload:', error);
+    }
+  };
 
   return (
-    <Card style={styles.card}>
-      <Card.Title title="Added Items" />
-      <SaveButton />
+  <Card style={styles.card}>
+    <Card.Title title="Added Items" />
+      {/* Buttons row */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+        <Button
+          mode="outlined"
+          onPress={handleAddNewItem}
+          style={{ flex: 1, borderColor: '#1976d2' }}
+          labelStyle={{ color: '#1976d2', fontWeight: 'bold', fontSize: 14 }}
+          contentStyle={{ height: 40 }}
+        >
+          + Add Item
+        </Button>
+        
+        <Button
+          mode="contained"
+          onPress={handleSave}
+          disabled={!hasUnsavedChanges || saving}
+          loading={saving}
+          style={{ flex: 1, backgroundColor: '#1976d2' }}
+          contentStyle={{ height: 40 }}
+          labelStyle={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </Button>
+        
+        <Button
+          mode="outlined"
+          onPress={handleSync}
+          disabled={syncing || pendingChangesCount === 0}
+          loading={syncing}
+          style={{ 
+            flex: 1,
+            borderColor: pendingChangesCount > 0 ? '#4CAF50' : '#ccc'
+          }}
+          contentStyle={{ height: 40 }}
+          labelStyle={{ 
+            color: pendingChangesCount > 0 ? '#4CAF50' : '#ccc', 
+            fontWeight: 'bold',
+            fontSize: 14
+          }}
+          icon="cloud-upload"
+        >
+          {syncing ? 'Syncing...' : `Sync (${pendingChangesCount})`}
+        </Button>
+      </View>
+      
+      {/* Status messages */}
+      {saveStatus === 'success' && <Text style={{ color: 'green', marginBottom: 8, fontSize: 12 }}>{saveMessage}</Text>}
+      {saveStatus === 'error' && <Text style={{ color: 'red', marginBottom: 8, fontSize: 12 }}>{saveMessage}</Text>}
+      {syncStatus === 'success' && <Text style={{ color: 'green', marginBottom: 8, fontSize: 12 }}>{syncMessage}</Text>}
+      {syncStatus === 'error' && <Text style={{ color: 'red', marginBottom: 8, fontSize: 12 }}>{syncMessage}</Text>}
+      
       <ScrollView horizontal>
         <View style={{ flexDirection: 'row' }}>
           <ScrollView style={{ maxHeight: 400 }}>
-            <DataTable>
-              <DataTable.Header style={styles.tableHeader}>
+    <DataTable>
+      <DataTable.Header style={styles.tableHeader}>
                 <DataTable.Title style={{ width: 180 }}>Description</DataTable.Title>
                 <DataTable.Title style={{ width: 180 }}>Make</DataTable.Title>
                 <DataTable.Title style={{ width: 180 }}>Model</DataTable.Title>
@@ -688,34 +961,48 @@ export const ItemsTable: React.FC<{
                 <DataTable.Title numeric style={{ width: 120 }}>Price</DataTable.Title>
                 <DataTable.Title numeric style={{ width: 120 }}>Total</DataTable.Title>
                 <DataTable.Title style={{ width: 60, justifyContent: 'flex-end' }}>
-                  <Text>{''}</Text>
-                </DataTable.Title>
-              </DataTable.Header>
+          <Text>{''}</Text>
+        </DataTable.Title>
+      </DataTable.Header>
               {items.map((item) => {
-                const quantity = editItems[String(item.riskassessmentitemid)]?.quantity ?? item.qty;
-                const price = editItems[String(item.riskassessmentitemid)]?.price ?? item.price;
+                const quantity = editItems[String(item.riskassessmentitemid)]?.quantity ?? String(item.qty);
+                const price = editItems[String(item.riskassessmentitemid)]?.price ?? String(item.price);
                 const make = editItems[String(item.riskassessmentitemid)]?.make ?? item.description ?? '';
                 const model = editItems[String(item.riskassessmentitemid)]?.model ?? item.model ?? '';
-                const serialNumber = editItems[String(item.riskassessmentitemid)]?.serialNumber ?? item.assessmentregisterid ?? '';
+                const serialNumber = editItems[String(item.riskassessmentitemid)]?.serialNumber ?? String(item.assessmentregisterid ?? '');
+                const description = editItems[String(item.riskassessmentitemid)]?.description ?? item.itemprompt ?? '';
                 const total = (parseInt(quantity || '1', 10) || 1) * (parseFloat(price || '0') || 0);
-                return (
-                  <DataTable.Row key={item.riskassessmentitemid}>
+                const isAutoSaved = autoSavedItems[String(item.riskassessmentitemid)];
+                const itemId = String(item.riskassessmentitemid);
+        return (
+                  <DataTable.Row key={item.riskassessmentitemid} style={isAutoSaved ? { backgroundColor: '#f0f8f0' } : undefined}>
                     <DataTable.Cell style={{ width: 180 }}>
-                      <View style={styles.itemDescriptionCell}>
-                        <View>
-                          {/* Description is always read-only, now using itemprompt */}
-                          <Text numberOfLines={2} ellipsizeMode="tail" style={{ flexWrap: 'wrap', width: 180 }}>{item.itemprompt}</Text>
+              <View style={styles.itemDescriptionCell}>
+                <View>
+                  {editable ? (
+                    <PaperTextInput
+                      value={description}
+                      onChangeText={v => handleEdit(itemId, 'description', v)}
+                      onBlur={() => autoSaveItem(itemId)}
+                      style={{ width: 180, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
+                      theme={{ colors: { text: '#222' } }}
+                      placeholder="Enter description"
+                    />
+                  ) : (
+                    <Text numberOfLines={2} ellipsizeMode="tail" style={{ flexWrap: 'wrap', width: 180 }}>{description}</Text>
+                  )}
                           {showRoom && item.location && (
                             <Text style={styles.itemDetail}>Room: {item.location}</Text>
-                          )}
-                        </View>
-                      </View>
-                    </DataTable.Cell>
+                  )}
+                </View>
+              </View>
+            </DataTable.Cell>
                     <DataTable.Cell style={{ width: 180 }}>
                       {editable ? (
                         <PaperTextInput
                           value={make}
-                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'make', v)}
+                          onChangeText={v => handleEdit(itemId, 'make', v)}
+                          onBlur={() => autoSaveItem(itemId)}
                           style={{ width: 180, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
                           theme={{ colors: { text: '#222' } }}
                         />
@@ -727,7 +1014,8 @@ export const ItemsTable: React.FC<{
                       {editable ? (
                         <PaperTextInput
                           value={model}
-                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'model', v)}
+                          onChangeText={v => handleEdit(itemId, 'model', v)}
+                          onBlur={() => autoSaveItem(itemId)}
                           style={{ width: 180, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
                           theme={{ colors: { text: '#222' } }}
                         />
@@ -739,7 +1027,8 @@ export const ItemsTable: React.FC<{
                       {editable ? (
                         <PaperTextInput
                           value={serialNumber}
-                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'serialNumber', v)}
+                          onChangeText={v => handleEdit(itemId, 'serialNumber', v)}
+                          onBlur={() => autoSaveItem(itemId)}
                           style={{ width: 180, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
                           theme={{ colors: { text: '#222' } }}
                         />
@@ -751,7 +1040,8 @@ export const ItemsTable: React.FC<{
                       {editable ? (
                         <PaperTextInput
                           value={quantity}
-                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'quantity', v)}
+                          onChangeText={v => handleEdit(itemId, 'quantity', v)}
+                          onBlur={() => autoSaveItem(itemId)}
                           keyboardType="numeric"
                           style={{ width: 100, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
                           theme={{ colors: { text: '#222' } }}
@@ -764,7 +1054,8 @@ export const ItemsTable: React.FC<{
                       {editable ? (
                         <PaperTextInput
                           value={price}
-                          onChangeText={v => handleEdit(String(item.riskassessmentitemid), 'price', v)}
+                          onChangeText={v => handleEdit(itemId, 'price', v)}
+                          onBlur={() => autoSaveItem(itemId)}
                           keyboardType="numeric"
                           style={{ width: 120, height: 36, backgroundColor: '#f7fafd', fontSize: 15, borderColor: '#b0b0b0', borderWidth: 1, borderRadius: 6, marginHorizontal: 4 }}
                           theme={{ colors: { text: '#222' } }}
@@ -778,18 +1069,18 @@ export const ItemsTable: React.FC<{
                     </DataTable.Cell>
                     <DataTable.Cell style={{ width: 60 }}>
                       {editable && (
-                        <IconButton
-                          icon="delete"
-                          size={20}
-                          onPress={() => onDeleteItem(String(item.riskassessmentitemid))}
-                          iconColor="#e74c3c"
-                        />
+              <IconButton
+                icon="delete"
+                size={20}
+                          onPress={() => handleDelete(itemId)}
+                iconColor="#e74c3c"
+              />
                       )}
-                    </DataTable.Cell>
-                  </DataTable.Row>
-                );
-              })}
-              <DataTable.Row style={styles.totalRow}>
+            </DataTable.Cell>
+          </DataTable.Row>
+        );
+      })}
+      <DataTable.Row style={styles.totalRow}>
                 <DataTable.Cell style={{ width: 180 }}><Text style={styles.totalLabel}>Total</Text></DataTable.Cell>
                 <DataTable.Cell style={{ width: 180 }}><Text>{''}</Text></DataTable.Cell>
                 <DataTable.Cell style={{ width: 180 }}><Text>{''}</Text></DataTable.Cell>
@@ -797,19 +1088,18 @@ export const ItemsTable: React.FC<{
                 <DataTable.Cell style={{ width: 100 }}><Text>{''}</Text></DataTable.Cell>
                 <DataTable.Cell style={{ width: 120 }}><Text>{''}</Text></DataTable.Cell>
                 <DataTable.Cell numeric style={{ width: 120 }}>
-                  <Text style={styles.totalValue}>
-                    {formatCurrency(itemUtils.calculateTotalValue(items))}
-                  </Text>
-                </DataTable.Cell>
+          <Text style={styles.totalValue}>
+                    {formatCurrency(items.reduce((total, item) => total + (item.price * item.qty), 0))}
+          </Text>
+        </DataTable.Cell>
                 <DataTable.Cell style={{ width: 60 }}><Text>{''}</Text></DataTable.Cell>
-              </DataTable.Row>
-            </DataTable>
+      </DataTable.Row>
+    </DataTable>
           </ScrollView>
         </View>
       </ScrollView>
-      <SaveButton />
-    </Card>
-  );
+  </Card>
+);
 };
 
 /**

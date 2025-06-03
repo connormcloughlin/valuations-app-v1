@@ -116,31 +116,10 @@ export default function ItemsScreen() {
     if (!currentCategoryId) {
       console.error('No valid category ID available for API call');
       setError('Missing category ID. Please try again.');
-      // Continue with fallback instead of returning
-      try {
-        const fallbackResponse = await categoryItemsApi.getCategoryItems(currentCategoryId as string);
-        if (fallbackResponse.success) {
-          const formattedItems = fallbackResponse.data.map((item: any) => ({
-            ...item,
-            quantity: item.quantity?.toString() || '1',
-            price: item.price?.toString() || '0',
-            room: '',
-            notes: ''
-          }));
-          setPredefinedItems(formattedItems);
-          setError(null);
-        } else {
-          setError('Failed to load category items');
-        }
-        setLoading(false);
-        return;
-      } catch (err) {
-        console.error('Fallback failed:', err);
-        setError('Failed to load items. Please try again later.');
-          setLoading(false);
-          return;
-        }
-      }
+      setPredefinedItems([]);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -176,53 +155,14 @@ export default function ItemsScreen() {
         console.log(`Found ${formattedItems.length} items for category ID ${currentCategoryId}`);
         setPredefinedItems(formattedItems);
       } else {
-        console.log(`No items found for category ID ${currentCategoryId}, using fallback`);
-        
-        // Use fallback if API returns no items
-        const fallbackResponse = await categoryItemsApi.getCategoryItems(currentCategoryId as string);
-        
-        if (fallbackResponse.success) {
-          const formattedItems = fallbackResponse.data.map((item: any) => ({
-          ...item,
-          quantity: item.quantity?.toString() || '1',
-          price: item.price?.toString() || '0',
-          room: '',
-          notes: ''
-        }));
-          console.log('Using fallback data:', formattedItems.length, 'items');
-        setPredefinedItems(formattedItems);
-      } else {
-        setError('Failed to load category items');
-          setPredefinedItems([]);
-        }
+        console.log(`No items found for category ID ${currentCategoryId}`);
+        setPredefinedItems([]);
+        setError('No items found for this category');
       }
     } catch (err) {
       console.error('Error:', err);
-      
-      try {
-        // Always try fallback on any error
-        console.log('Error occurred, trying fallback data');
-        const fallbackResponse = await categoryItemsApi.getCategoryItems(currentCategoryId as string);
-        
-        if (fallbackResponse.success) {
-          const formattedItems = fallbackResponse.data.map((item: any) => ({
-            ...item,
-            quantity: item.quantity?.toString() || '1',
-            price: item.price?.toString() || '0',
-            room: '',
-            notes: ''
-          }));
-          setPredefinedItems(formattedItems);
-          setError(null); // Clear any error
-        } else {
-          setError('Failed to load items. Please try again later.');
-          setPredefinedItems([]);
-        }
-      } catch (fallbackErr) {
-        console.error('Fallback also failed:', fallbackErr);
-        setError('Failed to load items. Please try again later.');
-        setPredefinedItems([]);
-      }
+      setError('Failed to load items. Please try again later.');
+      setPredefinedItems([]);
     } finally {
       setLoading(false);
     }

@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../utils/logger';
 import api from '../../api';
 import { API_BASE_URL } from '../../constants/apiConfig';
+import { insertRiskAssessmentItem } from '../../utils/db';
 
 // Define types for API responses
 interface ApiResponse<T> {
@@ -85,6 +86,79 @@ const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<Ris
       message: error instanceof Error ? error.message : 'Failed to fetch templates',
       status: 0
     };
+  }
+};
+
+// Helper function to populate SQLite with template items
+const populateTemplateItems = async (assessmentId: string) => {
+  try {
+    console.log('Fetching sections for assessment:', assessmentId);
+    const sectionsResponse = await api.getRiskAssessmentSections(assessmentId);
+    
+    if (!sectionsResponse.success || !sectionsResponse.data) {
+      console.error('Failed to fetch sections');
+      return;
+    }
+
+    // For each section, get its categories
+    for (const section of sectionsResponse.data) {
+      console.log('Fetching categories for section:', section.riskassessmentsectionid);
+      const categoriesResponse = await api.getRiskAssessmentCategories(section.riskassessmentsectionid);
+      
+      if (!categoriesResponse.success || !categoriesResponse.data) {
+        console.error('Failed to fetch categories for section:', section.riskassessmentsectionid);
+        continue;
+      }
+
+      // For each category, get and store its items
+      for (const category of categoriesResponse.data) {
+        console.log('Fetching items for category:', category.riskassessmentcategoryid);
+        const itemsResponse = await api.getRiskAssessmentItems(category.riskassessmentcategoryid);
+        
+        if (!itemsResponse.success || !itemsResponse.data) {
+          console.error('Failed to fetch items for category:', category.riskassessmentcategoryid);
+          continue;
+        }
+
+        // Store each item in SQLite
+        for (const item of itemsResponse.data) {
+          const sqliteItem = {
+            riskassessmentitemid: Number(item.riskassessmentitemid),
+            riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
+            itemprompt: item.itemprompt || '',
+            itemtype: Number(item.itemtype) || 0,
+            rank: Number(item.rank) || 0,
+            commaseparatedlist: item.commaseparatedlist || '',
+            selectedanswer: item.selectedanswer || '',
+            qty: Number(item.qty) || 0,
+            price: Number(item.price) || 0,
+            description: item.description || '',
+            model: item.model || '',
+            location: item.location || '',
+            assessmentregisterid: Number(item.assessmentregisterid) || 0,
+            assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
+            datecreated: item.datecreated || new Date().toISOString(),
+            createdbyid: item.createdbyid || '',
+            dateupdated: item.dateupdated || new Date().toISOString(),
+            updatedbyid: item.updatedbyid || '',
+            issynced: Number(item.issynced) || 0,
+            syncversion: Number(item.syncversion) || 0,
+            deviceid: item.deviceid || '',
+            syncstatus: item.syncstatus || '',
+            synctimestamp: item.synctimestamp || new Date().toISOString(),
+            hasphoto: Number(item.hasphoto) || 0,
+            latitude: Number(item.latitude) || 0,
+            longitude: Number(item.longitude) || 0,
+            notes: item.notes || '',
+            pending_sync: 0
+          };
+          
+          await insertRiskAssessmentItem(sqliteItem);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error populating template items:', error);
   }
 };
 
@@ -220,14 +294,6 @@ export default function NewSurveyScreen() {
     }
     
     console.log(`Starting survey with assessmentId: ${assessmentId} - ${template.assessmenttypename}`);
-    
-    // In a real app, save the survey data to local storage or API
-    console.log('Starting survey:', { 
-      assessmentId, 
-      ...surveyData, 
-      templateId: assessmentId,
-      templateName: template.assessmenttypename
-    });
     
     // Navigate to categories screen with the assessmentId
     router.push({
