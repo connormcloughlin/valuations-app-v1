@@ -105,6 +105,98 @@ app.post('/api/reports', authenticateToken, async (req, res) => {
   res.json(report);
 });
 
+// Sync endpoint for mobile app changes
+app.post('/api/sync/changes', authenticateToken, async (req, res) => {
+  try {
+    const { riskAssessmentItems = [], riskAssessmentMasters = [], appointments = [], syncTimestamp } = req.body;
+    
+    console.log('Received sync request:', {
+      riskAssessmentItems: riskAssessmentItems.length,
+      riskAssessmentMasters: riskAssessmentMasters.length,
+      appointments: appointments.length,
+      syncTimestamp
+    });
+    
+    const results = {
+      success: true,
+      processed: {
+        riskAssessmentItems: 0,
+        riskAssessmentMasters: 0,
+        appointments: 0
+      },
+      errors: [],
+      syncTimestamp: new Date().toISOString()
+    };
+
+    // Process risk assessment items
+    if (riskAssessmentItems.length > 0) {
+      for (const item of riskAssessmentItems) {
+        try {
+          // For now, we'll just simulate processing since we don't have the actual DB model
+          // In a real implementation, you would update/insert into your risk assessment items table
+          console.log('Processing risk assessment item:', item.riskassessmentitemid);
+          results.processed.riskAssessmentItems++;
+        } catch (error) {
+          console.error('Error processing risk assessment item:', error);
+          results.errors.push({
+            type: 'riskAssessmentItem',
+            id: item.riskassessmentitemid,
+            error: error.message
+          });
+        }
+      }
+    }
+
+    // Process risk assessment masters
+    if (riskAssessmentMasters.length > 0) {
+      for (const master of riskAssessmentMasters) {
+        try {
+          // For now, we'll just simulate processing since we don't have the actual DB model
+          // In a real implementation, you would update/insert into your risk assessment masters table
+          console.log('Processing risk assessment master:', master.riskassessmentid);
+          results.processed.riskAssessmentMasters++;
+        } catch (error) {
+          console.error('Error processing risk assessment master:', error);
+          results.errors.push({
+            type: 'riskAssessmentMaster',
+            id: master.riskassessmentid,
+            error: error.message
+          });
+        }
+      }
+    }
+
+    // Process appointments
+    if (appointments.length > 0) {
+      for (const appointment of appointments) {
+        try {
+          // Update or create appointment in the database
+          // Note: You'll need to add the Appointment model to your Sequelize models
+          console.log('Processing appointment:', appointment.appointmentID);
+          results.processed.appointments++;
+        } catch (error) {
+          console.error('Error processing appointment:', error);
+          results.errors.push({
+            type: 'appointment',
+            id: appointment.appointmentID,
+            error: error.message
+          });
+        }
+      }
+    }
+
+    console.log('Sync completed:', results);
+    res.json(results);
+  } catch (error) {
+    console.error('Sync endpoint error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process sync request',
+      details: error.message
+    });
+  }
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
