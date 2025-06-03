@@ -131,8 +131,11 @@ const riskAssessmentSyncService = {
           iscomplete: master.iscomplete ? true : false
         })),
         riskAssessmentItems: pendingRiskAssessmentItems.map((item: RiskAssessmentItem, index: number) => {
+          // Detect if this is a new item created locally (timestamp-based ID > 1000000000000)
+          const isNewItem = item.riskassessmentitemid > 1000000000000;
+          
           const transformedItem = {
-            riskassessmentitemid: item.riskassessmentitemid,
+            riskassessmentitemid: isNewItem ? null : item.riskassessmentitemid, // Send null for new items
             riskassessmentcategoryid: item.riskassessmentcategoryid,
             itemprompt: item.itemprompt,
             itemtype: item.itemtype,
@@ -158,10 +161,17 @@ const riskAssessmentSyncService = {
             hasphoto: item.hasphoto ? true : false,
             latitude: item.latitude,
             longitude: item.longitude,
-            notes: item.notes
+            notes: item.notes,
+            // Keep local ID for tracking response mapping
+            _localId: item.riskassessmentitemid
           };
           
-          console.log(`=== TRANSFORMED ITEM ${index + 1} FOR API ===`, transformedItem);
+          console.log(`=== TRANSFORMED ITEM ${index + 1} FOR API ===`);
+          console.log('Original local ID:', item.riskassessmentitemid);
+          console.log('Is new item (sending null ID):', isNewItem);
+          console.log('Sending ID to server:', transformedItem.riskassessmentitemid);
+          console.log('Local tracking ID:', transformedItem._localId);
+          console.log('Complete transformed item:', transformedItem);
           return transformedItem;
         }),
         deletedEntities: [] // TODO: Implement deleted entities tracking
