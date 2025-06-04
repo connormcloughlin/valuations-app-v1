@@ -135,6 +135,24 @@ export async function createTables() {
       );
     `);
     
+    console.log('Creating media_files table...');
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS media_files (
+        MediaID INTEGER PRIMARY KEY AUTOINCREMENT,
+        FileName TEXT NOT NULL,
+        FileType TEXT NOT NULL,
+        BlobURL TEXT NOT NULL,
+        EntityName TEXT NOT NULL,
+        EntityID INTEGER NOT NULL,
+        UploadedAt TEXT NOT NULL,
+        UploadedBy TEXT,
+        IsDeleted INTEGER NOT NULL DEFAULT 0,
+        Metadata TEXT,
+        LocalPath TEXT,
+        pending_sync INTEGER DEFAULT 0
+      );
+    `);
+    
     // Verify tables were created
     console.log('Verifying tables...');
     const tables = await runSql("SELECT name FROM sqlite_master WHERE type='table'");
@@ -227,6 +245,21 @@ export interface RiskAssessmentItem {
   longitude: number;
   notes: string;
   pending_sync?: number;
+}
+
+export interface MediaFile {
+  MediaID?: number;
+  FileName: string;
+  FileType: string;
+  BlobURL: string;
+  EntityName: string;
+  EntityID: number;
+  UploadedAt: string;
+  UploadedBy?: string;
+  IsDeleted: number;
+  Metadata?: string;
+  pending_sync?: number;
+  LocalPath?: string; // For offline storage
 }
 
 // --- CRUD for Appointments ---
@@ -467,6 +500,167 @@ export async function markRiskAssessmentMastersAsSynced(masterIds: number[]) {
     console.log('Marked masters as synced:', masterIds);
   } catch (error) {
     console.error('Error marking risk assessment masters as synced:', error);
+    throw error;
+  }
+}
+
+// --- CRUD for Media Files ---
+export async function insertMediaFile(m: MediaFile) {
+  try {
+    console.log('Attempting to insert Media File:', {
+      fileName: m.FileName,
+      fileType: m.FileType,
+      entityName: m.EntityName,
+      entityID: m.EntityID
+    });
+
+    const sql = `
+      INSERT INTO media_files (
+        FileName, FileType, BlobURL, EntityName, EntityID, UploadedAt, UploadedBy,
+        IsDeleted, Metadata, LocalPath, pending_sync
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const params = [
+      m.FileName,
+      m.FileType,
+      m.BlobURL,
+      m.EntityName,
+      m.EntityID,
+      m.UploadedAt,
+      m.UploadedBy || null,
+      m.IsDeleted ? 1 : 0,
+      m.Metadata || null,
+      m.LocalPath || null,
+      m.pending_sync ?? 1
+    ];
+
+    const result = await runSql(sql, params);
+    console.log('Successfully inserted media file with ID:', result.insertId);
+    return result.insertId;
+    
+  } catch (error) {
+    console.error('Error inserting media file:', error);
+    throw error;
+  }
+}
+
+export async function getAllMediaFiles(): Promise<MediaFile[]> {
+  try {
+    console.log('Fetching all media files from SQLite');
+    const res = await runSql('SELECT * FROM media_files WHERE IsDeleted = 0');
+    console.log('Number of media files found:', res.rows._array.length);
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching media files from SQLite:', error);
+    return [];
+  }
+}
+
+export async function getMediaFilesByEntity(entityName: string, entityID: number, includeDeleted: boolean = false): Promise<MediaFile[]> {
+  try {
+    const sql = includeDeleted 
+      ? 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ?'
+      : 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? AND IsDeleted = 0';
+    
+    console.log(`Fetching media files for ${entityName} ID ${entityID}, includeDeleted: ${includeDeleted}`);
+    const res = await runSql(sql, [entityName, entityID]);
+    console.log('Number of media files found:', res.rows._array.length);
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching media files by entity:', error);
+    return [];
+  }
+}
+
+export async function getMediaFileById(mediaID: number): Promise<MediaFile | undefined> {
+  const res = await runSql('SELECT * FROM media_files WHERE MediaID = ?', [mediaID]);
+  return res.rows.length > 0 ? res.rows._array[0] : undefined;
+}
+
+export async function updateMediaFile(m: MediaFile) {
+  try {
+    const sql = `
+      UPDATE media_files SET
+        FileName = ?, FileType = ?, BlobURL = ?, EntityName = ?, EntityID = ?,
+        UploadedAt = ?, UploadedBy = ?, IsDeleted = ?, Metadata = ?, LocalPath = ?,
+        pending_sync = ?
+      WHERE MediaID = ?
+    `;
+
+    const params = [
+      m.FileName,
+      m.FileType,
+      m.BlobURL,
+      m.EntityName,
+      m.EntityID,
+      m.UploadedAt,
+      m.UploadedBy || null,
+      m.IsDeleted ? 1 : 0,
+      m.Metadata || null,
+      m.LocalPath || null,
+      m.pending_sync ?? 1,
+      m.MediaID
+    ];
+
+    await runSql(sql, params);
+    console.log('Updated media file:', m.MediaID);
+  } catch (error) {
+    console.error('Error updating media file:', error);
+    throw error;
+  }
+}
+
+export async function deleteMediaFile(mediaID: number) {
+  try {
+    // Soft delete - just mark as deleted
+    await runSql(
+      'UPDATE media_files SET IsDeleted = 1, pending_sync = 1 WHERE MediaID = ?',
+      [mediaID]
+    );
+    console.log('Soft deleted media file:', mediaID);
+  } catch (error) {
+    console.error('Error deleting media file:', error);
+    throw error;
+  }
+}
+
+export async function hardDeleteMediaFile(mediaID: number) {
+  try {
+    // Hard delete - actually remove from database
+    await runSql('DELETE FROM media_files WHERE MediaID = ?', [mediaID]);
+    console.log('Hard deleted media file:', mediaID);
+  } catch (error) {
+    console.error('Error hard deleting media file:', error);
+    throw error;
+  }
+}
+
+// Get all media files that need to be synced to the server
+export async function getPendingSyncMediaFiles(): Promise<MediaFile[]> {
+  try {
+    console.log('Fetching pending sync media files from SQLite');
+    const res = await runSql('SELECT * FROM media_files WHERE pending_sync = 1');
+    console.log('Pending sync media files found:', res.rows._array.length);
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching pending sync media files:', error);
+    return [];
+  }
+}
+
+// Mark media files as synced (clear pending_sync flag)
+export async function markMediaFilesAsSynced(mediaIDs: number[]) {
+  try {
+    for (const id of mediaIDs) {
+      await runSql(
+        'UPDATE media_files SET pending_sync = 0 WHERE MediaID = ?',
+        [id]
+      );
+    }
+    console.log('Marked media files as synced:', mediaIDs);
+  } catch (error) {
+    console.error('Error marking media files as synced:', error);
     throw error;
   }
 }

@@ -5,6 +5,8 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../utils/logger';
 import api from '../../api';
+import prefetchService from '../../services/prefetchService';
+import { PrefetchProgressIndicator, PrefetchStatusBadge } from '../../components/PrefetchProgressIndicator';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../types/api';
@@ -70,11 +72,19 @@ export default function AppointmentDetails() {
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [prefetchStarted, setPrefetchStarted] = useState(false);
   
   useEffect(() => {
     console.log(`Loading appointment details for ID: ${appointmentId} (original ID: ${rawAppointmentId})`);
     fetchAppointmentDetails();
   }, [appointmentId]);
+  
+  // Start prefetching when appointment is successfully loaded
+  useEffect(() => {
+    if (appointment && !prefetchStarted) {
+      startPrefetching();
+    }
+  }, [appointment, prefetchStarted]);
   
   const fetchAppointmentDetails = async () => {
     try {
@@ -144,6 +154,26 @@ export default function AppointmentDetails() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const startPrefetching = async () => {
+    setPrefetchStarted(true);
+    console.log('🚀 Starting prefetch for appointment:', appointment?.id);
+    
+    try {
+      const success = await prefetchService.startAppointmentPrefetch(
+        appointment!.id,
+        appointment!.orderNumber !== 'N/A' ? appointment!.orderNumber : undefined
+      );
+      
+      if (success) {
+        console.log('✅ Prefetch started successfully');
+      } else {
+        console.log('❌ Failed to start prefetch');
+      }
+    } catch (error) {
+      console.error('❌ Error starting prefetch:', error);
     }
   };
   
@@ -295,6 +325,9 @@ export default function AppointmentDetails() {
             </Card.Content>
           </Card>
           
+          {/* Prefetch Progress Indicator */}
+          <PrefetchProgressIndicator />
+          
           <View style={styles.mapContainer}>
             <Text style={styles.sectionTitle}>Location</Text>
             <Card style={styles.mapCard}>
@@ -318,22 +351,25 @@ export default function AppointmentDetails() {
         </ScrollView>
         
         <View style={styles.buttonContainer}>
-          <Button
-            mode="outlined"
-            style={styles.rescheduleButton}
-            icon="calendar-clock"
-            onPress={() => router.back()}
-          >
-            Reschedule
-          </Button>
-          <Button
-            mode="contained"
-            style={styles.startButton}
-            icon="clipboard-edit-outline"
-            onPress={startSurvey}
-          >
-            Start Survey
-          </Button>
+          <PrefetchStatusBadge style={styles.prefetchBadge} />
+          <View style={styles.buttonRow}>
+            <Button
+              mode="outlined"
+              style={styles.rescheduleButton}
+              icon="calendar-clock"
+              onPress={() => router.back()}
+            >
+              Reschedule
+            </Button>
+            <Button
+              mode="contained"
+              style={styles.startButton}
+              icon="clipboard-edit-outline"
+              onPress={startSurvey}
+            >
+              Start Survey
+            </Button>
+          </View>
         </View>
       </View>
     </>
@@ -470,7 +506,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   buttonContainer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     padding: 16,
     backgroundColor: '#fff',
     borderTopWidth: 1,
@@ -488,5 +524,15 @@ const styles = StyleSheet.create({
   actionButton: {
     marginTop: 16,
     backgroundColor: '#4a90e2',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  prefetchBadge: {
+    marginBottom: 8,
+    alignSelf: 'flex-start',
   },
 }); 

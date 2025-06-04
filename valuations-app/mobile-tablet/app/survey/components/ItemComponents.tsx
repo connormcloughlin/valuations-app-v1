@@ -31,13 +31,17 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../../constants/apiConfig';
 import api from '../../../api';
 import riskAssessmentSyncService from '../../../services/riskAssessmentSyncService';
+import mediaService from '../../../services/mediaService';
 import {
   getAllRiskAssessmentItems,
   insertRiskAssessmentItem,
   updateRiskAssessmentItem,
   deleteRiskAssessmentItem,
   RiskAssessmentItem,
+  MediaFile
 } from '../../../utils/db';
+// Use require for ImagePicker to avoid type issues
+const ImagePicker = require('expo-image-picker');
 
 // Types for API response
 interface ApiItem {
@@ -524,6 +528,17 @@ export const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  itemsContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
 });
 
 // Shared Components
@@ -602,6 +617,11 @@ export const ItemsTable: React.FC<{
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [syncMessage, setSyncMessage] = useState('');
   const [pendingChangesCount, setPendingChangesCount] = useState(0);
+  
+  // Photo state
+  const [itemPhotos, setItemPhotos] = useState<{ [key: string]: MediaFile[] }>({});
+  const [showCamera, setShowCamera] = useState(false);
+  const [currentPhotoItemId, setCurrentPhotoItemId] = useState<string | null>(null);
 
   useEffect(() => {
     refreshItems();
@@ -615,7 +635,173 @@ export const ItemsTable: React.FC<{
     };
     
     loadPendingChangesCount();
-  }, [items]); // Reload when items change
+  }, [items]);
+
+  // Load photos for items
+  useEffect(() => {
+    loadPhotosForItems();
+  }, [items]);
+
+  const loadPhotosForItems = async () => {
+    const photoMap: { [key: string]: MediaFile[] } = {};
+    
+    for (const item of items) {
+      const photos = await mediaService.getPhotosForEntity('risk_assessment_item', item.riskassessmentitemid);
+      photoMap[String(item.riskassessmentitemid)] = photos;
+    }
+    
+    setItemPhotos(photoMap);
+  };
+
+  // Request camera permissions
+  useEffect(() => {
+    (async () => {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Camera Permission', 
+          'Please grant camera permissions to take photos of items.',
+          [{ text: 'OK' }]
+        );
+      }
+    })();
+  }, []);
+
+  const takePhoto = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        aspect: undefined,
+        quality: 1.0, // Full quality for high-value art
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        exif: true
+      });
+      
+      if (!result.canceled && currentPhotoItemId) {
+        const photoUri = result.assets[0].uri;
+        
+        // Save photo using media service
+        const mediaFile = await mediaService.savePhoto(
+          photoUri, 
+          'risk_assessment_item', 
+          Number(currentPhotoItemId),
+          {
+            category: categoryId,
+            timestamp: new Date().toISOString(),
+            exif: result.assets[0].exif
+          }
+        );
+
+        // Update the item to indicate it has a photo
+        const item = items.find(i => String(i.riskassessmentitemid) === currentPhotoItemId);
+        if (item) {
+          const updatedItem: RiskAssessmentItem = {
+            ...item,
+            hasphoto: 1,
+            pending_sync: 1,
+            dateupdated: new Date().toISOString()
+          };
+          await updateRiskAssessmentItem(updatedItem);
+          
+          // Update local state
+          setItems(prevItems => 
+            prevItems.map(prevItem => 
+              String(prevItem.riskassessmentitemid) === currentPhotoItemId ? updatedItem : prevItem
+            )
+          );
+        }
+
+        // Reload photos for this item
+        await loadPhotosForItems();
+        
+        Alert.alert('Success', 'Photo saved successfully!');
+      }
+      
+      setShowCamera(false);
+      setCurrentPhotoItemId(null);
+    } catch (err) {
+      console.error('Error taking photo:', err);
+      Alert.alert('Error', 'Failed to capture photo. Please try again.');
+    }
+  };
+  
+  const selectFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        aspect: undefined,
+        quality: 1.0, // Full quality for high-value art
+        mediaTypes: ImagePicker.MediaTypeOptions.Images
+      });
+      
+      if (!result.canceled && currentPhotoItemId) {
+        const photoUri = result.assets[0].uri;
+        
+        // Save photo using media service
+        const mediaFile = await mediaService.savePhoto(
+          photoUri, 
+          'risk_assessment_item', 
+          Number(currentPhotoItemId),
+          {
+            category: categoryId,
+            timestamp: new Date().toISOString(),
+            source: 'gallery'
+          }
+        );
+
+        // Update the item to indicate it has a photo
+        const item = items.find(i => String(i.riskassessmentitemid) === currentPhotoItemId);
+        if (item) {
+          const updatedItem: RiskAssessmentItem = {
+            ...item,
+            hasphoto: 1,
+            pending_sync: 1,
+            dateupdated: new Date().toISOString()
+          };
+          await updateRiskAssessmentItem(updatedItem);
+          
+          // Update local state
+          setItems(prevItems => 
+            prevItems.map(prevItem => 
+              String(prevItem.riskassessmentitemid) === currentPhotoItemId ? updatedItem : prevItem
+            )
+          );
+        }
+
+        // Reload photos for this item
+        await loadPhotosForItems();
+        
+        Alert.alert('Success', 'Photo saved successfully!');
+      }
+      
+      setShowCamera(false);
+      setCurrentPhotoItemId(null);
+    } catch (err) {
+      console.error('Error selecting photo:', err);
+      Alert.alert('Error', 'Failed to select photo. Please try again.');
+    }
+  };
+
+  const handleTakePhoto = (itemId: string) => {
+    setCurrentPhotoItemId(itemId);
+    setShowCamera(true);
+  };
+
+  const viewPhotos = async (itemId: string) => {
+    const photos = itemPhotos[itemId] || [];
+    if (photos.length === 0) {
+      Alert.alert('No Photos', 'No photos have been taken for this item yet.');
+      return;
+    }
+
+    // For now, just show an alert with photo count
+    // TODO: Implement a photo gallery modal
+    Alert.alert(
+      'Photos', 
+      `This item has ${photos.length} photo(s). Photo gallery viewer will be implemented soon.`,
+      [{ text: 'OK' }]
+    );
+  };
 
   const refreshItems = async () => {
     console.log('Refreshing items for category:', categoryId);
@@ -894,31 +1080,21 @@ export const ItemsTable: React.FC<{
     }
   };
 
+  // Component render
   return (
-  <Card style={styles.card}>
-    <Card.Title title="Added Items" />
-      {/* Buttons row */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+    <>
+      <Card style={styles.itemsContainer}>
+        {/* Action buttons */}
+        <View style={styles.actionButtons}>
         <Button
-          mode="outlined"
+            mode="contained"
           onPress={handleAddNewItem}
-          style={{ flex: 1, borderColor: '#1976d2' }}
-          labelStyle={{ color: '#1976d2', fontWeight: 'bold', fontSize: 14 }}
+            style={{ flex: 1, marginRight: 8 }}
           contentStyle={{ height: 40 }}
-        >
-          + Add Item
-        </Button>
-        
-        <Button
-          mode="contained"
-          onPress={handleSave}
-          disabled={!hasUnsavedChanges || saving}
-          loading={saving}
-          style={{ flex: 1, backgroundColor: '#1976d2' }}
-          contentStyle={{ height: 40 }}
-          labelStyle={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}
-        >
-          {saving ? 'Saving...' : 'Save'}
+            labelStyle={{ fontWeight: 'bold', fontSize: 14 }}
+            icon="plus"
+          >
+            Add New Item
         </Button>
         
         <Button
@@ -960,6 +1136,7 @@ export const ItemsTable: React.FC<{
                 <DataTable.Title numeric style={{ width: 100 }}>Qty</DataTable.Title>
                 <DataTable.Title numeric style={{ width: 120 }}>Price</DataTable.Title>
                 <DataTable.Title numeric style={{ width: 120 }}>Total</DataTable.Title>
+                  <DataTable.Title style={{ width: 80 }}>Photos</DataTable.Title>
                 <DataTable.Title style={{ width: 60, justifyContent: 'flex-end' }}>
           <Text>{''}</Text>
         </DataTable.Title>
@@ -974,6 +1151,7 @@ export const ItemsTable: React.FC<{
                 const total = (parseInt(quantity || '1', 10) || 1) * (parseFloat(price || '0') || 0);
                 const isAutoSaved = autoSavedItems[String(item.riskassessmentitemid)];
                 const itemId = String(item.riskassessmentitemid);
+                  
         return (
                   <DataTable.Row key={item.riskassessmentitemid} style={isAutoSaved ? { backgroundColor: '#f0f8f0' } : undefined}>
                     <DataTable.Cell style={{ width: 180 }}>
@@ -1067,6 +1245,31 @@ export const ItemsTable: React.FC<{
                     <DataTable.Cell numeric style={{ width: 120 }}>
                       <Text>{formatCurrency(total)}</Text>
                     </DataTable.Cell>
+                      <DataTable.Cell style={{ width: 80 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <IconButton
+                            icon="camera"
+                            size={16}
+                            onPress={() => handleTakePhoto(itemId)}
+                            iconColor="#1976d2"
+                          />
+                          {(itemPhotos[itemId]?.length || 0) > 0 && (
+                            <TouchableOpacity onPress={() => viewPhotos(itemId)}>
+                              <View style={{ 
+                                backgroundColor: '#4CAF50', 
+                                borderRadius: 10, 
+                                paddingHorizontal: 6, 
+                                paddingVertical: 2,
+                                marginLeft: 4
+                              }}>
+                                <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
+                                  {itemPhotos[itemId]?.length || 0}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </DataTable.Cell>
                     <DataTable.Cell style={{ width: 60 }}>
                       {editable && (
               <IconButton
@@ -1076,8 +1279,8 @@ export const ItemsTable: React.FC<{
                 iconColor="#e74c3c"
               />
                       )}
-            </DataTable.Cell>
-          </DataTable.Row>
+                    </DataTable.Cell>
+            </DataTable.Row>
         );
       })}
       <DataTable.Row style={styles.totalRow}>
@@ -1092,6 +1295,7 @@ export const ItemsTable: React.FC<{
                     {formatCurrency(items.reduce((total, item) => total + (item.price * item.qty), 0))}
           </Text>
         </DataTable.Cell>
+                  <DataTable.Cell style={{ width: 80 }}><Text>{''}</Text></DataTable.Cell>
                 <DataTable.Cell style={{ width: 60 }}><Text>{''}</Text></DataTable.Cell>
       </DataTable.Row>
     </DataTable>
@@ -1099,6 +1303,18 @@ export const ItemsTable: React.FC<{
         </View>
       </ScrollView>
   </Card>
+      
+      {/* Camera Modal */}
+      <CameraModal
+        visible={showCamera}
+        onClose={() => {
+          setShowCamera(false);
+          setCurrentPhotoItemId(null);
+        }}
+        onTakePhoto={takePhoto}
+        onSelectFromGallery={selectFromGallery}
+      />
+    </>
 );
 };
 

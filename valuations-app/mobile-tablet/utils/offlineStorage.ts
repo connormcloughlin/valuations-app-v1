@@ -156,6 +156,26 @@ export const getAssessmentSections = async (assessmentId: string): Promise<any |
   return await getApiData(`assessment_sections_${assessmentId}`);
 };
 
+// Store assessment categories data
+export const storeAssessmentCategories = async (sectionId: string, data: any): Promise<void> => {
+  await storeApiData(`assessment_categories_${sectionId}`, data);
+};
+
+// Get assessment categories data
+export const getAssessmentCategories = async (sectionId: string): Promise<any | null> => {
+  return await getApiData(`assessment_categories_${sectionId}`);
+};
+
+// Store assessment items data
+export const storeAssessmentItems = async (categoryId: string, data: any): Promise<void> => {
+  await storeApiData(`assessment_items_${categoryId}`, data);
+};
+
+// Get assessment items data
+export const getAssessmentItems = async (categoryId: string): Promise<any | null> => {
+  return await getApiData(`assessment_items_${categoryId}`);
+};
+
 export default {
   storeRiskTemplates,
   getRiskTemplates,
@@ -175,4 +195,8 @@ export default {
   getLastSyncTimestamp,
   storeAssessmentSections,
   getAssessmentSections,
+  storeAssessmentCategories,
+  getAssessmentCategories,
+  storeAssessmentItems,
+  getAssessmentItems,
 }; 

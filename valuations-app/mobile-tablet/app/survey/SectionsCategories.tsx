@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Modal, Button, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
+import NetInfo from '@react-native-community/netinfo';
 import { Collapsible } from '../../components/Collapsible';
 import api from '../../api';
 import { ItemsTable, Item as ItemType } from './components/ItemComponents';
+import prefetchService from '../../services/prefetchService';
+import { PrefetchStatusBadge, OfflineStatusIndicator } from '../../components/PrefetchProgressIndicator';
+import { getAllRiskAssessmentItems } from '../../utils/db';
 
 interface Section {
   id: string;
@@ -51,8 +56,55 @@ const SectionsCategoriesScreen = () => {
   // For add item modal
   const [addItemCategoryId, setAddItemCategoryId] = useState<string|null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
+  
+  // Offline and caching state
+  const [isOffline, setIsOffline] = useState(false);
+  const [cachedCategories, setCachedCategories] = useState<Set<string>>(new Set());
+  const [prefetchedCategoriesCount, setPrefetchedCategoriesCount] = useState(0);
 
   const { isLandscape, height } = useOrientation();
+
+  // Monitor network status
+  useEffect(() => {
+    const checkConnection = async () => {
+      const netInfo = await NetInfo.fetch();
+      setIsOffline(!netInfo.isConnected);
+    };
+
+    checkConnection();
+    
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOffline(!state.isConnected);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Monitor prefetch progress and update cached categories
+  useEffect(() => {
+    const updateCachedCategories = async () => {
+      try {
+        const allItems = await getAllRiskAssessmentItems();
+        const uniqueCategories = new Set(
+          allItems.map(item => String(item.riskassessmentcategoryid))
+        );
+        setCachedCategories(uniqueCategories);
+        setPrefetchedCategoriesCount(uniqueCategories.size);
+      } catch (error) {
+        console.error('Error checking cached categories:', error);
+      }
+    };
+
+    updateCachedCategories();
+
+    // Listen for prefetch completion events
+    const unsubscribePrefetch = prefetchService.onCategoryCompleted((categoryId) => {
+      setCachedCategories(prev => new Set([...prev, categoryId]));
+      setPrefetchedCategoriesCount(prev => prev + 1);
+    });
+
+    return unsubscribePrefetch;
+  }, []);
 
   // Fetch sections on mount
   useEffect(() => {
@@ -109,48 +161,101 @@ const SectionsCategoriesScreen = () => {
   };
 
   // Fetch items for a category
-  const fetchItems = (categoryId: string) => {
+  const fetchItems = async (categoryId: string) => {
     console.log('[SectionsCategoriesScreen] Fetching items for category:', categoryId);
     setItemsLoading(prev => ({ ...prev, [categoryId]: true }));
     setItemsError(prev => ({ ...prev, [categoryId]: null }));
-    api.getRiskAssessmentItems(categoryId)
-      .then((res: any) => {
-        console.log('[SectionsCategoriesScreen] getRiskAssessmentItems response:', res);
-        if (res.success && res.data) {
-          setItems(prev => ({
-            ...prev,
-            [categoryId]: res.data.map((item: any) => ({
-              riskassessmentitemid: item.riskassessmentitemid ?? '',
-              riskassessmentcategoryid: item.riskassessmentcategoryid ?? '',
-              itemprompt: item.itemprompt ?? '',
-              itemtype: item.itemtype ?? '',
-              rank: item.rank ?? '',
-              commaseparatedlist: item.commaseparatedlist ?? '',
-              selectedanswer: item.selectedanswer ?? '',
-              qty: item.qty != null ? String(item.qty) : '',
-              price: item.price != null ? String(item.price) : '',
-              description: item.description ?? '',
-              model: item.model ?? '',
-              location: item.location ?? '',
-              assessmentregisterid: item.assessmentregisterid ?? '',
-              assessmentregistertypeid: item.assessmentregistertypeid ?? '',
-              isactive: item.isactive ?? '',
-              createdby: item.createdby ?? '',
-              createddate: item.createddate ?? '',
-              modifiedby: item.modifiedby ?? '',
-              modifieddate: item.modifieddate ?? '',
-              id: item.riskassessmentitemid ?? item.id ?? '', // for UI key
-            }))
-          }));
-        } else {
-          setItemsError(prev => ({ ...prev, [categoryId]: res.message || 'Failed to load items' }));
-        }
-      })
-      .catch(e => {
-        console.error('[SectionsCategoriesScreen] Error loading items:', e);
-        setItemsError(prev => ({ ...prev, [categoryId]: e.message || 'Error loading items' }));
-      })
-      .finally(() => setItemsLoading(prev => ({ ...prev, [categoryId]: false })));
+
+    try {
+      // Check if we have cached data first
+      const cachedItems = await getAllRiskAssessmentItems();
+      const categoryItems = cachedItems.filter(item => 
+        String(item.riskassessmentcategoryid) === String(categoryId)
+      );
+
+      if (categoryItems.length > 0) {
+        console.log(`📦 Using cached data for category ${categoryId} (${categoryItems.length} items)`);
+        
+        // Use cached data
+        setItems(prev => ({
+          ...prev,
+          [categoryId]: categoryItems.map((item: any) => ({
+            riskassessmentitemid: item.riskassessmentitemid ?? '',
+            riskassessmentcategoryid: item.riskassessmentcategoryid ?? '',
+            itemprompt: item.itemprompt ?? '',
+            itemtype: item.itemtype ?? '',
+            rank: item.rank ?? '',
+            commaseparatedlist: item.commaseparatedlist ?? '',
+            selectedanswer: item.selectedanswer ?? '',
+            qty: item.qty != null ? String(item.qty) : '',
+            price: item.price != null ? String(item.price) : '',
+            description: item.description ?? '',
+            model: item.model ?? '',
+            location: item.location ?? '',
+            assessmentregisterid: item.assessmentregisterid ?? '',
+            assessmentregistertypeid: item.assessmentregistertypeid ?? '',
+            isactive: item.isactive ?? '',
+            createdby: item.createdby ?? '',
+            createddate: item.createddate ?? '',
+            modifiedby: item.modifiedby ?? '',
+            modifieddate: item.modifieddate ?? '',
+            id: item.riskassessmentitemid ?? item.id ?? '', // for UI key
+          }))
+        }));
+
+        setItemsLoading(prev => ({ ...prev, [categoryId]: false }));
+        return;
+      }
+
+      // If no cached data and we're offline, show error
+      if (isOffline) {
+        setItemsError(prev => ({ 
+          ...prev, 
+          [categoryId]: 'No cached data available for this category. Please connect to internet.' 
+        }));
+        setItemsLoading(prev => ({ ...prev, [categoryId]: false }));
+        return;
+      }
+
+      // Fall back to API call
+      console.log(`📡 Fetching fresh data for category ${categoryId} from API`);
+      const res = await api.getRiskAssessmentItems(categoryId);
+      
+      if (res.success && res.data) {
+        setItems(prev => ({
+          ...prev,
+          [categoryId]: res.data.map((item: any) => ({
+            riskassessmentitemid: item.riskassessmentitemid ?? '',
+            riskassessmentcategoryid: item.riskassessmentcategoryid ?? '',
+            itemprompt: item.itemprompt ?? '',
+            itemtype: item.itemtype ?? '',
+            rank: item.rank ?? '',
+            commaseparatedlist: item.commaseparatedlist ?? '',
+            selectedanswer: item.selectedanswer ?? '',
+            qty: item.qty != null ? String(item.qty) : '',
+            price: item.price != null ? String(item.price) : '',
+            description: item.description ?? '',
+            model: item.model ?? '',
+            location: item.location ?? '',
+            assessmentregisterid: item.assessmentregisterid ?? '',
+            assessmentregistertypeid: item.assessmentregistertypeid ?? '',
+            isactive: item.isactive ?? '',
+            createdby: item.createdby ?? '',
+            createddate: item.createddate ?? '',
+            modifiedby: item.modifiedby ?? '',
+            modifieddate: item.modifieddate ?? '',
+            id: item.riskassessmentitemid ?? item.id ?? '', // for UI key
+          }))
+        }));
+      } else {
+        setItemsError(prev => ({ ...prev, [categoryId]: res.message || 'Failed to load items' }));
+      }
+    } catch (e: any) {
+      console.error('[SectionsCategoriesScreen] Error loading items:', e);
+      setItemsError(prev => ({ ...prev, [categoryId]: e.message || 'Error loading items' }));
+    } finally {
+      setItemsLoading(prev => ({ ...prev, [categoryId]: false }));
+    }
   };
 
   // After setExpandedSection or section change, clear expandedCategory and items
@@ -161,7 +266,17 @@ const SectionsCategoriesScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: 'linear-gradient(180deg, #f0f4fa 0%, #e9eef6 100%)', paddingTop: 24, paddingBottom: 32 }}>
-      <Text style={{ fontSize: 26, fontWeight: 'bold', marginLeft: 24, marginBottom: 12, color: '#1976d2', letterSpacing: 0.5 }}>Sections & Categories</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 24, marginBottom: 12 }}>
+        <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#1976d2', letterSpacing: 0.5 }}>Sections & Categories</Text>
+        <PrefetchStatusBadge />
+      </View>
+      
+      {/* Offline Status Indicator */}
+      <OfflineStatusIndicator 
+        cachedCategoriesCount={prefetchedCategoriesCount}
+        style={{ marginHorizontal: 16, marginBottom: 8 }}
+      />
+      
       {/* Sections as horizontal tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 20, paddingHorizontal: 16 }}>
         {sections.map(section => (
@@ -210,34 +325,62 @@ const SectionsCategoriesScreen = () => {
               style={{ flexGrow: 1, maxHeight: isLandscape ? height * 0.75 : height * 0.6, minHeight: 80 }}
               showsVerticalScrollIndicator={true}
             >
-              {categories[expandedSection]?.map(category => (
-                <TouchableOpacity
-                  key={category.id}
-                  style={{
-                    paddingVertical: 8,
-                    paddingHorizontal: 10,
-                    borderRadius: 7,
-                    marginVertical: 2,
-                    marginHorizontal: 2,
-                    backgroundColor: expandedCategory === category.id ? '#e3f0fc' : 'transparent',
-                    borderWidth: expandedCategory === category.id ? 1.5 : 0,
-                    borderColor: expandedCategory === category.id ? '#1976d2' : 'transparent',
-                    shadowColor: '#1976d2',
-                    shadowOpacity: expandedCategory === category.id ? 0.10 : 0,
-                    shadowRadius: 4,
-                    elevation: expandedCategory === category.id ? 2 : 0,
-                  }}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    setExpandedCategory(category.id);
-                    if (!items[category.id] && !itemsLoading[category.id]) {
-                      fetchItems(category.id);
-                    }
-                  }}
-                >
-                  <Text style={{ fontWeight: expandedCategory === category.id ? 'bold' : '500', color: expandedCategory === category.id ? '#1976d2' : '#333', fontSize: 11 }}>{category.title}</Text>
-                </TouchableOpacity>
-              ))}
+              {categories[expandedSection]?.map(category => {
+                const isCached = cachedCategories.has(category.id);
+                return (
+                  <TouchableOpacity
+                    key={category.id}
+                    style={{
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      borderRadius: 7,
+                      marginVertical: 2,
+                      marginHorizontal: 2,
+                      backgroundColor: expandedCategory === category.id ? '#e3f0fc' : 'transparent',
+                      borderWidth: expandedCategory === category.id ? 1.5 : 0,
+                      borderColor: expandedCategory === category.id ? '#1976d2' : 'transparent',
+                      shadowColor: '#1976d2',
+                      shadowOpacity: expandedCategory === category.id ? 0.10 : 0,
+                      shadowRadius: 4,
+                      elevation: expandedCategory === category.id ? 2 : 0,
+                    }}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setExpandedCategory(category.id);
+                      if (!items[category.id] && !itemsLoading[category.id]) {
+                        fetchItems(category.id);
+                      }
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ 
+                        fontWeight: expandedCategory === category.id ? 'bold' : '500', 
+                        color: expandedCategory === category.id ? '#1976d2' : '#333', 
+                        fontSize: 11,
+                        flex: 1
+                      }}>
+                        {category.title}
+                      </Text>
+                      {isCached && (
+                        <MaterialCommunityIcons 
+                          name="check-circle" 
+                          size={14} 
+                          color="#4CAF50" 
+                          style={{ marginLeft: 4 }}
+                        />
+                      )}
+                      {!isCached && isOffline && (
+                        <MaterialCommunityIcons 
+                          name="wifi-off" 
+                          size={12} 
+                          color="#ff9800" 
+                          style={{ marginLeft: 4 }}
+                        />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
           {/* Items grid view for the selected category */}

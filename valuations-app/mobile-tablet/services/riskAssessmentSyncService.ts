@@ -1,15 +1,20 @@
 import api from '../api';
 import NetInfo from '@react-native-community/netinfo';
+import * as FileSystem from 'expo-file-system';
 import {
   getPendingSyncRiskAssessmentItems,
   getPendingSyncAppointments,
   getPendingSyncRiskAssessmentMasters,
+  getPendingSyncMediaFiles,
   markRiskAssessmentItemsAsSynced,
   markAppointmentsAsSynced,
   markRiskAssessmentMastersAsSynced,
+  markMediaFilesAsSynced,
+  updateMediaFile,
   RiskAssessmentItem,
   RiskAssessmentMaster,
-  Appointment
+  Appointment,
+  MediaFile
 } from '../utils/db';
 
 // Debug: Check if API module has syncChanges function
@@ -53,17 +58,34 @@ const riskAssessmentSyncService = {
       console.log('Starting sync of pending changes...');
 
       // Get all pending changes from SQLite
-      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters] = await Promise.all([
+      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
         getPendingSyncRiskAssessmentItems(),
         getPendingSyncAppointments(),
-        getPendingSyncRiskAssessmentMasters()
+        getPendingSyncRiskAssessmentMasters(),
+        getPendingSyncMediaFiles()
       ]);
 
       console.log('Pending changes found:', {
         riskAssessmentItems: pendingRiskAssessmentItems.length,
         appointments: pendingAppointments.length,
-        riskAssessmentMasters: pendingRiskAssessmentMasters.length
+        riskAssessmentMasters: pendingRiskAssessmentMasters.length,
+        mediaFiles: pendingMediaFiles.length
       });
+
+      // Sync media files first (since they might be referenced by other entities)
+      let syncedMediaFiles = 0;
+      if (pendingMediaFiles.length > 0) {
+        console.log('=== SYNCING MEDIA FILES FIRST ===');
+        const mediaUploadResult = await riskAssessmentSyncService.syncMediaFiles(pendingMediaFiles);
+        
+        if (!mediaUploadResult.success) {
+          console.error('Media upload failed, but continuing with other data sync');
+          console.error('Media upload error:', mediaUploadResult.error);
+        } else {
+          syncedMediaFiles = mediaUploadResult.uploaded || 0;
+          console.log(`Successfully uploaded ${syncedMediaFiles} media files`);
+        }
+      }
 
       // Log detailed information about pending risk assessment items
       if (pendingRiskAssessmentItems.length > 0) {
@@ -85,20 +107,21 @@ const riskAssessmentSyncService = {
         });
       }
 
-      // If no changes to sync, return early
+      // If no non-media changes to sync, return early
       if (pendingRiskAssessmentItems.length === 0 && pendingAppointments.length === 0 && pendingRiskAssessmentMasters.length === 0) {
         return {
           success: true,
-          message: 'No pending changes to sync',
+          message: `Synced ${syncedMediaFiles} media files. No other pending changes to sync.`,
           synced: {
             riskAssessmentItems: 0,
             appointments: 0,
-            riskAssessmentMasters: 0
+            riskAssessmentMasters: 0,
+            mediaFiles: syncedMediaFiles
           }
         };
       }
 
-      // Prepare sync data in the expected format
+      // Prepare sync data in the expected format (excluding media files - already synced)
       const syncData = {
         deviceId: "mobile-tablet-device", // TODO: Get actual device ID
         userId: "current-user-id", // TODO: Get actual user ID
@@ -230,7 +253,8 @@ const riskAssessmentSyncService = {
           synced: {
             riskAssessmentItems: pendingRiskAssessmentItems.length,
             appointments: pendingAppointments.length,
-            riskAssessmentMasters: pendingRiskAssessmentMasters.length
+            riskAssessmentMasters: pendingRiskAssessmentMasters.length,
+            mediaFiles: syncedMediaFiles
           },
           serverResponse: response.data
         };
@@ -259,22 +283,148 @@ const riskAssessmentSyncService = {
   },
 
   /**
+   * Sync media files to the server
+   * @param {MediaFile[]} mediaFiles - Array of media files to sync
+   * @returns {Promise<Object>} Sync result
+   */
+  syncMediaFiles: async (mediaFiles: MediaFile[]) => {
+    try {
+      console.log('=== SYNCING MEDIA FILES ===');
+      console.log(`Processing ${mediaFiles.length} media files for upload`);
+      
+      const mediaFilesWithData: Array<{
+        mediaID?: number;
+        fileName: string;
+        fileType: string;
+        entityName: string;
+        entityID: number;
+        base64Data: string;
+        metadata?: string;
+        uploadedAt: string;
+        uploadedBy?: string;
+      }> = [];
+
+      // Read file data for each media file
+      for (const mediaFile of mediaFiles) {
+        try {
+          if (mediaFile.LocalPath) {
+            const fileInfo = await FileSystem.getInfoAsync(mediaFile.LocalPath);
+            if (fileInfo.exists) {
+              // Read the file as base64
+              const base64Data = await FileSystem.readAsStringAsync(mediaFile.LocalPath, {
+                encoding: FileSystem.EncodingType.Base64
+              });
+
+              const mediaFileData: any = {
+                fileName: mediaFile.FileName,
+                fileType: mediaFile.FileType,
+                entityName: mediaFile.EntityName,
+                entityID: mediaFile.EntityID,
+                base64Data: base64Data,
+                metadata: mediaFile.Metadata,
+                uploadedAt: mediaFile.UploadedAt,
+                uploadedBy: mediaFile.UploadedBy
+              };
+
+              // Only add mediaID if it exists
+              if (mediaFile.MediaID !== undefined) {
+                mediaFileData.mediaID = mediaFile.MediaID;
+              }
+
+              mediaFilesWithData.push(mediaFileData);
+
+              console.log(`Prepared media file for upload: ${mediaFile.FileName}`);
+            } else {
+              console.warn(`Local file not found: ${mediaFile.LocalPath}`);
+            }
+          } else {
+            console.warn(`No local path for media file: ${mediaFile.FileName}`);
+          }
+        } catch (error) {
+          console.error(`Error preparing media file ${mediaFile.FileName}:`, error);
+        }
+      }
+
+      if (mediaFilesWithData.length === 0) {
+        console.log('No media files to upload');
+        return { success: true, uploaded: 0 };
+      }
+
+      console.log(`Uploading ${mediaFilesWithData.length} media files to backend`);
+
+      // Use batch upload API
+      const uploadResult = await api.uploadMediaBatch(mediaFilesWithData);
+
+      if (uploadResult.success && uploadResult.data) {
+        console.log('Media batch upload successful:', uploadResult.data);
+        
+        // Update local media files with server URLs
+        if (uploadResult.data.results) {
+          for (const result of uploadResult.data.results) {
+            if (result.success && result.mediaID) {
+              const localMediaFile = mediaFiles.find(mf => mf.MediaID === result.mediaID);
+              if (localMediaFile) {
+                await updateMediaFile({
+                  ...localMediaFile,
+                  BlobURL: result.blobUrl || localMediaFile.BlobURL,
+                  pending_sync: 0
+                });
+                console.log(`Updated local media file ${localMediaFile.FileName} with server URL`);
+              }
+            }
+          }
+        }
+
+        // Mark all successfully uploaded files as synced
+        const uploadedMediaIds = mediaFiles
+          .map(mf => mf.MediaID)
+          .filter((id): id is number => typeof id === 'number');
+        
+        if (uploadedMediaIds.length > 0) {
+          await markMediaFilesAsSynced(uploadedMediaIds);
+          console.log(`Marked ${uploadedMediaIds.length} media files as synced`);
+        }
+
+        return {
+          success: true,
+          uploaded: mediaFilesWithData.length
+        };
+      } else {
+        console.error('Media batch upload failed:', uploadResult);
+        return {
+          success: false,
+          error: uploadResult.message || 'Media upload failed'
+        };
+      }
+
+    } catch (error) {
+      console.error('Error syncing media files:', error);
+      return {
+        success: false,
+        error: (error as Error).message || 'Media sync failed'
+      };
+    }
+  },
+
+  /**
    * Get count of pending changes
    * @returns {Promise<Object>} Count of pending items
    */
   getPendingChangesCount: async () => {
     try {
-      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters] = await Promise.all([
+      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
         getPendingSyncRiskAssessmentItems(),
         getPendingSyncAppointments(),
-        getPendingSyncRiskAssessmentMasters()
+        getPendingSyncRiskAssessmentMasters(),
+        getPendingSyncMediaFiles()
       ]);
 
       return {
         riskAssessmentItems: pendingRiskAssessmentItems.length,
         appointments: pendingAppointments.length,
         riskAssessmentMasters: pendingRiskAssessmentMasters.length,
-        total: pendingRiskAssessmentItems.length + pendingAppointments.length + pendingRiskAssessmentMasters.length
+        mediaFiles: pendingMediaFiles.length,
+        total: pendingRiskAssessmentItems.length + pendingAppointments.length + pendingRiskAssessmentMasters.length + pendingMediaFiles.length
       };
     } catch (error) {
       console.error('Error getting pending changes count:', error);
@@ -282,6 +432,7 @@ const riskAssessmentSyncService = {
         riskAssessmentItems: 0,
         appointments: 0,
         riskAssessmentMasters: 0,
+        mediaFiles: 0,
         total: 0
       };
     }

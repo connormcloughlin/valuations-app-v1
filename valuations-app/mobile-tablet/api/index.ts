@@ -375,5 +375,107 @@ export default {
   getRiskTemplateCategories,
   getRiskTemplateItems,
   clearAllCachedData,
-  syncChanges
+  syncChanges,
+  
+  // Media API endpoints - Backend integration
+  uploadMedia: async (mediaData: {
+    fileName: string;
+    fileType: string;
+    entityName: string;
+    entityID: number;
+    base64Data: string;
+    metadata?: string;
+  }): Promise<ApiResponse> => {
+    try {
+      console.log('Uploading media to backend:', {
+        fileName: mediaData.fileName,
+        entityName: mediaData.entityName,
+        entityID: mediaData.entityID,
+        fileSize: mediaData.base64Data.length
+      });
+      
+      const response = await axiosInstance.post('/api/media/upload', {
+        fileName: mediaData.fileName,
+        fileType: mediaData.fileType,
+        entityName: mediaData.entityName,
+        entityID: mediaData.entityID,
+        base64Data: mediaData.base64Data,
+        metadata: mediaData.metadata
+      });
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error uploading media to backend:', error);
+      return handleApiError(error);
+    }
+  },
+  
+  getMediaForEntity: async (entityName: string, entityID: number): Promise<ApiResponse> => {
+    try {
+      console.log('Fetching media from backend for:', { entityName, entityID });
+      
+      const response = await axiosInstance.get(`/api/media/entity/${entityName}/${entityID}`);
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error fetching media from backend:', error);
+      return handleApiError(error);
+    }
+  },
+
+  // Delete media file from backend
+  deleteMedia: async (mediaID: number): Promise<ApiResponse> => {
+    try {
+      console.log('Deleting media from backend:', mediaID);
+      
+      const response = await axiosInstance.delete(`/api/media/${mediaID}`);
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error deleting media from backend:', error);
+      return handleApiError(error);
+    }
+  },
+
+  // Batch upload media files (used by sync service)
+  uploadMediaBatch: async (mediaFiles: Array<{
+    mediaID?: number;
+    fileName: string;
+    fileType: string;
+    entityName: string;
+    entityID: number;
+    base64Data: string;
+    metadata?: string;
+    uploadedAt: string;
+    uploadedBy?: string;
+  }>): Promise<ApiResponse> => {
+    try {
+      console.log('Batch uploading media to backend:', mediaFiles.length, 'files');
+      
+      const response = await axiosInstance.post('/api/media/batch-upload', {
+        mediaFiles
+      });
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error batch uploading media to backend:', error);
+      return handleApiError(error);
+    }
+  }
 }; 
