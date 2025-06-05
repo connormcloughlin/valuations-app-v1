@@ -377,7 +377,7 @@ export default {
   clearAllCachedData,
   syncChanges,
   
-  // Media API endpoints - Backend integration
+  // Updated Media API endpoints - Sync API integration
   uploadMedia: async (mediaData: {
     fileName: string;
     fileType: string;
@@ -385,22 +385,53 @@ export default {
     entityID: number;
     base64Data: string;
     metadata?: string;
+    deviceId?: string;
+    userId?: string;
   }): Promise<ApiResponse> => {
     try {
-      console.log('Uploading media to backend:', {
+      console.log('Uploading media to sync API:', {
         fileName: mediaData.fileName,
         entityName: mediaData.entityName,
         entityID: mediaData.entityID,
         fileSize: mediaData.base64Data.length
       });
       
-      const response = await axiosInstance.post('/api/media/upload', {
-        fileName: mediaData.fileName,
-        fileType: mediaData.fileType,
-        entityName: mediaData.entityName,
-        entityID: mediaData.entityID,
-        base64Data: mediaData.base64Data,
-        metadata: mediaData.metadata
+      // Convert base64 to FormData for sync API
+      const formData = new FormData();
+      
+      // In React Native, we can append base64 data directly to FormData
+      // Create a file object that React Native FormData can handle
+      formData.append('file', {
+        uri: `data:${mediaData.fileType};base64,${mediaData.base64Data}`,
+        type: mediaData.fileType,
+        name: mediaData.fileName
+      } as any);
+      
+      formData.append('entityName', mediaData.entityName);
+      formData.append('entityId', mediaData.entityID.toString());
+      
+      // Map common MIME types to backend expected types
+      let backendFileType = 'photo'; // default
+      if (mediaData.fileType.includes('image')) {
+        backendFileType = 'photo';
+      } else if (mediaData.fileType.includes('pdf') || mediaData.fileType.includes('document')) {
+        backendFileType = 'document';
+      } else if (mediaData.fileName.toLowerCase().includes('signature')) {
+        backendFileType = 'signature';
+      }
+      
+      formData.append('fileType', backendFileType);
+      formData.append('deviceId', mediaData.deviceId || 'mobile-device');
+      formData.append('userId', mediaData.userId || 'mobile-user');
+      
+      if (mediaData.metadata) {
+        formData.append('metadata', mediaData.metadata);
+      }
+      
+      const response = await axiosInstance.post('/sync/media/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
       
       return {
@@ -409,16 +440,16 @@ export default {
         status: response.status
       };
     } catch (error) {
-      console.error('Error uploading media to backend:', error);
+      console.error('Error uploading media to sync API:', error);
       return handleApiError(error);
     }
   },
   
   getMediaForEntity: async (entityName: string, entityID: number): Promise<ApiResponse> => {
     try {
-      console.log('Fetching media from backend for:', { entityName, entityID });
+      console.log('Fetching media from sync API for:', { entityName, entityID });
       
-      const response = await axiosInstance.get(`/api/media/entity/${entityName}/${entityID}`);
+      const response = await axiosInstance.get(`/sync/media/entity/${entityName}/${entityID}`);
       
       return {
         success: true,
@@ -426,7 +457,7 @@ export default {
         status: response.status
       };
     } catch (error) {
-      console.error('Error fetching media from backend:', error);
+      console.error('Error fetching media from sync API:', error);
       return handleApiError(error);
     }
   },
@@ -436,7 +467,8 @@ export default {
     try {
       console.log('Deleting media from backend:', mediaID);
       
-      const response = await axiosInstance.delete(`/api/media/${mediaID}`);
+      // Note: Using regular media endpoint for delete as sync API may not have this
+      const response = await axiosInstance.delete(`/media/${mediaID}`);
       
       return {
         success: true,
@@ -462,10 +494,147 @@ export default {
     uploadedBy?: string;
   }>): Promise<ApiResponse> => {
     try {
-      console.log('Batch uploading media to backend:', mediaFiles.length, 'files');
+      console.log('Batch uploading media to sync API:', mediaFiles.length, 'files');
       
-      const response = await axiosInstance.post('/api/media/batch-upload', {
-        mediaFiles
+      // Convert each media file to FormData and upload individually
+      // since sync API expects individual uploads
+      const results = [];
+      
+      for (const mediaFile of mediaFiles) {
+        // Create FormData for each file manually (inline implementation)
+        try {
+          console.log('Uploading media to sync API:', {
+            fileName: mediaFile.fileName,
+            entityName: mediaFile.entityName,
+            entityID: mediaFile.entityID,
+            fileSize: mediaFile.base64Data.length
+          });
+          
+          // Convert base64 to FormData for sync API
+          const formData = new FormData();
+          
+          // In React Native, we can append base64 data directly to FormData
+          // Create a file object that React Native FormData can handle
+          formData.append('file', {
+            uri: `data:${mediaFile.fileType};base64,${mediaFile.base64Data}`,
+            type: mediaFile.fileType,
+            name: mediaFile.fileName
+          } as any);
+          
+          formData.append('entityName', mediaFile.entityName);
+          formData.append('entityId', mediaFile.entityID.toString());
+          
+          // Map common MIME types to backend expected types
+          let backendFileType = 'photo'; // default
+          if (mediaFile.fileType.includes('image')) {
+            backendFileType = 'photo';
+          } else if (mediaFile.fileType.includes('pdf') || mediaFile.fileType.includes('document')) {
+            backendFileType = 'document';
+          } else if (mediaFile.fileName.toLowerCase().includes('signature')) {
+            backendFileType = 'signature';
+          }
+          
+          formData.append('fileType', backendFileType);
+          formData.append('deviceId', 'mobile-device');
+          formData.append('userId', mediaFile.uploadedBy || 'mobile-user');
+          
+          if (mediaFile.metadata) {
+            formData.append('metadata', mediaFile.metadata);
+          }
+          
+          const response = await axiosInstance.post('/sync/media/upload', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          });
+          
+          results.push({
+            success: true,
+            data: response.data,
+            status: response.status,
+            originalMediaID: mediaFile.mediaID
+          });
+        } catch (error: any) {
+          console.error('Error uploading individual media file:', error);
+          results.push({
+            success: false,
+            message: error.response?.data?.message || error.message,
+            status: error.response?.status,
+            originalMediaID: mediaFile.mediaID
+          });
+        }
+      }
+      
+      return {
+        success: true,
+        data: { uploaded: results.filter(r => r.success).length, results },
+        status: 200
+      };
+    } catch (error) {
+      console.error('Error batch uploading media to sync API:', error);
+      return handleApiError(error);
+    }
+  },
+
+  // New sync-specific endpoints based on test expectations
+  getSyncChanges: async (params: {
+    deviceId: string;
+    userId: string;
+    lastSyncTimestamp: string;
+    entities: string[];
+  }): Promise<ApiResponse> => {
+    try {
+      console.log('Fetching sync changes:', params);
+      
+      const response = await axiosInstance.get('/sync/changes', { params });
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error fetching sync changes:', error);
+      return handleApiError(error);
+    }
+  },
+
+  pushSyncBatch: async (syncData: {
+    deviceId: string;
+    userId: string;
+    appointments?: any[];
+    riskAssessmentMasters?: any[];
+    riskAssessmentItems?: any[];
+    deletedEntities?: any[];
+  }): Promise<ApiResponse> => {
+    try {
+      console.log('Pushing sync batch:', {
+        deviceId: syncData.deviceId,
+        appointments: syncData.appointments?.length || 0,
+        riskAssessmentMasters: syncData.riskAssessmentMasters?.length || 0,
+        riskAssessmentItems: syncData.riskAssessmentItems?.length || 0,
+        deletedEntities: syncData.deletedEntities?.length || 0
+      });
+      
+      const response = await axiosInstance.post('/sync/batch', syncData);
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error pushing sync batch:', error);
+      return handleApiError(error);
+    }
+  },
+
+  getSyncSessions: async (deviceId: string): Promise<ApiResponse> => {
+    try {
+      console.log('Fetching sync sessions for device:', deviceId);
+      
+      const response = await axiosInstance.get('/sync/sessions', {
+        params: { deviceId }
       });
       
       return {
@@ -474,7 +643,24 @@ export default {
         status: response.status
       };
     } catch (error) {
-      console.error('Error batch uploading media to backend:', error);
+      console.error('Error fetching sync sessions:', error);
+      return handleApiError(error);
+    }
+  },
+
+  getSyncHealth: async (): Promise<ApiResponse> => {
+    try {
+      console.log('Checking sync API health');
+      
+      const response = await axiosInstance.get('/sync/debug');
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error checking sync health:', error);
       return handleApiError(error);
     }
   }

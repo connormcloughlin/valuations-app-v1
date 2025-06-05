@@ -646,7 +646,7 @@ export const ItemsTable: React.FC<{
     const photoMap: { [key: string]: MediaFile[] } = {};
     
     for (const item of items) {
-      const photos = await mediaService.getPhotosForEntity('risk_assessment_item', item.riskassessmentitemid);
+      const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', item.riskassessmentitemid);
       photoMap[String(item.riskassessmentitemid)] = photos;
     }
     
@@ -683,7 +683,7 @@ export const ItemsTable: React.FC<{
         // Save photo using media service
         const mediaFile = await mediaService.savePhoto(
           photoUri, 
-          'risk_assessment_item', 
+          'riskAssessmentItem', 
           Number(currentPhotoItemId),
           {
             category: categoryId,
@@ -740,7 +740,7 @@ export const ItemsTable: React.FC<{
         // Save photo using media service
         const mediaFile = await mediaService.savePhoto(
           photoUri, 
-          'risk_assessment_item', 
+          'riskAssessmentItem', 
           Number(currentPhotoItemId),
           {
             category: categoryId,

@@ -29,8 +29,6 @@ export async function initializeDatabase() {
 // Helper to run SQL with promise
 export async function runSql(sql: string, params: any[] = []): Promise<SQLiteResult> {
   try {
-    console.log('Executing SQL:', sql, 'with params:', params);
-    
     if (sql.trim().toLowerCase().startsWith('select')) {
       // For SELECT queries, use getAllAsync
       const result = await db.getAllAsync(sql, params);
@@ -51,8 +49,8 @@ export async function runSql(sql: string, params: any[] = []): Promise<SQLiteRes
         insertId: result.lastInsertRowId
       };
     }
-  } catch (error) {
-    console.error('Error executing SQL:', error);
+  } catch (error: any) {
+    console.error('Error executing SQL:', sql.substring(0, 50) + '...', error.message);
     throw error;
   }
 }
@@ -381,7 +379,6 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
       'SELECT * FROM risk_assessment_items WHERE riskassessmentitemid = ?',
       [i.riskassessmentitemid]
     );
-    console.log('Verification query result:', verifyResult);
     
     if (!verifyResult.rows._array.length) {
       throw new Error('Item was not inserted successfully');
@@ -396,9 +393,7 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
 }
 export async function getAllRiskAssessmentItems(): Promise<RiskAssessmentItem[]> {
   try {
-    console.log('Fetching all risk assessment items from SQLite');
     const res = await runSql('SELECT * FROM risk_assessment_items');
-    console.log('SQLite query result:', res);
     console.log('Number of items found:', res.rows._array.length);
     return res.rows._array;
   } catch (error) {

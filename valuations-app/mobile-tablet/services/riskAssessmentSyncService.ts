@@ -1,4 +1,5 @@
 import api from '../api';
+import * as apiModule from '../api';
 import NetInfo from '@react-native-community/netinfo';
 import * as FileSystem from 'expo-file-system';
 import {
@@ -16,11 +17,6 @@ import {
   Appointment,
   MediaFile
 } from '../utils/db';
-
-// Debug: Check if API module has syncChanges function
-console.log('API module imported:', api);
-console.log('syncChanges function available:', typeof api.syncChanges);
-console.log('Available API functions:', Object.keys(api));
 
 /**
  * Service for handling synchronization of risk assessment data between local storage and server
@@ -75,12 +71,11 @@ const riskAssessmentSyncService = {
       // Sync media files first (since they might be referenced by other entities)
       let syncedMediaFiles = 0;
       if (pendingMediaFiles.length > 0) {
-        console.log('=== SYNCING MEDIA FILES FIRST ===');
+        console.log(`Syncing ${pendingMediaFiles.length} media files...`);
         const mediaUploadResult = await riskAssessmentSyncService.syncMediaFiles(pendingMediaFiles);
         
         if (!mediaUploadResult.success) {
-          console.error('Media upload failed, but continuing with other data sync');
-          console.error('Media upload error:', mediaUploadResult.error);
+          console.error('Media upload failed:', mediaUploadResult.error);
         } else {
           syncedMediaFiles = mediaUploadResult.uploaded || 0;
           console.log(`Successfully uploaded ${syncedMediaFiles} media files`);
@@ -157,7 +152,7 @@ const riskAssessmentSyncService = {
           // Detect if this is a new item created locally (timestamp-based ID > 1000000000000)
           const isNewItem = item.riskassessmentitemid > 1000000000000;
           
-          const transformedItem = {
+          return {
             riskassessmentitemid: isNewItem ? null : item.riskassessmentitemid, // Send null for new items
             riskassessmentcategoryid: item.riskassessmentcategoryid,
             itemprompt: item.itemprompt,
@@ -188,14 +183,6 @@ const riskAssessmentSyncService = {
             // Keep local ID for tracking response mapping
             _localId: item.riskassessmentitemid
           };
-          
-          console.log(`=== TRANSFORMED ITEM ${index + 1} FOR API ===`);
-          console.log('Original local ID:', item.riskassessmentitemid);
-          console.log('Is new item (sending null ID):', isNewItem);
-          console.log('Sending ID to server:', transformedItem.riskassessmentitemid);
-          console.log('Local tracking ID:', transformedItem._localId);
-          console.log('Complete transformed item:', transformedItem);
-          return transformedItem;
         }),
         deletedEntities: [] // TODO: Implement deleted entities tracking
       };
@@ -289,7 +276,6 @@ const riskAssessmentSyncService = {
    */
   syncMediaFiles: async (mediaFiles: MediaFile[]) => {
     try {
-      console.log('=== SYNCING MEDIA FILES ===');
       console.log(`Processing ${mediaFiles.length} media files for upload`);
       
       const mediaFilesWithData: Array<{
@@ -332,13 +318,7 @@ const riskAssessmentSyncService = {
               }
 
               mediaFilesWithData.push(mediaFileData);
-
-              console.log(`Prepared media file for upload: ${mediaFile.FileName}`);
-            } else {
-              console.warn(`Local file not found: ${mediaFile.LocalPath}`);
             }
-          } else {
-            console.warn(`No local path for media file: ${mediaFile.FileName}`);
           }
         } catch (error) {
           console.error(`Error preparing media file ${mediaFile.FileName}:`, error);
@@ -346,55 +326,116 @@ const riskAssessmentSyncService = {
       }
 
       if (mediaFilesWithData.length === 0) {
-        console.log('No media files to upload');
         return { success: true, uploaded: 0 };
       }
 
       console.log(`Uploading ${mediaFilesWithData.length} media files to backend`);
 
-      // Use batch upload API
-      const uploadResult = await api.uploadMediaBatch(mediaFilesWithData);
-
-      if (uploadResult.success && uploadResult.data) {
-        console.log('Media batch upload successful:', uploadResult.data);
+      // Check if uploadMediaBatch is available
+      if (typeof api.uploadMediaBatch !== 'function') {
+        console.error('uploadMediaBatch function is not available in API module');
+        console.log('Available API functions:', Object.keys(api));
+        console.log('API module type:', typeof api);
         
-        // Update local media files with server URLs
-        if (uploadResult.data.results) {
-          for (const result of uploadResult.data.results) {
-            if (result.success && result.mediaID) {
-              const localMediaFile = mediaFiles.find(mf => mf.MediaID === result.mediaID);
-              if (localMediaFile) {
-                await updateMediaFile({
-                  ...localMediaFile,
-                  BlobURL: result.blobUrl || localMediaFile.BlobURL,
-                  pending_sync: 0
-                });
-                console.log(`Updated local media file ${localMediaFile.FileName} with server URL`);
+        // Try alternative import
+        if (typeof apiModule.default?.uploadMediaBatch === 'function') {
+          console.log('Using alternative import for uploadMediaBatch');
+          const uploadResult = await apiModule.default.uploadMediaBatch(mediaFilesWithData);
+
+          if (uploadResult.success && uploadResult.data) {
+            console.log('Media batch upload successful:', uploadResult.data);
+            
+            // Update local media files with server URLs
+            if (uploadResult.data.results) {
+              for (const result of uploadResult.data.results) {
+                if (result.success && result.mediaID) {
+                  const localMediaFile = mediaFiles.find(mf => mf.MediaID === result.mediaID);
+                  if (localMediaFile) {
+                    await updateMediaFile({
+                      ...localMediaFile,
+                      BlobURL: result.blobUrl || localMediaFile.BlobURL,
+                      pending_sync: 0
+                    });
+                    console.log(`Updated local media file ${localMediaFile.FileName} with server URL`);
+                  }
+                }
+              }
+            }
+
+            // Mark only successfully uploaded files as synced
+            const successfulUploads = uploadResult.data.results?.filter((r: any) => r.success) || [];
+            const uploadedMediaIds = successfulUploads
+              .map((result: any) => result.originalMediaID)
+              .filter((id: any): id is number => typeof id === 'number');
+            
+            if (uploadedMediaIds.length > 0) {
+              await markMediaFilesAsSynced(uploadedMediaIds);
+              console.log(`Marked ${uploadedMediaIds.length} media files as synced`);
+            }
+
+            return {
+              success: true,
+              uploaded: successfulUploads.length
+            };
+          } else {
+            console.error('Media batch upload failed:', uploadResult);
+            return {
+              success: false,
+              error: uploadResult.message || 'Media upload failed'
+            };
+          }
+        } else {
+          return {
+            success: false,
+            error: 'uploadMediaBatch function is not available in either import'
+          };
+        }
+      } else {
+        // Use batch upload API
+        const uploadResult = await api.uploadMediaBatch(mediaFilesWithData);
+
+        if (uploadResult.success && uploadResult.data) {
+          console.log('Media batch upload successful:', uploadResult.data);
+          
+          // Update local media files with server URLs
+          if (uploadResult.data.results) {
+            for (const result of uploadResult.data.results) {
+              if (result.success && result.mediaID) {
+                const localMediaFile = mediaFiles.find(mf => mf.MediaID === result.mediaID);
+                if (localMediaFile) {
+                  await updateMediaFile({
+                    ...localMediaFile,
+                    BlobURL: result.blobUrl || localMediaFile.BlobURL,
+                    pending_sync: 0
+                  });
+                  console.log(`Updated local media file ${localMediaFile.FileName} with server URL`);
+                }
               }
             }
           }
-        }
 
-        // Mark all successfully uploaded files as synced
-        const uploadedMediaIds = mediaFiles
-          .map(mf => mf.MediaID)
-          .filter((id): id is number => typeof id === 'number');
-        
-        if (uploadedMediaIds.length > 0) {
-          await markMediaFilesAsSynced(uploadedMediaIds);
-          console.log(`Marked ${uploadedMediaIds.length} media files as synced`);
-        }
+          // Mark only successfully uploaded files as synced
+          const successfulUploads = uploadResult.data.results?.filter((r: any) => r.success) || [];
+          const uploadedMediaIds = successfulUploads
+            .map((result: any) => result.originalMediaID)
+            .filter((id: any): id is number => typeof id === 'number');
+          
+          if (uploadedMediaIds.length > 0) {
+            await markMediaFilesAsSynced(uploadedMediaIds);
+            console.log(`Marked ${uploadedMediaIds.length} media files as synced`);
+          }
 
-        return {
-          success: true,
-          uploaded: mediaFilesWithData.length
-        };
-      } else {
-        console.error('Media batch upload failed:', uploadResult);
-        return {
-          success: false,
-          error: uploadResult.message || 'Media upload failed'
-        };
+          return {
+            success: true,
+            uploaded: successfulUploads.length
+          };
+        } else {
+          console.error('Media batch upload failed:', uploadResult);
+          return {
+            success: false,
+            error: uploadResult.message || 'Media upload failed'
+          };
+        }
       }
 
     } catch (error) {
