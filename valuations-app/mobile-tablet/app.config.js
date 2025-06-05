@@ -19,6 +19,7 @@ module.exports = {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.anonymous.valuationsmobiletablet",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -32,9 +33,12 @@ module.exports = {
       "typedRoutes": true
     },
     "plugins": [
+      "expo-router",
       "expo-font",
       "expo-screen-orientation",
-      "expo-router"
+      "expo-sqlite",
+      "expo-web-browser",
+      "expo-system-ui"
     ],
     "newArchEnabled": true
   }
