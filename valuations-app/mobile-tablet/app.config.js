@@ -24,7 +24,8 @@ module.exports = {
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.valuationsmobiletablet"
     },
     "android": {
       "package": "com.anonymous.valuationsmobiletablet",

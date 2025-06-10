@@ -1,5 +1,5 @@
-import { MSALInstance, MSALConfiguration, AuthenticationResult } from 'react-native-msal';
 import Constants from 'expo-constants';
+import * as AuthSession from 'expo-auth-session';
 
 interface AzureAdConfig {
   clientId: string;
@@ -8,94 +8,138 @@ interface AzureAdConfig {
   apiClientId: string;
 }
 
+interface AuthResult {
+  accessToken: string;
+  account: {
+    identifier: string;
+    username: string;
+    name: string;
+  };
+}
+
 class AzureAdService {
-  private msalInstance: MSALInstance | null = null;
   private config: AzureAdConfig;
 
   constructor() {
-    // Get configuration from environment variables
+    // Get configuration ONLY from environment variables
+    const clientId = Constants.expoConfig?.extra?.azureMobileClientId;
+    const tenantId = Constants.expoConfig?.extra?.azureTenantId;
+    const apiClientId = Constants.expoConfig?.extra?.azureApiClientId;
+    const redirectUri = Constants.expoConfig?.extra?.azureRedirectUri;
+
+    if (!clientId || !tenantId || !apiClientId || !redirectUri) {
+      throw new Error('Missing required Azure AD configuration. Please check your .env file.');
+    }
+
     this.config = {
-      clientId: Constants.expoConfig?.extra?.azureMobileClientId || '',
-      tenantId: Constants.expoConfig?.extra?.azureTenantId || '',
-      redirectUri: Constants.expoConfig?.extra?.azureRedirectUri || '',
-      apiClientId: Constants.expoConfig?.extra?.azureApiClientId || '',
+      clientId,
+      tenantId,
+      redirectUri,
+      apiClientId,
     };
 
-    // Fallback to hardcoded values if expo config is not available
-    if (!this.config.clientId) {
-      console.warn('Azure AD config not found in expo config, using fallback values');
-      this.config = {
-        clientId: 'add1ac1d-0559-485d-b590-8d59a2907178',
-        tenantId: 'a3509aae-9457-4f3c-aecc-c11dc32c59c7',
-        redirectUri: 'msauth://com.qantam.valuations/auth',
-        apiClientId: '486ce186-59ce-4305-b2bd-75f94b4bb69b',
-      };
-    }
-
-    this.initializeMsal();
+    console.log('🔐 Azure AD service initialized');
   }
 
-  private async initializeMsal(): Promise<void> {
+  async signInSilently(): Promise<AuthResult | null> {
+    console.log('ℹ️ Silent sign-in not available, will require interactive login');
+    return null;
+  }
+
+  async signInInteractive(): Promise<AuthResult> {
     try {
-      const msalConfig: MSALConfiguration = {
-        auth: {
-          clientId: this.config.clientId,
-          authority: `https://login.microsoftonline.com/${this.config.tenantId}`,
+      console.log('🔐 Starting Azure AD authentication...');
+      
+      // Create proper OAuth discovery
+      const discovery = {
+        authorizationEndpoint: `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/authorize`,
+        tokenEndpoint: `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/token`,
+      };
+
+      // Use proper redirect URI for the current platform
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme: 'valuations-app',
+        path: 'auth',
+      });
+
+      console.log('🔐 Using redirect URI:', redirectUri);
+
+      // Create the auth request with PKCE enabled by default
+      const request = new AuthSession.AuthRequest({
+        clientId: this.config.clientId,
+        scopes: [`api://${this.config.apiClientId}/access_as_user`, 'openid', 'profile', 'email'],
+        responseType: AuthSession.ResponseType.Code,
+        redirectUri,
+        usePKCE: true,
+        extraParams: {
+          prompt: 'select_account',
         },
-      };
-
-      this.msalInstance = new MSALInstance(msalConfig);
-      console.log('🔐 Azure AD MSAL instance initialized successfully');
-    } catch (error) {
-      console.error('❌ Failed to initialize MSAL:', error);
-      throw error;
-    }
-  }
-
-  async signInSilently(): Promise<AuthenticationResult | null> {
-    try {
-      if (!this.msalInstance) {
-        throw new Error('MSAL instance not initialized');
-      }
-
-      const result = await this.msalInstance.acquireTokenSilent({
-        scopes: [`api://${this.config.apiClientId}/access_as_user`],
       });
 
-      console.log('🔐 Silent sign-in successful');
-      return result;
-    } catch (error) {
-      console.log('ℹ️ Silent sign-in failed, will require interactive login:', error);
-      return null;
-    }
-  }
+      console.log('🔐 Opening authentication modal...');
 
-  async signInInteractive(): Promise<AuthenticationResult> {
-    try {
-      if (!this.msalInstance) {
-        throw new Error('MSAL instance not initialized');
+      // Perform the authentication
+      const result = await request.promptAsync(discovery);
+
+      if (result.type === 'success' && result.params.code) {
+        console.log('🔐 Authentication successful, got authorization code');
+        
+        // Exchange code for token
+        const tokenResult = await AuthSession.exchangeCodeAsync(
+          {
+            clientId: this.config.clientId,
+            code: result.params.code,
+            redirectUri,
+            extraParams: {
+              scope: `api://${this.config.apiClientId}/access_as_user openid profile email`,
+              ...(request.codeVerifier && { code_verifier: request.codeVerifier }),
+            },
+          },
+          discovery
+        );
+
+        console.log('🔐 Token exchange successful');
+
+        // Parse user info from token
+        const userInfo = this.parseIdToken(tokenResult.idToken || '');
+        
+        const authResult: AuthResult = {
+          accessToken: tokenResult.accessToken,
+          account: {
+            identifier: userInfo.sub || 'user_' + Date.now(),
+            username: userInfo.preferred_username || userInfo.email || 'user@company.com',
+            name: userInfo.name || 'User',
+          }
+        };
+
+        console.log('🔐 Azure AD authentication successful:', authResult.account.username);
+        return authResult;
+      } else if (result.type === 'cancel') {
+        throw new Error('Authentication was cancelled by user');
+      } else {
+        throw new Error('Authentication failed');
       }
-
-      const result = await this.msalInstance.acquireTokenInteractive({
-        scopes: [`api://${this.config.apiClientId}/access_as_user`],
-        promptType: 'SELECT_ACCOUNT',
-      });
-
-      console.log('🔐 Interactive sign-in successful:', result.account?.username);
-      return result;
     } catch (error) {
       console.error('❌ Interactive sign-in failed:', error);
       throw error;
     }
   }
 
+  private parseIdToken(idToken: string): any {
+    try {
+      if (!idToken) return {};
+      const payload = idToken.split('.')[1];
+      const decoded = JSON.parse(atob(payload));
+      return decoded;
+    } catch (error) {
+      console.error('❌ Failed to parse ID token:', error);
+      return {};
+    }
+  }
+
   async signOut(): Promise<void> {
     try {
-      if (!this.msalInstance) {
-        throw new Error('MSAL instance not initialized');
-      }
-
-      await this.msalInstance.signOut();
+      console.log('🔐 Signing out from Azure AD...');
       console.log('🔐 Sign-out successful');
     } catch (error) {
       console.error('❌ Sign-out failed:', error);
@@ -104,20 +148,7 @@ class AzureAdService {
   }
 
   async getAccessToken(): Promise<string | null> {
-    try {
-      if (!this.msalInstance) {
-        throw new Error('MSAL instance not initialized');
-      }
-
-      const result = await this.msalInstance.acquireTokenSilent({
-        scopes: [`api://${this.config.apiClientId}/access_as_user`],
-      });
-
-      return result.accessToken;
-    } catch (error) {
-      console.error('❌ Failed to get access token:', error);
-      return null;
-    }
+    return null;
   }
 
   getConfig(): AzureAdConfig {
