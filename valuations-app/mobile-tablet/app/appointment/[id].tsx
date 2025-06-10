@@ -93,7 +93,7 @@ export default function AppointmentDetails() {
       
       // Use API client to get appointment by ID
       const response = await typedApi.getAppointmentById(appointmentId);
-      
+      // Connor 
       if (response && response.success && response.data) {
         console.log(`Successfully fetched details for appointment ${appointmentId}`);
         
