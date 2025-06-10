@@ -51,18 +51,7 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  // Initialize database
-  useEffect(() => {
-    const initDatabase = async () => {
-      try {
-        await initializeDatabase();
-        console.log('Database initialized successfully');
-      } catch (error) {
-        console.error('Error initializing database:', error);
-      }
-    };
-    initDatabase();
-  }, []);
+  // Database initialization moved to AuthProvider to ensure it happens after authentication
 
   useEffect(() => {
     async function unlockOrientation() {
@@ -109,6 +98,7 @@ export default function RootLayout() {
             >
               <Stack.Screen name="index" />
               <Stack.Screen name="login" options={{ headerShown: false }} />
+              <Stack.Screen name="auth" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="survey/new" />
               <Stack.Screen name="survey/categories" />

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import azureAdService from '../services/azureAdService';
+import { initializeDatabase } from '../utils/db';
 
 interface User {
   id: string;
@@ -25,12 +26,30 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [dbInitialized, setDbInitialized] = useState(false);
 
   const isAuthenticated = !!user;
 
   useEffect(() => {
-    checkAuthStatus();
+    initializeApp();
   }, []);
+
+  const initializeApp = async () => {
+    try {
+      // First initialize the database
+      console.log('🗄️ Initializing database...');
+      await initializeDatabase();
+      console.log('✅ Database initialized successfully');
+      setDbInitialized(true);
+      
+      // Then check authentication status
+      await checkAuthStatus();
+    } catch (error) {
+      console.error('❌ Error during app initialization:', error);
+      // Continue with auth check even if DB fails
+      await checkAuthStatus();
+    }
+  };
 
   const checkAuthStatus = async () => {
     try {
@@ -135,8 +154,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       
-      // Sign out from Azure AD
+      // Sign out from Azure AD first
       try {
+        console.log('🔐 Starting Azure AD sign-out...');
         await azureAdService.signOut();
         console.log('🔐 Azure AD sign-out successful');
       } catch (azureError) {

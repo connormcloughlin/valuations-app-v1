@@ -958,13 +958,11 @@ const appointmentsApi = {
       console.log(`API base URL is: ${API_BASE_URL}`);
       
       try {
-        // First try with direct axios call
-        const fullUrl = `${API_BASE_URL.replace(/\/$/, '')}/appointments/list-view`;
-        console.log(`Making direct axios call to: ${fullUrl}`);
-        const response = await axios.get(fullUrl, { 
+        // Use apiClient which has bearer token authentication
+        console.log(`Making authenticated API call to: /appointments/list-view`);
+        const response = await apiClient.get('/appointments/list-view', { 
           params,
-          timeout: 30000, // 30 second timeout
-          headers: API_CONFIG.HEADERS
+          timeout: 30000 // 30 second timeout
         });
         console.log('API call successful');
         

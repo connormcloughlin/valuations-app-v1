@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 
 interface AzureAdConfig {
   clientId: string;
@@ -100,6 +101,13 @@ class AzureAdService {
 
         console.log('🔐 Token exchange successful');
 
+        // DEBUG: Log the actual access token for backend testing
+        console.log('🔐 ===== AZURE AD ACCESS TOKEN =====');
+        console.log('🔐 Access Token:', tokenResult.accessToken);
+        console.log('🔐 Token Type:', tokenResult.tokenType || 'Bearer');
+        console.log('🔐 Expires In:', tokenResult.expiresIn);
+        console.log('🔐 ===== END TOKEN =====');
+
         // Parse user info from token
         const userInfo = this.parseIdToken(tokenResult.idToken || '');
         
@@ -140,10 +148,23 @@ class AzureAdService {
   async signOut(): Promise<void> {
     try {
       console.log('🔐 Signing out from Azure AD...');
-      console.log('🔐 Sign-out successful');
+      
+      // For AuthSession-based authentication, we can use the logout endpoint
+      // to clear the session on Azure AD side
+      const logoutUrl = `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent('valuations-app://auth')}`;
+      
+      // Open logout URL to clear Azure AD session
+      try {
+        await WebBrowser.openBrowserAsync(logoutUrl);
+        console.log('🔐 Azure AD logout URL opened');
+      } catch (browserError) {
+        console.log('ℹ️ Browser logout not available, proceeding with local logout');
+      }
+      
+      console.log('🔐 Azure AD sign-out completed');
     } catch (error) {
       console.error('❌ Sign-out failed:', error);
-      throw error;
+      // Don't throw error to prevent blocking local logout
     }
   }
 

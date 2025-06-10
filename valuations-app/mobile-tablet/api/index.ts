@@ -11,6 +11,25 @@ const axiosInstance = axios.create({
   }
 });
 
+// Add request interceptor to include bearer token
+axiosInstance.interceptors.request.use(
+  async (config) => {
+    try {
+      // Get the auth token from AsyncStorage
+      const token = await AsyncStorage.getItem('authToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.error('Error getting auth token for API request:', error);
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // Storage keys
 const STORAGE_KEYS = {
   RISK_TEMPLATES: 'risk_templates',

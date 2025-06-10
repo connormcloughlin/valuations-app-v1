@@ -1,4 +1,5 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from './config';
 
 // Create axios instance with config
@@ -7,6 +8,32 @@ const apiClient = axios.create({
   timeout: API_CONFIG.TIMEOUT,
   headers: API_CONFIG.HEADERS
 });
+
+// Add request interceptor to include bearer token
+apiClient.interceptors.request.use(
+  async (config) => {
+    try {
+      // Get the auth token from AsyncStorage
+      const token = await AsyncStorage.getItem('authToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        // Debug: Log token info for troubleshooting
+        console.log(`🔐 API Request to ${config.url || config.baseURL + config.url}:`);
+        console.log(`🔐 Authorization Header: Bearer ${token}`);
+        console.log(`🔐 Token length: ${token.length} characters`);
+        console.log(`🔐 Full token for Swagger testing: ${token}`);
+      } else {
+        console.log('⚠️ No auth token found in AsyncStorage');
+      }
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // Add response interceptor for standardizing responses
 apiClient.interceptors.response.use(
