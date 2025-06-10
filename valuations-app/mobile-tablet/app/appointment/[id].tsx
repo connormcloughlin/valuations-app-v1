@@ -94,41 +94,53 @@ export default function AppointmentDetails() {
       // Use API client to get appointment by ID
       const response = await typedApi.getAppointmentById(appointmentId);
       
-      if (response && response.success && response.data) {
+      // Add detailed logging to debug the response structure
+      console.log(`[DEBUG] Response for appointment ${appointmentId}:`, {
+        hasResponse: !!response,
+        hasSuccess: response?.success,
+        hasData: !!response?.data,
+        responseKeys: response ? Object.keys(response) : [],
+        dataKeys: response?.data ? Object.keys(response.data) : []
+      });
+      
+      if (response && (response.data || (response as any).appointmentID)) {
+        // Handle both nested data structure and direct response structure
+        const dataSource = response.data || response;
         console.log(`Successfully fetched details for appointment ${appointmentId}`);
         
         // Extract client name from either top-level properties or ordersList
         let clientName = 'Unknown client';
-        if (response.data.client) {
-          clientName = response.data.client;
-        } else if (response.data.clientsName) {
-          clientName = response.data.clientsName;
-        } else if (response.data.Client) {
-          clientName = response.data.Client;
-        } else if (response.data.ordersList && response.data.ordersList.client) {
-          clientName = response.data.ordersList.client;
-        } else if (response.data.ordersList && response.data.ordersList.clientsName) {
-          clientName = response.data.ordersList.clientsName;
+        if (dataSource.client) {
+          clientName = dataSource.client;
+        } else if (dataSource.clientsName) {
+          clientName = dataSource.clientsName;
+        } else if (dataSource.Client) {
+          clientName = dataSource.Client;
+        } else if (dataSource.ordersList && dataSource.ordersList.client) {
+          clientName = dataSource.ordersList.client;
+        } else if (dataSource.ordersList && dataSource.ordersList.clientsName) {
+          clientName = dataSource.ordersList.clientsName;
         }
         
         // Map API response to our Appointment interface
         const appointmentData: Appointment = {
-          id: response.data.id || response.data.appointmentId || appointmentId,
-          address: response.data.address || response.data.location || response.data.FullAddress || 'Unknown address',
+          id: String(dataSource.id || dataSource.appointmentId || (dataSource as any).appointmentID || appointmentId),
+          address: dataSource.address || dataSource.location || dataSource.FullAddress || 'Unknown address',
           client: clientName,
-          phone: response.data.phoneNumber || response.data.phone || response.data.Phone || 'N/A',
-          email: response.data.emailAddress || response.data.email || response.data.Email || 'N/A',
-          date: response.data.date || response.data.appointmentDate || response.data.startTime || response.data.Start_Time || new Date().toISOString().split('T')[0] + ' 09:00',
-          policyNo: response.data.policyNumber || response.data.policyNo || (response.data.ordersList?.policy ? String(response.data.ordersList.policy) : 'N/A'),
-          sumInsured: response.data.sumInsured ? String(response.data.sumInsured) : response.data['Sum Insured'] ? String(response.data['Sum Insured']) : (response.data.ordersList?.sumInsured ? String(response.data.ordersList.sumInsured) : 'N/A'),
-          broker: response.data.broker || response.data.Broker || (response.data.ordersList?.broker) || 'N/A',
-          notes: response.data.notes || response.data.Comments || response.data.comments || 'No notes available',
-          orderNumber: response.data.orderNumber ? String(response.data.orderNumber) : response.data.OrderID ? String(response.data.OrderID) : response.data.orderID ? String(response.data.orderID) : (response.data.ordersList?.orderid ? String(response.data.ordersList.orderid) : 'N/A'),
+          phone: dataSource.phoneNumber || dataSource.phone || dataSource.Phone || 'N/A',
+          email: dataSource.emailAddress || dataSource.email || dataSource.Email || 'N/A',
+          date: dataSource.date || dataSource.appointmentDate || dataSource.startTime || dataSource.Start_Time || new Date().toISOString().split('T')[0] + ' 09:00',
+          policyNo: dataSource.policyNumber || dataSource.policyNo || (dataSource.ordersList?.policy ? String(dataSource.ordersList.policy) : 'N/A'),
+          sumInsured: dataSource.sumInsured ? String(dataSource.sumInsured) : dataSource['Sum Insured'] ? String(dataSource['Sum Insured']) : (dataSource.ordersList?.sumInsured ? String(dataSource.ordersList.sumInsured) : 'N/A'),
+          broker: dataSource.broker || dataSource.Broker || (dataSource.ordersList?.broker) || 'N/A',
+          notes: dataSource.notes || dataSource.Comments || dataSource.comments || 'No notes available',
+          orderNumber: dataSource.orderNumber ? String(dataSource.orderNumber) : dataSource.OrderID ? String(dataSource.OrderID) : dataSource.orderID ? String(dataSource.orderID) : (dataSource.ordersList?.orderid ? String(dataSource.ordersList.orderid) : 'N/A'),
         };
         
         setAppointment(appointmentData);
       } else {
         console.error(`Failed to load appointment ${appointmentId}:`, response?.message || 'Unknown error');
+        console.error(`[DEBUG] Full response object:`, response);
         setError('Failed to load appointment. Using fallback data.');
         
         // Check if fallback data is available for this ID
