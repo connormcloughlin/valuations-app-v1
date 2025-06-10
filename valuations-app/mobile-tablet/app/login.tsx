@@ -7,19 +7,47 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { logNavigation } from '../utils/logger';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const { login, loginWithAzure, isLoading } = useAuth();
 
-  const handleLogin = () => {
-    // TODO: Implement login logic
-    console.log('Login attempt with:', { email, password });
-    // For now, just navigate to the main app
-    router.replace('/(tabs)');
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
+
+    try {
+      const success = await login(email, password);
+      if (success) {
+        router.replace('/(tabs)');
+      } else {
+        Alert.alert('Login Failed', 'Invalid email or password');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred during login');
+    }
+  };
+
+  const handleAzureLogin = async () => {
+    try {
+      const success = await loginWithAzure();
+      if (success) {
+        router.replace('/(tabs)');
+      } else {
+        Alert.alert('Login Failed', 'Azure AD login failed');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred during Azure login');
+    }
   };
 
   logNavigation('Login Screen');
@@ -50,8 +78,28 @@ export default function LoginScreen() {
             secureTextEntry
           />
 
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-            <Text style={styles.loginButtonText}>Sign In</Text>
+          <TouchableOpacity 
+            style={[styles.loginButton, isLoading && styles.loginButtonDisabled]} 
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.loginButtonText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.azureButton, isLoading && styles.loginButtonDisabled]} 
+            onPress={handleAzureLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.azureButtonText}>Sign In with Azure AD</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.forgotPassword}>
@@ -115,5 +163,21 @@ const styles = StyleSheet.create({
   forgotPasswordText: {
     color: '#007AFF',
     fontSize: 14,
+  },
+  azureButton: {
+    backgroundColor: '#0066CC',
+    height: 50,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  azureButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  loginButtonDisabled: {
+    opacity: 0.5,
   },
 }); 

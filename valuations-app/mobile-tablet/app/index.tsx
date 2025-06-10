@@ -5,44 +5,29 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import api from '../api';
 import connectionUtils from '../utils/connectionUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// This key lets us track if we've already redirected in this session
-const HAS_NAVIGATED_KEY = '@app_has_navigated_to_dashboard';
+import { useAuth } from '../context/AuthContext';
 
 export default function Index() {
   const segments = useSegments();
   const rootNavigation = useRootNavigation();
-  const [isLoading, setIsLoading] = useState(true);
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   
-  useEffect(() => {
-    const checkNavigation = async () => {
-      try {
-        // Always set flag to track navigation
-        await AsyncStorage.setItem(HAS_NAVIGATED_KEY, 'true');
-      } catch (error) {
-        console.error('Error setting navigation state:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    if (rootNavigation?.isReady) {
-      checkNavigation();
-    }
-  }, [rootNavigation?.isReady]);
-  
-  // Show loading while we're initializing
-  if (isLoading) {
+  // Show loading while auth is checking
+  if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#3498db" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={styles.loadingText}>Checking authentication...</Text>
       </View>
     );
   }
   
-  // Always redirect to the dashboard tabs
-  return <Redirect href="/(tabs)" />;
+  // Redirect based on authentication status
+  if (isAuthenticated) {
+    return <Redirect href="/(tabs)" />;
+  } else {
+    return <Redirect href="/login" />;
+  }
 }
 
 const styles = StyleSheet.create({
