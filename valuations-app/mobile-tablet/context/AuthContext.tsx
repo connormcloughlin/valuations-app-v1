@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import azureAdService from '../services/azureAdService';
 
 interface User {
   id: string;
@@ -89,30 +90,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       
-      // TODO: Implement Azure AD authentication
-      // This would use @azure/msal-react-native or similar
-      console.log('Azure AD login initiated...');
+      console.log('🔐 Starting Azure AD authentication...');
       
-      // Mock Azure AD response for now
-      const mockAzureUser: User = {
-        id: 'azure-user-id',
-        name: 'Connor McLoughlin',
-        email: 'connor@quantam.co.za',
-        token: 'azure-token-' + Date.now()
-      };
+      // Try silent login first
+      let authResult = await azureAdService.signInSilently();
+      
+      // If silent login fails, do interactive login
+      if (!authResult) {
+        console.log('🔐 Silent login failed, starting interactive login...');
+        authResult = await azureAdService.signInInteractive();
+      }
+      
+      if (authResult && authResult.account) {
+        const azureUser: User = {
+          id: authResult.account.identifier,
+          name: authResult.account.name || 'Azure User',
+          email: authResult.account.username,
+          token: authResult.accessToken
+        };
 
-      await AsyncStorage.setItem('authToken', mockAzureUser.token);
-      await AsyncStorage.setItem('userData', JSON.stringify({
-        id: mockAzureUser.id,
-        name: mockAzureUser.name,
-        email: mockAzureUser.email
-      }));
+        await AsyncStorage.setItem('authToken', azureUser.token);
+        await AsyncStorage.setItem('userData', JSON.stringify({
+          id: azureUser.id,
+          name: azureUser.name,
+          email: azureUser.email
+        }));
 
-      setUser(mockAzureUser);
-      console.log('User logged in with Azure AD:', mockAzureUser.email);
-      return true;
+        setUser(azureUser);
+        console.log('🔐 Azure AD login successful:', azureUser.email);
+        return true;
+      } else {
+        console.error('❌ Azure AD authentication failed - no account returned');
+        return false;
+      }
     } catch (error) {
-      console.error('Azure AD login error:', error);
+      console.error('❌ Azure AD login error:', error);
       return false;
     } finally {
       setIsLoading(false);
@@ -123,6 +135,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       
+      // Sign out from Azure AD
+      try {
+        await azureAdService.signOut();
+        console.log('🔐 Azure AD sign-out successful');
+      } catch (azureError) {
+        console.error('❌ Azure AD sign-out failed:', azureError);
+        // Continue with local logout even if Azure logout fails
+      }
+      
       // Clear stored authentication data
       await AsyncStorage.removeItem('authToken');
       await AsyncStorage.removeItem('userData');
@@ -130,12 +151,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear user state
       setUser(null);
       
-      console.log('User logged out successfully');
+      console.log('✅ User logged out successfully');
       
       // Navigate to login screen
       router.replace('/login');
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('❌ Logout error:', error);
     } finally {
       setIsLoading(false);
     }
