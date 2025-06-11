@@ -7,6 +7,8 @@ import { logNavigation } from '../../utils/logger';
 import api from '../../api';
 import { API_BASE_URL } from '../../constants/apiConfig';
 import { insertRiskAssessmentItem } from '../../utils/db';
+import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Define types for API responses
 interface ApiResponse<T> {
@@ -54,37 +56,38 @@ const CustomHeader = () => {
 // Helper function to fetch templates by order ID
 const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<RiskTemplate[]>> => {
   try {
-    // Direct access to axios instance or fetch
-    const baseUrl = API_BASE_URL;
-    const endpoint = `${baseUrl}/risk-assessment-master/by-order/${orderId}`;
+    console.log(`Fetching templates for order ID: ${orderId}`);
     
-    console.log(`Direct API call to: ${endpoint}`);
+    // Create authenticated axios instance
+    const token = await AsyncStorage.getItem('authToken');
+    const axiosInstance = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+      }
+    });
     
-    // Using fetch for direct API call
-    const response = await fetch(endpoint);
-    
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-    
-    const responseData = await response.json();
+    const response = await axiosInstance.get(`/risk-assessment-master/by-order/${orderId}`);
+    console.log('API response:', JSON.stringify(response.data, null, 2));
     
     // Ensure we return an array, even if API returns different structure
-    const templatesArray = Array.isArray(responseData) ? responseData : 
-                          responseData.data && Array.isArray(responseData.data) ? responseData.data :
-                          responseData.templates && Array.isArray(responseData.templates) ? responseData.templates : [];
+    const templatesArray = Array.isArray(response.data) ? response.data : 
+                          response.data && Array.isArray(response.data.data) ? response.data.data :
+                          response.data && Array.isArray(response.data.templates) ? response.data.templates : [];
     
     return {
       success: true,
       data: templatesArray,
       status: response.status
     };
-  } catch (error) {
-    console.error(`Error in direct API call: ${error instanceof Error ? error.message : String(error)}`);
+  } catch (error: any) {
+    console.error(`Error in API call: ${error instanceof Error ? error.message : String(error)}`);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Failed to fetch templates',
-      status: 0
+      message: error.response?.data?.message || error.message || 'Failed to fetch templates',
+      status: error.response?.status || 0
     };
   }
 };

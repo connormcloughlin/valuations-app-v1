@@ -396,6 +396,27 @@ export default {
   clearAllCachedData,
   syncChanges,
   
+  // Function to get risk assessment master by order ID
+  getRiskAssessmentMasterByOrder: async (orderId: string): Promise<ApiResponse> => {
+    try {
+      console.log('Fetching risk assessment master for order:', orderId);
+      const response = await axiosInstance.get(`/risk-assessment-master/by-order/${orderId}`);
+      
+      if (response.data) {
+        return {
+          success: true,
+          data: response.data,
+          status: response.status,
+        };
+      }
+      
+      throw new Error('Empty response from API');
+    } catch (error) {
+      console.error('Error fetching risk assessment master by order:', error);
+      return handleApiError(error);
+    }
+  },
+  
   // Updated Media API endpoints - Sync API integration
   uploadMedia: async (mediaData: {
     fileName: string;
