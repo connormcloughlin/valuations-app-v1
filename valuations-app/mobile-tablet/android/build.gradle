@@ -34,6 +34,23 @@ allprojects {
     maven { url 'https://pkgs.dev.azure.com/MicrosoftDeviceSDK/DuoSDK-Public/_packaging/Duo-SDK-Feed/maven/v1' }
     maven { url 'https://maven.microsoft.com/public/' }
   }
+  
+  // Ensure all subprojects use Java 11
+  afterEvaluate { project ->
+    if (project.hasProperty('android')) {
+      project.android {
+        compileOptions {
+          sourceCompatibility JavaVersion.VERSION_11
+          targetCompatibility JavaVersion.VERSION_11
+        }
+        if (project.hasProperty('kotlinOptions')) {
+          kotlinOptions {
+            jvmTarget = '11'
+          }
+        }
+      }
+    }
+  }
 }
 
 apply plugin: "expo-root-project"

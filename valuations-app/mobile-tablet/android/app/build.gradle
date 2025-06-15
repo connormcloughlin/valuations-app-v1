@@ -88,6 +88,16 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace 'com.anonymous.valuationsmobiletablet'
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+    
     defaultConfig {
         applicationId 'com.anonymous.valuationsmobiletablet'
         minSdkVersion rootProject.ext.minSdkVersion
