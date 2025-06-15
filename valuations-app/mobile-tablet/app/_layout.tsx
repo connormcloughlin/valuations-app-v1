@@ -79,9 +79,6 @@ export default function RootLayout() {
     return null;
   }
 
-  // Changed to true to show the dashboard
-  const isAuthenticated = true;
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

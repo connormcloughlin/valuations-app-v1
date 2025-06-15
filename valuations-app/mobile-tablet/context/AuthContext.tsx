@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import azureAdService from '../services/azureAdService';
+import authApi from '../api/auth';
 import { initializeDatabase } from '../utils/db';
 
 interface User {
@@ -9,6 +10,7 @@ interface User {
   name: string;
   email: string;
   token: string;
+  azureToken?: string; // Store Azure token separately for potential refresh
 }
 
 interface AuthContextType {
@@ -55,12 +57,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       const token = await AsyncStorage.getItem('authToken');
+      const azureToken = await AsyncStorage.getItem('azureToken');
       const userData = await AsyncStorage.getItem('userData');
       
       if (token && userData) {
         const parsedUser = JSON.parse(userData);
-        setUser({ ...parsedUser, token });
+        setUser({ 
+          ...parsedUser, 
+          token,
+          azureToken: azureToken || undefined
+        });
         console.log('User authenticated from storage:', parsedUser.email);
+        
+        // Set the API token for subsequent requests
+        authApi.setAuthToken(token);
       } else {
         console.log('No authentication data found');
       }
@@ -111,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('🔐 Starting Azure AD authentication...');
       
-      // Try silent login first
+      // Step 1: Authenticate with Azure AD
       let authResult = await azureAdService.signInSilently();
       
       // If silent login fails, do interactive login
@@ -121,23 +131,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       if (authResult && authResult.account) {
-        const azureUser: User = {
-          id: authResult.account.identifier,
-          name: authResult.account.name || 'Azure User',
-          email: authResult.account.username,
-          token: authResult.accessToken
-        };
+        console.log('🔐 Azure AD authentication successful, starting token exchange...');
+        
+        // Step 2: Exchange Azure AD token for API token
+        const tokenExchangeResult = await authApi.exchangeToken(authResult.accessToken);
+        
+        if ((tokenExchangeResult as any).success && (tokenExchangeResult as any).data?.token) {
+          const azureUser: User = {
+            id: authResult.account.identifier,
+            name: authResult.account.name || 'Azure User',
+            email: authResult.account.username,
+            token: (tokenExchangeResult as any).data.token, // Use API token, not Azure token
+            azureToken: authResult.accessToken // Store Azure token for potential refresh
+          };
 
-        await AsyncStorage.setItem('authToken', azureUser.token);
-        await AsyncStorage.setItem('userData', JSON.stringify({
-          id: azureUser.id,
-          name: azureUser.name,
-          email: azureUser.email
-        }));
+          // Store API token (not Azure token) for subsequent requests
+          await AsyncStorage.setItem('authToken', azureUser.token);
+          await AsyncStorage.setItem('azureToken', azureUser.azureToken || '');
+          await AsyncStorage.setItem('userData', JSON.stringify({
+            id: azureUser.id,
+            name: azureUser.name,
+            email: azureUser.email
+          }));
 
-        setUser(azureUser);
-        console.log('🔐 Azure AD login successful:', azureUser.email);
-        return true;
+          setUser(azureUser);
+          console.log('🔐 Token exchange successful, user logged in:', azureUser.email);
+          return true;
+        } else {
+          console.error('❌ Token exchange failed:', (tokenExchangeResult as any).message);
+          return false;
+        }
       } else {
         console.error('❌ Azure AD authentication failed - no account returned');
         return false;
@@ -164,9 +187,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Continue with local logout even if Azure logout fails
       }
       
-      // Clear stored authentication data
-      await AsyncStorage.removeItem('authToken');
-      await AsyncStorage.removeItem('userData');
+      // Clear stored authentication data (including both API and Azure tokens)
+      await AsyncStorage.multiRemove(['authToken', 'azureToken', 'userData']);
+      
+      // Clear API client auth header
+      authApi.setAuthToken('');
       
       // Clear user state
       setUser(null);

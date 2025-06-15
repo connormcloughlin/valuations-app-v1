@@ -27,9 +27,24 @@ const getEnvFile = () => {
 const envFile = getEnvFile();
 console.log(`Loading environment: ${envFile}`);
 
+// Clear any previously loaded environment variables that might conflict
+if (envFile !== '.env') {
+  console.log('🔧 Clearing previously loaded environment variables');
+  delete process.env.API_BASE_URL;
+  delete process.env.API_TIMEOUT;
+  delete process.env.AZURE_REDIRECT_URI;
+}
+
 require('dotenv').config({
-  path: envFile
+  path: envFile,
+  override: true  // This ensures our specific env file overrides any existing env vars
 });
+
+// Don't load the default .env file if we're using a specific one
+if (envFile !== '.env') {
+  // Clear any variables that might have been loaded from default .env
+  console.log('🔧 Using specific environment file, not loading default .env');
+}
 
 // Debug what was actually loaded
 console.log('🔧 === APP.CONFIG.JS DEBUG ===');
