@@ -1,5 +1,34 @@
+// Determine which environment file to load
+const getEnvFile = () => {
+  const appEnv = process.env.APP_ENV || 'development';
+  const envFile = process.env.ENV_FILE;
+  
+  console.log(`APP_ENV: ${appEnv}`);
+  console.log(`ENV_FILE: ${envFile}`);
+  
+  // If ENV_FILE is explicitly set, use it
+  if (envFile) {
+    console.log(`Using explicit ENV_FILE: ${envFile}`);
+    return envFile;
+  }
+  
+  // Otherwise, determine based on APP_ENV
+  const envFiles = {
+    development: '.env.development',
+    staging: '.env.staging',
+    production: '.env.production'
+  };
+  
+  const selectedFile = envFiles[appEnv] || '.env';
+  console.log(`Using environment file based on APP_ENV: ${selectedFile}`);
+  return selectedFile;
+};
+
+const envFile = getEnvFile();
+console.log(`Loading environment: ${envFile}`);
+
 require('dotenv').config({
-  path: process.env.ENV_FILE || '.env'
+  path: envFile
 });
 
 module.exports = {
