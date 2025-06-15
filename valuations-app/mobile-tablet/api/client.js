@@ -12,6 +12,12 @@ const API_CONFIG = {
   }
 };
 
+// Log API configuration on startup
+console.log('🌐 API Configuration:');
+console.log(`🌐 Base URL: ${API_CONFIG.BASE_URL}`);
+console.log(`🌐 Timeout: ${API_CONFIG.TIMEOUT}ms`);
+console.log(`🌐 Headers:`, API_CONFIG.HEADERS);
+
 // Create axios instance with config
 const apiClient = axios.create({
   baseURL: API_CONFIG.BASE_URL,
@@ -23,24 +29,35 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     try {
+      // Construct the full URL
+      const fullUrl = config.baseURL + (config.url || '');
+      
+      console.log('🚀 === API REQUEST DETAILS ===');
+      console.log(`🚀 Method: ${config.method?.toUpperCase() || 'GET'}`);
+      console.log(`🚀 Base URL: ${config.baseURL}`);
+      console.log(`🚀 Endpoint: ${config.url || '/'}`);
+      console.log(`🚀 Full URL: ${fullUrl}`);
+      console.log(`🚀 Timeout: ${config.timeout}ms`);
+      console.log(`🚀 Headers:`, config.headers);
+      
       // Get the auth token from AsyncStorage
       const token = await AsyncStorage.getItem('authToken');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        // Debug: Log token info for troubleshooting
-        console.log(`🔐 API Request to ${config.url || config.baseURL + config.url}:`);
-        console.log(`🔐 Authorization Header: Bearer ${token}`);
-        console.log(`🔐 Token length: ${token.length} characters`);
-        console.log(`🔐 Full token for Swagger testing: ${token}`);
+        console.log(`🔐 Authorization: Bearer token added (${token.length} characters)`);
+        console.log(`🔐 Full token for testing: ${token}`);
       } else {
         console.log('⚠️ No auth token found in AsyncStorage');
       }
+      
+      console.log('🚀 === END REQUEST DETAILS ===');
     } catch (error) {
-      console.error('Error getting auth token:', error);
+      console.error('❌ Error preparing request:', error);
     }
     return config;
   },
   (error) => {
+    console.error('❌ Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -48,6 +65,12 @@ apiClient.interceptors.request.use(
 // Add response interceptor for standardizing responses
 apiClient.interceptors.response.use(
   (response) => {
+    console.log('✅ === API RESPONSE SUCCESS ===');
+    console.log(`✅ Status: ${response.status}`);
+    console.log(`✅ URL: ${response.config.url}`);
+    console.log(`✅ Data:`, response.data);
+    console.log('✅ === END RESPONSE ===');
+    
     // For successful responses, wrap in standard format
     return {
       success: true,
@@ -56,6 +79,14 @@ apiClient.interceptors.response.use(
     };
   },
   (error) => {
+    console.log('❌ === API RESPONSE ERROR ===');
+    console.log(`❌ Status: ${error.response?.status || 'No status'}`);
+    console.log(`❌ URL: ${error.config?.url || 'No URL'}`);
+    console.log(`❌ Message: ${error.message}`);
+    console.log(`❌ Response data:`, error.response?.data);
+    console.log(`❌ Network error:`, error.code);
+    console.log('❌ === END ERROR ===');
+    
     // For error responses, format error information
     const errorResponse = {
       success: false,
