@@ -137,26 +137,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const tokenExchangeResult = await authApi.exchangeToken(authResult.accessToken);
         
         if ((tokenExchangeResult as any).success && (tokenExchangeResult as any).data?.token) {
-          const azureUser: User = {
-            id: authResult.account.identifier,
-            name: authResult.account.name || 'Azure User',
-            email: authResult.account.username,
+        const azureUser: User = {
+          id: authResult.account.identifier,
+          name: authResult.account.name || 'Azure User',
+          email: authResult.account.username,
             token: (tokenExchangeResult as any).data.token, // Use API token, not Azure token
             azureToken: authResult.accessToken // Store Azure token for potential refresh
-          };
+        };
 
           // Store API token (not Azure token) for subsequent requests
-          await AsyncStorage.setItem('authToken', azureUser.token);
+        await AsyncStorage.setItem('authToken', azureUser.token);
           await AsyncStorage.setItem('azureToken', azureUser.azureToken || '');
-          await AsyncStorage.setItem('userData', JSON.stringify({
-            id: azureUser.id,
-            name: azureUser.name,
-            email: azureUser.email
-          }));
+        await AsyncStorage.setItem('userData', JSON.stringify({
+          id: azureUser.id,
+          name: azureUser.name,
+          email: azureUser.email
+        }));
 
-          setUser(azureUser);
+        setUser(azureUser);
           console.log('🔐 Token exchange successful, user logged in:', azureUser.email);
-          return true;
+        return true;
         } else {
           console.error('❌ Token exchange failed:', (tokenExchangeResult as any).message);
           return false;

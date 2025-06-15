@@ -60,6 +60,10 @@ const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<Ris
     
     // Create authenticated axios instance
     const token = await AsyncStorage.getItem('authToken');
+    const fullUrl = `${API_BASE_URL}/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`;
+    console.log(`🌐 FULL URL: ${fullUrl}`);
+    console.log(`🔑 AUTH TOKEN: ${token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN'}`);
+    
     const axiosInstance = axios.create({
       baseURL: API_BASE_URL,
       timeout: 10000,
@@ -69,7 +73,7 @@ const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<Ris
       }
     });
     
-    const response = await axiosInstance.get(`/risk-assessment-master/by-order/${orderId}`);
+    const response = await axiosInstance.get(`/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`);
     console.log('API response:', JSON.stringify(response.data, null, 2));
     
     // Ensure we return an array, even if API returns different structure
@@ -83,7 +87,14 @@ const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<Ris
       status: response.status
     };
   } catch (error: any) {
-    console.error(`Error in API call: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`❌ Error in API call: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`❌ Error details:`, {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      url: error.config?.url,
+      baseURL: error.config?.baseURL
+    });
     return {
       success: false,
       message: error.response?.data?.message || error.message || 'Failed to fetch templates',

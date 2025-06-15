@@ -2,6 +2,8 @@ import * as SQLite from 'expo-sqlite';
 
 // Initialize database using the new async API
 let db: SQLite.SQLiteDatabase;
+let isDbReady = false;
+let initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 interface SQLiteResult {
   rows: {
@@ -12,6 +14,32 @@ interface SQLiteResult {
   insertId?: number | null;
 }
 
+// Ensure database is ready before operations
+async function ensureDbReady(): Promise<SQLite.SQLiteDatabase> {
+  if (isDbReady && db) {
+    return db;
+  }
+  
+  if (initPromise) {
+    // If initialization is in progress, wait for it
+    return await initPromise;
+  }
+  
+  // Start initialization
+  initPromise = initializeDatabase();
+  return await initPromise;
+}
+
+// Export function to check if database is ready
+export function isDatabaseReady(): boolean {
+  return isDbReady && !!db;
+}
+
+// Export function to wait for database to be ready
+export async function waitForDatabase(): Promise<SQLite.SQLiteDatabase> {
+  return await ensureDbReady();
+}
+
 // Initialize the database
 export async function initializeDatabase() {
   try {
@@ -19,9 +47,11 @@ export async function initializeDatabase() {
     db = await SQLite.openDatabaseAsync('valuations.db');
     console.log('Database opened successfully');
     await createTables();
+    isDbReady = true;
     return db;
   } catch (error) {
     console.error('Error initializing database:', error);
+    isDbReady = false;
     throw error;
   }
 }
@@ -29,9 +59,12 @@ export async function initializeDatabase() {
 // Helper to run SQL with promise
 export async function runSql(sql: string, params: any[] = []): Promise<SQLiteResult> {
   try {
+    // Ensure database is ready before operation
+    const database = await ensureDbReady();
+    
     if (sql.trim().toLowerCase().startsWith('select')) {
       // For SELECT queries, use getAllAsync
-      const result = await db.getAllAsync(sql, params);
+      const result = await database.getAllAsync(sql, params);
       return {
         rows: {
           _array: result,
@@ -42,7 +75,7 @@ export async function runSql(sql: string, params: any[] = []): Promise<SQLiteRes
       };
     } else {
       // For other queries, use runAsync
-      const result = await db.runAsync(sql, params);
+      const result = await database.runAsync(sql, params);
       return {
         rows: { _array: [], length: 0 },
         rowsAffected: result.changes,
@@ -59,6 +92,11 @@ export async function runSql(sql: string, params: any[] = []): Promise<SQLiteRes
 export async function createTables() {
   try {
     console.log('Starting database table creation...');
+    
+    // Use the db variable that should be set by initializeDatabase
+    if (!db) {
+      throw new Error('Database not initialized');
+    }
     
     // Create tables using execAsync for DDL operations
     console.log('Creating appointments table...');

@@ -1,10 +1,13 @@
 import api from '../api';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../constants/apiConfig';
 import {
   insertRiskAssessmentItem,
   getAllRiskAssessmentItems,
-  RiskAssessmentItem
+  RiskAssessmentItem,
+  waitForDatabase,
+  isDatabaseReady
 } from '../utils/db';
 
 // Types
@@ -273,6 +276,13 @@ class PrefetchService {
 
   // Prefetch items for a specific category
   private async prefetchCategoryItems(categoryId: string): Promise<void> {
+    // Ensure database is ready before proceeding
+    if (!isDatabaseReady()) {
+      console.log(`⏳ Database not ready, waiting for initialization...`);
+      await waitForDatabase();
+      console.log(`✅ Database ready, proceeding with category ${categoryId}`);
+    }
+    
     // Check if already cached
     const existingItems = await getAllRiskAssessmentItems();
     const categoryItems = existingItems.filter(item => 
@@ -334,13 +344,37 @@ class PrefetchService {
   // Helper methods
   private async fetchTemplatesByOrderId(orderId: string): Promise<any> {
     try {
-      const response = await fetch(`${API_BASE_URL}/risk-assessment-master/by-order/${orderId}`);
+      const fullUrl = `${API_BASE_URL}/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`;
+      console.log(`🌐 PREFETCH SERVICE - FULL URL: ${fullUrl}`);
+      
+      // Get authentication token
+      const token = await AsyncStorage.getItem('authToken');
+      console.log(`🔑 PREFETCH SERVICE - AUTH TOKEN: ${token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN'}`);
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers,
+      });
+      
+      console.log(`📡 PREFETCH SERVICE - Response status: ${response.status} ${response.statusText}`);
+      
       const data = await response.json();
+      console.log(`📦 PREFETCH SERVICE - Response data: ${JSON.stringify(data, null, 2)}`);
+      
       return {
         success: response.ok,
         data: Array.isArray(data) ? data : data.data || []
       };
     } catch (error) {
+      console.error(`❌ PREFETCH SERVICE - Error fetching templates:`, error);
       return { success: false, data: [] };
     }
   }
