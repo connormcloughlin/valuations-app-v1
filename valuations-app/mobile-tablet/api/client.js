@@ -1,6 +1,16 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_CONFIG } from './config.js';
+import Constants from 'expo-constants';
+
+// Get API configuration from environment variables
+const API_CONFIG = {
+  BASE_URL: Constants.expoConfig?.extra?.apiBaseUrl || process.env.API_BASE_URL || 'http://localhost:5000/api',
+  TIMEOUT: parseInt(Constants.expoConfig?.extra?.apiTimeout || process.env.API_TIMEOUT || '30000'),
+  HEADERS: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  }
+};
 
 // Create axios instance with config
 const apiClient = axios.create({

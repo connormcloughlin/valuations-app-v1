@@ -10,10 +10,15 @@ module.exports = {
     "scheme": "valuations-app",
     "userInterfaceStyle": "light",
     "extra": {
+      "eas": {
+        "projectId": "fe1dee59-ac56-4ef1-82cd-b04aabd1bebc"
+      },
       azureMobileClientId: process.env.AZURE_MOBILE_CLIENT_ID,
       azureTenantId: process.env.AZURE_TENANT_ID,
       azureApiClientId: process.env.AZURE_API_CLIENT_ID,
       azureRedirectUri: process.env.AZURE_REDIRECT_URI,
+      apiBaseUrl: process.env.API_BASE_URL,
+      apiTimeout: process.env.API_TIMEOUT,
     },
     "splash": {
       "image": "./assets/images/splash-icon.png",
