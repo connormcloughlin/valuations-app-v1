@@ -35,7 +35,7 @@ allprojects {
     maven { url 'https://maven.microsoft.com/public/' }
   }
   
-  // Ensure all subprojects use Java 11 and correct SDK versions
+  // Ensure all subprojects use Java 17 and correct SDK versions
   afterEvaluate { project ->
     if (project.hasProperty('android')) {
       project.android {
@@ -43,13 +43,13 @@ allprojects {
         buildToolsVersion "35.0.0"
         
         compileOptions {
-          sourceCompatibility JavaVersion.VERSION_11
-          targetCompatibility JavaVersion.VERSION_11
+          sourceCompatibility JavaVersion.VERSION_17
+          targetCompatibility JavaVersion.VERSION_17
         }
         
         if (project.hasProperty('kotlinOptions')) {
           kotlinOptions {
-            jvmTarget = '11'
+            jvmTarget = '17'
           }
         }
         
