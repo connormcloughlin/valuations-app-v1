@@ -29,14 +29,30 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     try {
-      // Construct the full URL
-      const fullUrl = config.baseURL + (config.url || '');
+      // Construct the full absolute URL
+      let fullUrl = '';
+      if (config.url?.startsWith('http')) {
+        // Absolute URL
+        fullUrl = config.url;
+      } else {
+        // Relative URL - combine with baseURL
+        const baseUrl = config.baseURL || '';
+        const endpoint = config.url || '';
+        // Ensure proper URL joining
+        fullUrl = baseUrl.endsWith('/') && endpoint.startsWith('/') 
+          ? baseUrl + endpoint.substring(1)
+          : baseUrl.endsWith('/') || endpoint.startsWith('/') || !endpoint
+          ? baseUrl + endpoint
+          : baseUrl + '/' + endpoint;
+      }
       
       console.log('🚀 === API REQUEST DETAILS ===');
       console.log(`🚀 Method: ${config.method?.toUpperCase() || 'GET'}`);
       console.log(`🚀 Base URL: ${config.baseURL}`);
       console.log(`🚀 Endpoint: ${config.url || '/'}`);
-      console.log(`🚀 Full URL: ${fullUrl}`);
+      console.log(`🚀 COMPLETE FULL URL: ${fullUrl}`);
+      console.log(`🚀 Server: ${new URL(fullUrl).origin}`);
+      console.log(`🚀 Path: ${new URL(fullUrl).pathname}`);
       console.log(`🚀 Timeout: ${config.timeout}ms`);
       console.log(`🚀 Headers:`, config.headers);
       
