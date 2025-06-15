@@ -52,7 +52,7 @@
     "@babel/core": "^7.20.0",
     "@react-native-community/cli": "^18.0.0",
     "@types/react": "~19.0.10",
-    "react-test-renderer": "^18.3.1",
+    "react-test-renderer": "19.0.0",
     "typescript": "~5.8.3"
   },
   "expo": {
