@@ -31,6 +31,13 @@ require('dotenv').config({
   path: envFile
 });
 
+// Debug what was actually loaded
+console.log('🔧 === APP.CONFIG.JS DEBUG ===');
+console.log('🔧 process.env.API_BASE_URL:', process.env.API_BASE_URL);
+console.log('🔧 process.env.API_TIMEOUT:', process.env.API_TIMEOUT);
+console.log('🔧 process.env.AZURE_MOBILE_CLIENT_ID:', process.env.AZURE_MOBILE_CLIENT_ID);
+console.log('🔧 === END APP.CONFIG.JS DEBUG ===');
+
 module.exports = {
   "expo": {
     "name": "Valuations App",
