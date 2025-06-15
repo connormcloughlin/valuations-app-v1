@@ -2,7 +2,6 @@ import apiClient from './client';
 import axios from 'axios';
 import offlineStorage from '../utils/offlineStorage';
 import connectionUtils from '../utils/connectionUtils';
-import { API_CONFIG } from './config';
 import { API_BASE_URL } from '../constants/apiConfig';
 
 /**
