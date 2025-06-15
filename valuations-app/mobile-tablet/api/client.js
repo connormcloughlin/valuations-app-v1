@@ -3,8 +3,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 // Get API configuration from environment variables
+console.log('🔍 === ENVIRONMENT VARIABLE DEBUG ===');
+console.log('🔍 process.env.API_BASE_URL:', process.env.API_BASE_URL);
+console.log('🔍 process.env.API_TIMEOUT:', process.env.API_TIMEOUT);
+console.log('🔍 Constants.expoConfig?.extra?.apiBaseUrl:', Constants.expoConfig?.extra?.apiBaseUrl);
+console.log('🔍 Constants.expoConfig?.extra?.apiTimeout:', Constants.expoConfig?.extra?.apiTimeout);
+console.log('🔍 Constants.expoConfig?.extra:', Constants.expoConfig?.extra);
+console.log('🔍 === END ENVIRONMENT DEBUG ===');
+
 const API_CONFIG = {
-  BASE_URL: Constants.expoConfig?.extra?.apiBaseUrl || process.env.API_BASE_URL || 'http://localhost:5000/api',
+  BASE_URL: Constants.expoConfig?.extra?.apiBaseUrl || process.env.API_BASE_URL || 'https://localhost:5001/api',
   TIMEOUT: parseInt(Constants.expoConfig?.extra?.apiTimeout || process.env.API_TIMEOUT || '30000'),
   HEADERS: {
     'Content-Type': 'application/json',
