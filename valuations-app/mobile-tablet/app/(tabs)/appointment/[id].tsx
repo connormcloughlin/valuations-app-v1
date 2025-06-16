@@ -16,8 +16,8 @@ const typedApi = api as unknown as ApiClient;
 
 // Interface for appointment data
 interface Appointment {
-  id: string | number;
-  appointmentId?: string | number;
+  id: string;
+  appointmentId?: string;
   address: string;
   client?: string;
   clientName?: string;
@@ -41,10 +41,10 @@ interface Appointment {
   property_address?: string;
   customer_name?: string;
   appointment_date?: string;
-  order_id?: string | number;
+  order_id?: string;
   location?: string;
   appointmentID?: number;
-  orderID?: string | number;
+  orderID?: number | string;
   startTime?: string;
   endTime?: string;
   followUpDate?: string | null;
@@ -80,8 +80,8 @@ export default function AppointmentDetails() {
       if (response.success && response.data) {
         // Map API response to our Appointment interface
         const appointmentData: Appointment = {
-          id: typeof response.data.id === 'string' ? response.data.id : String(response.data.id || id),
-          appointmentId: typeof response.data.appointmentId === 'string' ? response.data.appointmentId : String(response.data.appointmentId),
+          id: String(response.data.id || id),
+          appointmentId: response.data.appointmentId ? String(response.data.appointmentId) : undefined,
           address: response.data.address || response.data.location || response.data.property_address || 'No address provided',
           client: response.data.client || response.data.clientName || 'Unknown client',
           phone: response.data.phone || response.data.phoneNumber || 'N/A',
@@ -100,10 +100,10 @@ export default function AppointmentDetails() {
           property_address: response.data.property_address,
           customer_name: response.data.customer_name,
           appointment_date: response.data.appointment_date,
-          order_id: response.data.order_id ? (typeof response.data.order_id === 'string' ? response.data.order_id : String(response.data.order_id)) : undefined,
+          order_id: response.data.order_id ? String(response.data.order_id) : undefined,
           location: response.data.location,
           appointmentID: typeof response.data.appointmentID === 'number' ? response.data.appointmentID : undefined,
-          orderID: response.data.orderID ? (typeof response.data.orderID === 'number' ? response.data.orderID : String(response.data.orderID)) : undefined,
+          orderID: response.data.orderID,
           startTime: response.data.startTime,
           endTime: response.data.endTime,
           followUpDate: response.data.followUpDate,
