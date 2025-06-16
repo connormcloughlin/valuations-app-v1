@@ -9,12 +9,13 @@ import Animated, {
   interpolateColor
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../context/AuthContext';
 
 // Define the tab configuration type
 type TabConfig = {
   name: string;
   title: string;
-  icon: 'view-dashboard' | 'clipboard-list' | 'note-text' | 'account';
+  icon: 'view-dashboard' | 'clipboard-list' | 'note-text' | 'account' | 'calendar-clock' | 'plus-circle';
   path: string;
 };
 
@@ -23,13 +24,40 @@ export default function TabLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { user, logout } = useAuth();
   
   // Create our tabs config with explicit paths
   const tabs: TabConfig[] = [
-    { name: 'index', title: 'Dashboard', icon: 'view-dashboard', path: '/(tabs)' },
-    { name: 'valuations', title: 'Valuations', icon: 'clipboard-list', path: '/(tabs)/valuations' },
-    { name: 'survey', title: 'Survey', icon: 'note-text', path: '/(tabs)/survey' },
-    { name: 'profile', title: 'Profile', icon: 'account', path: '/(tabs)/profile' }
+    {
+      name: 'dashboard',
+      title: 'Dashboard',
+      icon: 'view-dashboard',
+      path: '/(tabs)'
+    },
+    {
+      name: 'valuations',
+      title: 'Valuations',
+      icon: 'clipboard-list',
+      path: '/(tabs)/valuations'
+    },
+    {
+      name: 'survey',
+      title: 'Survey',
+      icon: 'note-text',
+      path: '/(tabs)/survey'
+    },
+    {
+      name: 'new-survey',
+      title: 'New Survey',
+      icon: 'plus-circle',
+      path: '/(tabs)/new-survey'
+    },
+    {
+      name: 'profile',
+      title: 'Profile',
+      icon: 'account',
+      path: '/(tabs)/profile'
+    }
   ];
   
   // Check which tab is active
@@ -39,8 +67,30 @@ export default function TabLayout() {
            (tabPath === '/(tabs)' && pathname === '/(tabs)');
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>Qantam</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <Text style={styles.userName}>{user?.name || 'User'}</Text>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <MaterialCommunityIcons name="logout" size={24} color="#2c3e50" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* This renders the current screen */}
       <View style={styles.content}>
         <Slot />
@@ -145,27 +195,58 @@ function TabButton({ icon, label, active, onPress }: TabButtonProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa'
+    backgroundColor: '#f5f6fa',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userName: {
+    fontSize: 16,
+    color: '#2c3e50',
+    marginRight: 12,
+  },
+  logoutButton: {
+    padding: 4,
   },
   content: {
     flex: 1,
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#eaeaea',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+    borderTopColor: '#eee',
+    paddingTop: 8,
   },
   tabButton: {
     flex: 1,

@@ -58,7 +58,7 @@ export default function SurveyScreen() {
   const [surveys, setSurveys] = useState<Survey[]>(mockValuations);
   
   const startNewSurvey = () => {
-    router.push('/survey/new');
+    router.push('/(tabs)/new-survey');
   };
   
   const openSurvey = (survey: Survey) => {

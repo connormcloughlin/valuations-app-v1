@@ -26,7 +26,7 @@ export default function Dashboard() {
     // Route to different screens based on appointment status
     if (status === 'scheduled') {
       router.push({
-        pathname: '/appointment/[id]',
+        pathname: '/(tabs)/appointment/[id]',
         params: { id }
       });
     } else if (status === 'inProgress') {
@@ -54,7 +54,7 @@ export default function Dashboard() {
       </View>
 
       <View style={styles.cardsContainer}>
-        <Card style={styles.card} onPress={() => router.push('/appointments/scheduled')}>
+        <Card style={styles.card} onPress={() => router.push('/(tabs)/scheduled')}>
           <Card.Content>
             <MaterialCommunityIcons name="calendar-clock" size={32} color="#4a90e2" />
             <Text style={styles.cardTitle}>Scheduled</Text>

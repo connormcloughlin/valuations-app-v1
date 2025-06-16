@@ -42,17 +42,6 @@ type SurveyData = {
   consultant: string;
 };
 
-// Custom header component
-const CustomHeader = () => {
-  return (
-    <View style={{backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center'}}>
-      <Button onPress={() => router.back()} mode="text">Cancel</Button>
-      <Text style={{flex: 1, textAlign: 'center', fontSize: 18}}>New Survey</Text>
-      <View style={{width: 80}} />
-    </View>
-  );
-};
-
 // Helper function to fetch templates by order ID
 const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<RiskTemplate[]>> => {
   try {
@@ -360,7 +349,12 @@ export default function NewSurveyScreen() {
 
   return (
     <>
-      <CustomHeader />
+      <Stack.Screen
+        options={{
+          title: 'New Survey',
+          headerTitleStyle: { fontWeight: '600' }
+        }}
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
@@ -507,7 +501,7 @@ export default function NewSurveyScreen() {
               ) : (
                 <View style={styles.templatesContainer}>
                   <Text style={styles.templatesInstructions}>
-                    Select a template to continue aaa with:
+                    Select a template to continue with:
                   </Text>
                   {templates.map(renderTemplateCard)}
                 </View>

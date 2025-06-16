@@ -15,7 +15,6 @@ interface Appointment {
   policyNo: string;
   orderNumber: string;
   status?: string;
-  // Add any other fields from the API response
 }
 
 // Define pagination interface
@@ -393,6 +392,6 @@ const styles = StyleSheet.create({
   },
   paginationText: {
     fontSize: 14,
-    color: '#2c3e50',
+    color: '#7f8c8d',
   },
 }); 
