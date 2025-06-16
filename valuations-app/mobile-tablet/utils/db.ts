@@ -707,3 +707,149 @@ export async function markMediaFilesAsSynced(mediaIDs: number[]) {
     throw error;
   }
 }
+
+// --- Database Management Functions ---
+
+// Clear all cached data from SQLite tables
+export async function clearAllCachedTables(): Promise<void> {
+  try {
+    console.log('🗑️ Clearing all cached SQLite tables...');
+    
+    const database = await ensureDbReady();
+    
+    // Clear all data from tables (but keep table structure)
+    await database.runAsync('DELETE FROM risk_assessment_items');
+    await database.runAsync('DELETE FROM risk_assessment_master');
+    await database.runAsync('DELETE FROM appointments');
+    await database.runAsync('DELETE FROM media_files');
+    
+    // Reset auto-increment counters
+    await database.runAsync('DELETE FROM sqlite_sequence WHERE name IN ("media_files")');
+    
+    console.log('✅ All cached tables cleared successfully');
+    
+    // Verify tables are empty
+    const itemsCount = await database.getAllAsync('SELECT COUNT(*) as count FROM risk_assessment_items');
+    const mastersCount = await database.getAllAsync('SELECT COUNT(*) as count FROM risk_assessment_master');
+    const appointmentsCount = await database.getAllAsync('SELECT COUNT(*) as count FROM appointments');
+    const mediaCount = await database.getAllAsync('SELECT COUNT(*) as count FROM media_files');
+    
+    console.log('📊 Table counts after clearing:', {
+      risk_assessment_items: (itemsCount[0] as any)?.count,
+      risk_assessment_master: (mastersCount[0] as any)?.count,
+      appointments: (appointmentsCount[0] as any)?.count,
+      media_files: (mediaCount[0] as any)?.count
+    });
+    
+  } catch (error) {
+    console.error('❌ Error clearing cached tables:', error);
+    throw error;
+  }
+}
+
+// Drop and recreate all tables (nuclear option)
+export async function recreateAllTables(): Promise<void> {
+  try {
+    console.log('💥 Dropping and recreating all SQLite tables...');
+    
+    const database = await ensureDbReady();
+    
+    // Drop all tables
+    await database.execAsync('DROP TABLE IF EXISTS risk_assessment_items');
+    await database.execAsync('DROP TABLE IF EXISTS risk_assessment_master');
+    await database.execAsync('DROP TABLE IF EXISTS appointments');
+    await database.execAsync('DROP TABLE IF EXISTS media_files');
+    
+    console.log('🗑️ All tables dropped');
+    
+    // Recreate tables
+    await createTables();
+    
+    console.log('✅ All tables recreated successfully');
+    
+  } catch (error) {
+    console.error('❌ Error recreating tables:', error);
+    throw error;
+  }
+}
+
+// Clear specific table data
+export async function clearTableData(tableName: 'risk_assessment_items' | 'risk_assessment_master' | 'appointments' | 'media_files'): Promise<void> {
+  try {
+    console.log(`🗑️ Clearing ${tableName} table...`);
+    
+    const database = await ensureDbReady();
+    await database.runAsync(`DELETE FROM ${tableName}`);
+    
+    // Reset auto-increment for media_files
+    if (tableName === 'media_files') {
+      await database.runAsync('DELETE FROM sqlite_sequence WHERE name = "media_files"');
+    }
+    
+    const count = await database.getAllAsync(`SELECT COUNT(*) as count FROM ${tableName}`);
+    console.log(`✅ ${tableName} cleared. Current count: ${(count[0] as any)?.count}`);
+    
+  } catch (error) {
+    console.error(`❌ Error clearing ${tableName}:`, error);
+    throw error;
+  }
+}
+
+// Get table statistics
+export async function getTableStats(): Promise<{[key: string]: number}> {
+  try {
+    const database = await ensureDbReady();
+    
+    const itemsCount = await database.getAllAsync('SELECT COUNT(*) as count FROM risk_assessment_items');
+    const mastersCount = await database.getAllAsync('SELECT COUNT(*) as count FROM risk_assessment_master');
+    const appointmentsCount = await database.getAllAsync('SELECT COUNT(*) as count FROM appointments');
+    const mediaCount = await database.getAllAsync('SELECT COUNT(*) as count FROM media_files');
+    
+    const stats = {
+      risk_assessment_items: (itemsCount[0] as any)?.count || 0,
+      risk_assessment_master: (mastersCount[0] as any)?.count || 0,
+      appointments: (appointmentsCount[0] as any)?.count || 0,
+      media_files: (mediaCount[0] as any)?.count || 0
+    };
+    
+    console.log('📊 Current table statistics:', stats);
+    return stats;
+    
+  } catch (error) {
+    console.error('❌ Error getting table stats:', error);
+    return {};
+  }
+}
+
+// Force reload data from API (clears cache first)
+export async function forceReloadFromAPI(): Promise<void> {
+  try {
+    console.log('🔄 Force reloading data from API...');
+    
+    // Clear cached tables
+    await clearAllCachedTables();
+    
+    // Clear AsyncStorage cache
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    const keys = await AsyncStorage.getAllKeys();
+    const apiKeys = keys.filter((key: string) => 
+      key.includes('risk_templates') || 
+      key.includes('assessment_sections') ||
+      key.includes('assessment_categories') ||
+      key.includes('assessment_items') ||
+      key.includes('template_categories') ||
+      key.includes('template_items')
+    );
+    
+    if (apiKeys.length > 0) {
+      await AsyncStorage.multiRemove(apiKeys);
+      console.log(`🗑️ Cleared ${apiKeys.length} AsyncStorage cache items`);
+    }
+    
+    console.log('✅ Force reload preparation complete. Next API calls will fetch fresh data.');
+    
+  } catch (error) {
+    console.error('❌ Error during force reload:', error);
+    throw error;
+  }
+}

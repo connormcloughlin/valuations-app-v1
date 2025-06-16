@@ -26,6 +26,53 @@ console.log(`🌐 Base URL: ${API_CONFIG.BASE_URL}`);
 console.log(`🌐 Timeout: ${API_CONFIG.TIMEOUT}ms`);
 console.log(`🌐 Headers:`, API_CONFIG.HEADERS);
 
+// Token cache to avoid AsyncStorage calls on every request
+let cachedToken = null;
+let tokenLastFetched = 0;
+const TOKEN_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Function to get token with caching
+async function getCachedToken() {
+  const now = Date.now();
+  
+  // If we have a cached token and it's not expired, use it
+  if (cachedToken && (now - tokenLastFetched) < TOKEN_CACHE_DURATION) {
+    return cachedToken;
+  }
+  
+  // Fetch fresh token from AsyncStorage
+  try {
+    const token = await AsyncStorage.getItem('authToken');
+    cachedToken = token;
+    tokenLastFetched = now;
+    
+    if (token) {
+      console.log(`🔐 Token refreshed from AsyncStorage (${token.length} chars)`);
+    } else {
+      console.log('⚠️ No auth token found in AsyncStorage');
+    }
+    
+    return token;
+  } catch (error) {
+    console.error('❌ Error fetching token from AsyncStorage:', error);
+    return null;
+  }
+}
+
+// Function to clear token cache (call when user logs out)
+export function clearTokenCache() {
+  cachedToken = null;
+  tokenLastFetched = 0;
+  console.log('🔐 Token cache cleared');
+}
+
+// Function to update token cache (call when user logs in)
+export function updateTokenCache(token) {
+  cachedToken = token;
+  tokenLastFetched = Date.now();
+  console.log('🔐 Token cache updated');
+}
+
 // Create axios instance with config
 const apiClient = axios.create({
   baseURL: API_CONFIG.BASE_URL,
@@ -37,44 +84,35 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     try {
-      // Construct the full absolute URL
-      let fullUrl = '';
-      if (config.url?.startsWith('http')) {
-        // Absolute URL
-        fullUrl = config.url;
-      } else {
-        // Relative URL - combine with baseURL
-        const baseUrl = config.baseURL || '';
-        const endpoint = config.url || '';
-        // Ensure proper URL joining
-        fullUrl = baseUrl.endsWith('/') && endpoint.startsWith('/') 
-          ? baseUrl + endpoint.substring(1)
-          : baseUrl.endsWith('/') || endpoint.startsWith('/') || !endpoint
-          ? baseUrl + endpoint
-          : baseUrl + '/' + endpoint;
+      // Only log detailed info for non-GET requests or in development
+      const shouldLogDetails = config.method !== 'get' || __DEV__;
+      
+      if (shouldLogDetails) {
+        // Construct the full absolute URL
+        let fullUrl = '';
+        if (config.url?.startsWith('http')) {
+          fullUrl = config.url;
+        } else {
+          const baseUrl = config.baseURL || '';
+          const endpoint = config.url || '';
+          fullUrl = baseUrl.endsWith('/') && endpoint.startsWith('/') 
+            ? baseUrl + endpoint.substring(1)
+            : baseUrl.endsWith('/') || endpoint.startsWith('/') || !endpoint
+            ? baseUrl + endpoint
+            : baseUrl + '/' + endpoint;
+        }
+        
+        console.log('🚀 === API REQUEST ===');
+        console.log(`🚀 ${config.method?.toUpperCase() || 'GET'}: ${fullUrl}`);
+        console.log('🚀 === END REQUEST ===');
       }
       
-      console.log('🚀 === API REQUEST DETAILS ===');
-      console.log(`🚀 Method: ${config.method?.toUpperCase() || 'GET'}`);
-      console.log(`🚀 Base URL: ${config.baseURL}`);
-      console.log(`🚀 Endpoint: ${config.url || '/'}`);
-      console.log(`🚀 COMPLETE FULL URL: ${fullUrl}`);
-      console.log(`🚀 Server: ${new URL(fullUrl).origin}`);
-      console.log(`🚀 Path: ${new URL(fullUrl).pathname}`);
-      console.log(`🚀 Timeout: ${config.timeout}ms`);
-      console.log(`🚀 Headers:`, config.headers);
-      
-      // Get the auth token from AsyncStorage
-      const token = await AsyncStorage.getItem('authToken');
+      // Get the auth token efficiently (with caching)
+      const token = await getCachedToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log(`🔐 Authorization: Bearer token added (${token.length} characters)`);
-        console.log(`🔐 Full token for testing: ${token}`);
-      } else {
-        console.log('⚠️ No auth token found in AsyncStorage');
       }
       
-      console.log('🚀 === END REQUEST DETAILS ===');
     } catch (error) {
       console.error('❌ Error preparing request:', error);
     }
@@ -89,11 +127,15 @@ apiClient.interceptors.request.use(
 // Add response interceptor for standardizing responses
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('✅ === API RESPONSE SUCCESS ===');
-    console.log(`✅ Status: ${response.status}`);
-    console.log(`✅ URL: ${response.config.url}`);
-    console.log(`✅ Data:`, response.data);
-    console.log('✅ === END RESPONSE ===');
+    // Only log details for non-GET requests or errors in production
+    const shouldLogDetails = response.config.method !== 'get' || __DEV__;
+    
+    if (shouldLogDetails) {
+      console.log('✅ === API RESPONSE SUCCESS ===');
+      console.log(`✅ ${response.status}: ${response.config.url}`);
+      console.log(`✅ Data:`, response.data);
+      console.log('✅ === END RESPONSE ===');
+    }
     
     // For successful responses, wrap in standard format
     return {
@@ -107,8 +149,12 @@ apiClient.interceptors.response.use(
     console.log(`❌ Status: ${error.response?.status || 'No status'}`);
     console.log(`❌ URL: ${error.config?.url || 'No URL'}`);
     console.log(`❌ Message: ${error.message}`);
-    console.log(`❌ Response data:`, error.response?.data);
-    console.log(`❌ Network error:`, error.code);
+    
+    // Only log full details in development or for critical errors
+    if (__DEV__ || (error.response?.status && error.response.status >= 500)) {
+      console.log(`❌ Response data:`, error.response?.data);
+      console.log(`❌ Network error:`, error.code);
+    }
     console.log('❌ === END ERROR ===');
     
     // For error responses, format error information
@@ -118,7 +164,6 @@ apiClient.interceptors.response.use(
       message: error.response?.data?.message || error.message || 'Unknown error occurred'
     };
     
-    // Still reject the promise, but with formatted error
     return Promise.reject(errorResponse);
   }
 );

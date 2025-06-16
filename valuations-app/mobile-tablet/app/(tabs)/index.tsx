@@ -85,6 +85,20 @@ export default function Dashboard() {
             <Text style={styles.syncStatus}>Last: Today 11:45</Text>
           </Card.Content>
         </Card>
+
+        {/* Debug card - only show in development */}
+        {__DEV__ && (
+          <Card style={[styles.card, styles.debugCard]} onPress={() => {
+            console.log('Debug card pressed - opening development tools');
+            alert('Debug tools available below in Development Tools section');
+          }}>
+            <Card.Content>
+              <MaterialCommunityIcons name="bug" size={32} color="#fff" />
+              <Text style={[styles.cardTitle, { color: '#fff' }]}>Debug DB</Text>
+              <Text style={styles.debugStatus}>Dev Only</Text>
+            </Card.Content>
+          </Card>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -140,6 +154,74 @@ export default function Dashboard() {
           <Text style={styles.emptyMessage}>No surveys in progress</Text>
         )}
       </View>
+
+      {/* Development Debug Section - only show in development */}
+      {__DEV__ && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🛠️ Development Tools</Text>
+          <Card style={styles.debugSection}>
+            <Card.Content>
+              <Button 
+                mode="contained" 
+                onPress={async () => {
+                  console.log('🔧 Checking Database Stats...');
+                  try {
+                    const { getTableStats } = await import('../../utils/db');
+                    const stats = await getTableStats();
+                    console.log('📊 Current table stats:', stats);
+                    alert(`Database Stats:\n${JSON.stringify(stats, null, 2)}`);
+                  } catch (error) {
+                    console.error('Error getting stats:', error);
+                    alert(`Error: ${error}`);
+                  }
+                }}
+                style={styles.debugButton}
+                icon="database"
+              >
+                Check DB Stats
+              </Button>
+              
+              <Button 
+                mode="outlined" 
+                onPress={async () => {
+                  console.log('🗑️ Clearing cached tables...');
+                  try {
+                    const { clearAllCachedTables } = await import('../../utils/db');
+                    await clearAllCachedTables();
+                    alert('✅ All cached tables cleared successfully!');
+                  } catch (error) {
+                    console.error('Error clearing tables:', error);
+                    alert(`❌ Error: ${error}`);
+                  }
+                }}
+                style={styles.debugButton}
+                icon="delete"
+              >
+                Clear All Tables
+              </Button>
+              
+              <Button 
+                mode="outlined" 
+                onPress={async () => {
+                  console.log('🔄 Force reloading from API...');
+                  try {
+                    const { forceReloadFromAPI } = await import('../../utils/db');
+                    await forceReloadFromAPI();
+                    alert('✅ Force reload completed! Next API calls will fetch fresh data.');
+                  } catch (error) {
+                    console.error('Error force reloading:', error);
+                    alert(`❌ Error: ${error}`);
+                  }
+                }}
+                style={styles.debugButton}
+                icon="refresh"
+              >
+                Force API Reload
+              </Button>
+            </Card.Content>
+          </Card>
+        </View>
+      )}
 
       <Button 
         mode="contained" 
@@ -241,5 +323,20 @@ const styles = StyleSheet.create({
     color: '#95a5a6',
     fontSize: 14,
     padding: 15,
+  },
+  debugCard: {
+    backgroundColor: '#e74c3c',
+  },
+  debugStatus: {
+    fontSize: 14,
+    color: '#fff',
+    marginTop: 5,
+  },
+  debugSection: {
+    padding: 20,
+    backgroundColor: '#fff',
+  },
+  debugButton: {
+    marginBottom: 10,
   },
 });

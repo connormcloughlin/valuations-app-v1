@@ -223,9 +223,17 @@ const getRiskAssessmentCategories = async (sectionId: string): Promise<ApiRespon
 // Function to get risk assessment items with simplified offline support
 const getRiskAssessmentItems = async (categoryId: string): Promise<ApiResponse> => {
   try {
+    console.log(`🌐 Fetching items for category: ${categoryId}`);
     const response = await axiosInstance.get(`/risk-assessment-items/category/${categoryId}`);
+    
+    // Log essential response info
+    if (__DEV__) {
+      console.log(`📦 API Response - Status: ${response.status}, Items: ${Array.isArray(response.data) ? response.data.length : 'nested data'}`);
+    }
+    
     if (response.data) {
       await storeData(`${STORAGE_KEYS.ASSESSMENT_ITEMS}${categoryId}`, response.data);
+      
       return {
         success: true,
         data: response.data,
@@ -234,20 +242,23 @@ const getRiskAssessmentItems = async (categoryId: string): Promise<ApiResponse> 
     }
     throw new Error('Empty response from API');
   } catch (error) {
+    console.error(`❌ API Error for category ${categoryId}:`, error);
     try {
-      console.log(`API error, checking cache for assessment items (category ID: ${categoryId})`);
+      console.log(`📦 Checking cache for category ${categoryId}`);
       const cachedData = await getData(`${STORAGE_KEYS.ASSESSMENT_ITEMS}${categoryId}`);
       if (cachedData) {
-        console.log('Using cached assessment items data');
+        console.log('📦 Using cached data');
         return {
           success: true,
           data: cachedData.data,
           status: 200,
           fromCache: true,
         };
+      } else {
+        console.log('📦 No cached data found');
       }
     } catch (cacheError) {
-      console.error('Cache retrieval error:', cacheError);
+      console.error('📦 Cache error:', cacheError);
     }
     return handleApiError(error);
   }

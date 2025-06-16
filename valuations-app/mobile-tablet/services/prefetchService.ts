@@ -210,37 +210,56 @@ class PrefetchService {
 
   // Process queue in background with controlled batching
   private async processQueueInBackground() {
-    console.log(`⚡ Starting background processing of ${this.queue.length} tasks`);
+    console.log(`🚀 Starting background processing of ${this.queue.length} tasks`);
     
-    // Process in small batches to avoid overwhelming the device
-    const batchSize = 2;
-    let currentIndex = 0;
-
-    while (currentIndex < this.queue.length && this.isActive) {
-      const batch = this.queue.slice(currentIndex, currentIndex + batchSize);
+    // Rate limiting: Process max 3 requests concurrently with delays
+    const MAX_CONCURRENT = 3;
+    const DELAY_BETWEEN_BATCHES = 2000; // 2 seconds between batches
+    const DELAY_BETWEEN_REQUESTS = 500; // 500ms between individual requests
+    
+    let completed = 0;
+    let failed = 0;
+    
+    // Process queue in smaller batches to avoid rate limiting
+    for (let i = 0; i < this.queue.length; i += MAX_CONCURRENT) {
+      if (!this.isActive) break;
       
-      // Process batch concurrently
-      await Promise.all(
-        batch.map(task => this.executeTask(task))
-      );
-
-      currentIndex += batchSize;
-      this.emitProgress();
-
-      // Yield control and add small delay between batches
-      await new Promise(resolve => setTimeout(resolve, 300));
+      const batch = this.queue.slice(i, i + MAX_CONCURRENT);
+      console.log(`📦 Processing batch ${Math.floor(i / MAX_CONCURRENT) + 1} (${batch.length} tasks)`);
       
-      // Check if we should continue (network still available, etc.)
-      const netInfo = await NetInfo.fetch();
-      if (!netInfo.isConnected) {
-        console.log('🔌 Network disconnected, pausing prefetch');
-        break;
+      // Process batch with individual delays
+      const batchPromises = batch.map(async (task, index) => {
+        if (!this.isActive) return;
+        
+        // Add staggered delay to prevent burst requests
+        if (index > 0) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS * index));
+        }
+        
+        try {
+          await this.executeTask(task);
+          completed++;
+        } catch (error) {
+          console.error(`❌ Task failed: ${task.id}`, error);
+          failed++;
+          task.status = 'failed';
+        }
+        
+        this.emitProgress();
+      });
+      
+      // Wait for current batch to complete
+      await Promise.allSettled(batchPromises);
+      
+      // Delay between batches to respect rate limits
+      if (i + MAX_CONCURRENT < this.queue.length && this.isActive) {
+        console.log(`⏳ Waiting ${DELAY_BETWEEN_BATCHES}ms before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
       }
     }
-
-    if (this.isActive) {
-      this.completePrefetch();
-    }
+    
+    console.log(`📊 Processing completed: ${completed} successful, ${failed} failed`);
+    this.completePrefetch();
   }
 
   // Execute individual prefetch task
@@ -290,19 +309,52 @@ class PrefetchService {
     );
 
     if (categoryItems.length > 0) {
-      console.log(`📦 Category ${categoryId} already cached (${categoryItems.length} items)`);
+      console.log(`📦 PREFETCH - Category ${categoryId} already cached (${categoryItems.length} items)`);
       return;
     }
 
-    console.log(`📡 Fetching items for category ${categoryId}`);
+    console.log(`📡 PREFETCH - Fetching items for category ${categoryId}`);
     
     const response = await api.getRiskAssessmentItems(categoryId);
     
-    if (response?.success && Array.isArray(response.data)) {
-      console.log(`💾 Storing ${response.data.length} items for category ${categoryId}`);
+    console.log(`🔍 PREFETCH DEBUG - API Response:`, {
+      success: response?.success,
+      status: response?.status,
+      fromCache: response?.fromCache,
+      dataType: typeof response?.data,
+      isArray: Array.isArray(response?.data),
+      dataLength: Array.isArray(response?.data) ? response.data.length : 'N/A'
+    });
+    
+    if (response?.success && response?.data) {
+      let itemsToProcess = [];
+      
+      // Handle different response structures
+      if (Array.isArray(response.data)) {
+        itemsToProcess = response.data;
+        console.log(`📋 PREFETCH - Direct array structure with ${itemsToProcess.length} items`);
+      } else if (response.data.data && Array.isArray(response.data.data)) {
+        itemsToProcess = response.data.data;
+        console.log(`📋 PREFETCH - Nested data structure with ${itemsToProcess.length} items`);
+      } else {
+        console.error(`❌ PREFETCH - Unexpected data structure:`, response.data);
+        throw new Error(`Unexpected data structure for category ${categoryId}`);
+      }
+      
+      console.log(`💾 PREFETCH - Processing ${itemsToProcess.length} items for category ${categoryId}`);
+      console.log(`🔍 PREFETCH - Full items array:`, JSON.stringify(itemsToProcess, null, 2));
       
       // Store each item in SQLite
-      for (const item of response.data) {
+      for (let i = 0; i < itemsToProcess.length; i++) {
+        const item = itemsToProcess[i];
+        console.log(`📝 PREFETCH - Processing item ${i + 1}/${itemsToProcess.length}:`, {
+          riskassessmentitemid: item.riskassessmentitemid,
+          riskassessmentcategoryid: item.riskassessmentcategoryid,
+          itemprompt: item.itemprompt,
+          itemtype: item.itemtype,
+          rank: item.rank
+        });
+        
         const sqliteItem: RiskAssessmentItem = {
           riskassessmentitemid: Number(item.riskassessmentitemid),
           riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
@@ -334,9 +386,28 @@ class PrefetchService {
           pending_sync: 0
         };
         
-        await insertRiskAssessmentItem(sqliteItem);
+        //console.log(`💽 PREFETCH - Converted SQLite item ${i + 1}:`, sqliteItem);
+        
+        try {
+          await insertRiskAssessmentItem(sqliteItem);
+          console.log(`✅ PREFETCH - Successfully inserted item ${i + 1} (ID: ${sqliteItem.riskassessmentitemid})`);
+        } catch (insertError) {
+          console.error(`❌ PREFETCH - Failed to insert item ${i + 1}:`, insertError);
+          console.error(`❌ PREFETCH - Failed item data:`, sqliteItem);
+          throw insertError;
+        }
       }
+      
+      // Verify the insertion by counting items in the category
+      const verifyItems = await getAllRiskAssessmentItems();
+      const verifyCount = verifyItems.filter(item => 
+        String(item.riskassessmentcategoryid) === String(categoryId)
+      ).length;
+      
+      console.log(`🔍 PREFETCH - Verification: ${verifyCount} items now in SQLite for category ${categoryId}`);
+      
     } else {
+      console.error(`❌ PREFETCH - Failed API response for category ${categoryId}:`, response);
       throw new Error(`Failed to fetch items for category ${categoryId}`);
     }
   }
