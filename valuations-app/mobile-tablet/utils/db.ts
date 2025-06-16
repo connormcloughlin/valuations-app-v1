@@ -44,14 +44,24 @@ export async function waitForDatabase(): Promise<SQLite.SQLiteDatabase> {
 export async function initializeDatabase() {
   try {
     console.log('Initializing database...');
+    
+    // If already initialized, return the existing database
+    if (isDbReady && db) {
+      console.log('Database already initialized, returning existing instance');
+      return db;
+    }
+    
     db = await SQLite.openDatabaseAsync('valuations.db');
     console.log('Database opened successfully');
     await createTables();
     isDbReady = true;
+    initPromise = null; // Clear the promise since we're done
+    console.log('Database initialization fully completed');
     return db;
   } catch (error) {
     console.error('Error initializing database:', error);
     isDbReady = false;
+    initPromise = null; // Clear the promise on error
     throw error;
   }
 }
@@ -191,12 +201,12 @@ export async function createTables() {
     
     // Verify tables were created
     console.log('Verifying tables...');
-    const tables = await runSql("SELECT name FROM sqlite_master WHERE type='table'");
-    console.log('Tables in database:', tables.rows._array);
+    const tablesResult = await db.getAllAsync("SELECT name FROM sqlite_master WHERE type='table'");
+    console.log('Tables in database:', tablesResult);
     
     // Test database access
     console.log('Testing database access...');
-    await runSql(
+    await db.runAsync(
       `INSERT INTO risk_assessment_items (
         riskassessmentitemid,
         riskassessmentcategoryid,
@@ -207,10 +217,10 @@ export async function createTables() {
       [0, 0, 'TEST', 1, 1]
     );
     
-    const testSelect = await runSql('SELECT * FROM risk_assessment_items WHERE riskassessmentitemid = 0');
-    console.log('Test record:', testSelect.rows._array);
+    const testSelectResult = await db.getAllAsync('SELECT * FROM risk_assessment_items WHERE riskassessmentitemid = 0');
+    console.log('Test record:', testSelectResult);
     
-    await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = 0');
+    await db.runAsync('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = 0');
     console.log('Database initialization completed successfully');
     
   } catch (error) {

@@ -39,45 +39,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initializeApp = async () => {
     try {
       // First initialize the database
+      console.log('🗄️ Starting app initialization...');
       console.log('🗄️ Initializing database...');
       await initializeDatabase();
       console.log('✅ Database initialized successfully');
       setDbInitialized(true);
       
       // Then check authentication status
+      console.log('🔐 Starting authentication check...');
       await checkAuthStatus();
+      console.log('✅ Authentication check completed');
     } catch (error) {
       console.error('❌ Error during app initialization:', error);
       // Continue with auth check even if DB fails
-      await checkAuthStatus();
+      try {
+        console.log('🔐 Attempting authentication check after DB error...');
+        await checkAuthStatus();
+        console.log('✅ Authentication check completed after DB error');
+      } catch (authError) {
+        console.error('❌ Authentication check also failed:', authError);
+        // Ensure loading is stopped even if everything fails
+        setIsLoading(false);
+      }
     }
   };
 
   const checkAuthStatus = async () => {
     try {
+      console.log('🔐 Setting loading state to true');
       setIsLoading(true);
+      
+      console.log('🔐 Retrieving stored tokens...');
       const token = await AsyncStorage.getItem('authToken');
       const azureToken = await AsyncStorage.getItem('azureToken');
       const userData = await AsyncStorage.getItem('userData');
       
+      console.log('🔐 Token status:', {
+        hasAuthToken: !!token,
+        hasAzureToken: !!azureToken,
+        hasUserData: !!userData
+      });
+      
       if (token && userData) {
+        console.log('🔐 Parsing user data...');
         const parsedUser = JSON.parse(userData);
         setUser({ 
           ...parsedUser, 
           token,
           azureToken: azureToken || undefined
         });
-        console.log('User authenticated from storage:', parsedUser.email);
+        console.log('🔐 User authenticated from storage:', parsedUser.email);
         
         // Set the API token for subsequent requests
+        console.log('🔐 Setting API auth token...');
         authApi.setAuthToken(token);
+        console.log('🔐 API auth token set successfully');
       } else {
-        console.log('No authentication data found');
+        console.log('🔐 No authentication data found');
       }
     } catch (error) {
-      console.error('Error checking auth status:', error);
+      console.error('❌ Error checking auth status:', error);
     } finally {
+      console.log('🔐 Setting loading state to false');
       setIsLoading(false);
+      console.log('🔐 checkAuthStatus completed');
     }
   };
 
