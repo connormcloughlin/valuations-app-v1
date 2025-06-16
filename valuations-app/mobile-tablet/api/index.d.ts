@@ -67,7 +67,7 @@ export interface Appointment {
 }
 
 // API client interface
-declare const api: {
+export interface ApiClient {
   setAuthToken: (token: string) => void;
   login: (credentials: any) => Promise<ApiResponse<any>>;
   getSurveys: () => Promise<ApiResponse<any>>;
@@ -83,8 +83,17 @@ declare const api: {
   getAppointmentById: (appointmentId: string) => Promise<ApiResponse<Appointment>>;
   getAppointmentsByStatus: (status: string) => Promise<ApiResponse<Appointment[]>>;
   clearAllCachedData: () => Promise<ApiResponse<any>>;
-  getAppointmentsWithOrders: () => Promise<ApiResponse<Appointment[]>>;
-  getAppointmentsWithOrdersByStatus: (status: string) => Promise<ApiResponse<Appointment[]>>;
-};
+  getAppointmentsWithOrders: (options?: { page?: number; pageSize?: number }) => Promise<ApiResponse<Appointment[]>>;
+  getAppointmentsWithOrdersByStatus: (status: string, options?: { page?: number; pageSize?: number }) => Promise<ApiResponse<Appointment[]>>;
+  getAppointmentsByListView: (options?: { status?: string; page?: number; pageSize?: number; surveyor?: string | null }) => Promise<ApiResponse<Appointment[]>>;
+  updateAppointment: (appointmentId: string, updates: { inviteStatus?: string }) => Promise<ApiResponse<Appointment>>;
+  syncChanges: (syncData: any) => Promise<ApiResponse<any>>;
+  uploadMedia: (mediaData: any) => Promise<ApiResponse<any>>;
+  getMediaForEntity: (entityName: string, entityID: string) => Promise<ApiResponse<any>>;
+  deleteMedia: (mediaID: string) => Promise<ApiResponse<any>>;
+  uploadMediaBatch: (mediaFiles: any[]) => Promise<ApiResponse<any>>;
+  getSyncHealth: () => Promise<ApiResponse<any>>;
+}
 
+declare const api: ApiClient;
 export default api; 

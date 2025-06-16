@@ -9,6 +9,7 @@ import { API_BASE_URL } from '../../constants/apiConfig';
 import { insertRiskAssessmentItem } from '../../utils/db';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import prefetchService from '../../services/prefetchService';
 
 // Define types for API responses
 interface ApiResponse<T> {
@@ -40,6 +41,7 @@ type SurveyData = {
   appointmentId: string;
   useHandwriting: boolean;
   consultant: string;
+  appointmentStatus: string;
 };
 
 // Helper function to fetch templates by order ID
@@ -189,12 +191,15 @@ export default function NewSurveyScreen() {
     appointmentId: '',
     useHandwriting: false,
     consultant: '',
+    appointmentStatus: '',
   });
 
   // Update survey data from URL params (appointment data)
   useEffect(() => {
     if (params && initialLoad.current) {
       initialLoad.current = false;
+      
+      console.log('📋 Initial params received:', params);
       
       const newData: Partial<SurveyData> = {};
       if (params.clientName) newData.clientName = params.clientName as string;
@@ -204,16 +209,23 @@ export default function NewSurveyScreen() {
       if (params.broker) newData.broker = params.broker as string;
       if (params.orderNumber) newData.orderNumber = params.orderNumber as string;
       if (params.appointmentId) newData.appointmentId = params.appointmentId as string;
+      if (params.status) newData.appointmentStatus = params.status as string;
+      
+      console.log('📋 New data to be set:', newData);
       
       if (Object.keys(newData).length > 0) {
-        setSurveyData(prev => ({
-          ...prev,
-          ...newData
-        }));
+        setSurveyData(prev => {
+          const updated = {
+            ...prev,
+            ...newData
+          };
+          console.log('📋 Updated survey data:', updated);
+          return updated;
+        });
         
         // Check if we have an order number and fetch templates immediately
         if (newData.orderNumber) {
-          console.log(`Order number ${newData.orderNumber} found in params, fetching templates now`);
+          console.log(`📋 Order number ${newData.orderNumber} found in params, fetching templates now`);
           fetchTemplates(newData.orderNumber);
         }
       }
@@ -287,18 +299,41 @@ export default function NewSurveyScreen() {
   };
 
   // Start survey with the selected template
-  const startSurveyWithTemplate = (template: RiskTemplate) => {
+  const startSurveyWithTemplate = async (template: RiskTemplate) => {
+    console.log('🚀 Starting survey with template:', template);
+    console.log('📋 Current survey data:', surveyData);
+    
     // Get the assessment ID using the correct field names
     const assessmentId = template.riskassessmentid || String(template.assessmentid);
     
     if (!assessmentId) {
-      console.error('Invalid template: No assessmentId found', template);
+      console.error('❌ Invalid template: No assessmentId found', template);
       return;
     }
     
-    console.log(`Starting survey with assessmentId: ${assessmentId} - ${template.assessmenttypename}`);
+    console.log(`📋 Starting survey with assessmentId: ${assessmentId} - ${template.assessmenttypename}`);
+    console.log(`📋 Appointment Details - ID: ${surveyData.appointmentId}, Status: ${surveyData.appointmentStatus}`);
+    
+    // If we have an appointment ID and status is "in-progress" (case-insensitive), start prefetching data
+    if (surveyData.appointmentId && surveyData.appointmentStatus.toLowerCase() === 'in-progress') {
+      console.log(`🔄 Starting prefetch for in-progress appointment ${surveyData.appointmentId}`);
+      try {
+        await prefetchService.startAppointmentPrefetch(surveyData.appointmentId);
+        console.log('✅ Prefetch completed successfully');
+      } catch (error) {
+        console.error('❌ Error during prefetch:', error);
+        // Continue with navigation even if prefetch fails
+      }
+    } else {
+      console.log('ℹ️ Skipping prefetch - Conditions not met:', {
+        hasAppointmentId: !!surveyData.appointmentId,
+        appointmentStatus: surveyData.appointmentStatus,
+        isInProgress: surveyData.appointmentStatus?.toLowerCase() === 'in-progress'
+      });
+    }
     
     // Navigate to categories screen with the assessmentId
+    console.log(`🔄 Navigating to categories screen with assessmentId: ${assessmentId}`);
     router.push({
       pathname: '/survey/SectionsCategories',
       params: { riskassessmentid: assessmentId }
@@ -308,19 +343,19 @@ export default function NewSurveyScreen() {
   // Render a template card with its own continue button
   const renderTemplateCard = (template: RiskTemplate, index: number) => {
     // Log the template object to see what we're getting
-    console.log(`Rendering template ${index}:`, JSON.stringify(template, null, 2));
+    console.log(`📋 Rendering template ${index}:`, JSON.stringify(template, null, 2));
     
     // Get the template ID using the correct field names
     const templateId = template.riskassessmentid || String(template.assessmentid);
     if (!templateId) {
-      console.error('Template missing ID:', template);
+      console.error('❌ Template missing ID:', template);
       return null;
     }
     
     // Get the template name using the correct field name
     const templateName = template.assessmenttypename;
     if (!templateName) {
-      console.error('Template missing name:', template);
+      console.error('❌ Template missing name:', template);
       return null;
     }
     
@@ -334,7 +369,15 @@ export default function NewSurveyScreen() {
               compact
               style={{ marginLeft: 12, paddingVertical: 0, paddingHorizontal: 10, minWidth: 0, height: 37, backgroundColor: '#4a90e2' }}
               labelStyle={{ fontSize: 18, color: '#fff' }}
-              onPress={() => startSurveyWithTemplate(template)}
+              onPress={() => {
+                console.log('🖱️ Template button pressed:', {
+                  templateId,
+                  templateName,
+                  appointmentId: surveyData.appointmentId,
+                  appointmentStatus: surveyData.appointmentStatus
+                });
+                startSurveyWithTemplate(template);
+              }}
             >
               Continue
             </Button>
@@ -362,7 +405,7 @@ export default function NewSurveyScreen() {
         <ScrollView style={styles.scrollView}>
           <Card style={styles.card}>
             <Card.Title 
-              title="Survey Details" 
+              title="Survey Details - New" 
               left={(props) => <MaterialCommunityIcons name="clipboard-text" {...props} size={24} color="#4a90e2" />}
             />
             <Card.Content>

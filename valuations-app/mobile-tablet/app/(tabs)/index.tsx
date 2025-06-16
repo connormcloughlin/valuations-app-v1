@@ -54,7 +54,7 @@ export default function Dashboard() {
       </View>
 
       <View style={styles.cardsContainer}>
-        <Card style={styles.card} onPress={() => router.push('/(tabs)/scheduled')}>
+        <Card style={styles.card} onPress={() => router.push('/(tabs)/appointments/scheduled')}>
           <Card.Content>
             <MaterialCommunityIcons name="calendar-clock" size={32} color="#4a90e2" />
             <Text style={styles.cardTitle}>Scheduled</Text>

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 
 // Get API configuration from environment variables
 console.log('🔍 === ENVIRONMENT VARIABLE DEBUG ===');
@@ -30,6 +31,11 @@ console.log(`🌐 Headers:`, API_CONFIG.HEADERS);
 let cachedToken = null;
 let tokenLastFetched = 0;
 const TOKEN_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Add rate limiting for token refresh
+let lastTokenRefreshAttempt = 0;
+const MIN_REFRESH_INTERVAL = 60 * 1000; // 1 minute between refresh attempts
+let isRefreshing = false;
 
 // Function to get token with caching
 async function getCachedToken() {
@@ -144,11 +150,90 @@ apiClient.interceptors.response.use(
       status: response.status
     };
   },
-  (error) => {
+  async (error) => {
     console.log('❌ === API RESPONSE ERROR ===');
     console.log(`❌ Status: ${error.response?.status || 'No status'}`);
     console.log(`❌ URL: ${error.config?.url || 'No URL'}`);
     console.log(`❌ Message: ${error.message}`);
+    
+    // Handle rate limiting
+    if (error.response?.status === 429) {
+      const retryAfter = error.response?.data?.retryAfter || 60;
+      console.log(`⏳ Rate limited. Retry after ${retryAfter} seconds`);
+      return Promise.reject({
+        success: false,
+        status: 429,
+        message: `Too many requests. Please try again in ${retryAfter} seconds.`
+      });
+    }
+    
+    // Handle token expiration
+    if (error.response?.status === 403) {
+      const errorCode = error.response?.data?.code;
+      console.log(`🔐 Token error detected: ${errorCode}`);
+      
+      const now = Date.now();
+      
+      // Check if we should attempt a refresh
+      if (isRefreshing || (now - lastTokenRefreshAttempt) < MIN_REFRESH_INTERVAL) {
+        console.log('⏳ Skipping token refresh - too soon since last attempt');
+        return Promise.reject(error);
+      }
+      
+      if (errorCode === 'INVALID_API_TOKEN') {
+        console.log('🔐 API token expired, attempting to refresh...');
+        lastTokenRefreshAttempt = now;
+        isRefreshing = true;
+        
+        try {
+          // Get the Azure AD token
+          const azureToken = await AsyncStorage.getItem('azureToken');
+          if (!azureToken) {
+            throw new Error('No Azure token available for refresh');
+          }
+
+          // Exchange the Azure token for a new API token
+          const tokenResponse = await apiClient.post('/auth/token-exchange', {
+            azureToken: azureToken
+          });
+
+          if (tokenResponse.data?.token) {
+            // Update the token in storage and cache
+            await AsyncStorage.setItem('authToken', tokenResponse.data.token);
+            updateTokenCache(tokenResponse.data.token);
+            
+            // Retry the original request with new token
+            error.config.headers.Authorization = `Bearer ${tokenResponse.data.token}`;
+            isRefreshing = false;
+            return apiClient(error.config);
+          }
+        } catch (refreshError) {
+          console.error('❌ Token refresh failed:', refreshError);
+          isRefreshing = false;
+          
+          // Check if Azure token also expired
+          if (refreshError.response?.data?.code === 'TOKEN_EXPIRED') {
+            console.log('🔐 Azure AD token expired, redirecting to login...');
+            // Clear all tokens
+            await AsyncStorage.multiRemove(['authToken', 'azureToken']);
+            clearTokenCache();
+            // Redirect to login
+            router.replace('/login');
+          } else {
+            // Other error during refresh
+            console.error('❌ Unexpected error during token refresh:', refreshError);
+            router.replace('/login');
+          }
+        }
+      } else if (errorCode === 'TOKEN_EXPIRED') {
+        console.log('🔐 Azure AD token expired, redirecting to login...');
+        // Clear all tokens
+        await AsyncStorage.multiRemove(['authToken', 'azureToken']);
+        clearTokenCache();
+        // Redirect to login
+        router.replace('/login');
+      }
+    }
     
     // Only log full details in development or for critical errors
     if (__DEV__ || (error.response?.status && error.response.status >= 500)) {

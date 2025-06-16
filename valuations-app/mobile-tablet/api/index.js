@@ -41,6 +41,7 @@ const api = {
   getAppointmentsWithOrders: appointmentsApi.getAppointmentsWithOrders,
   getAppointmentsWithOrdersByStatus: appointmentsApi.getAppointmentsWithOrdersByStatus,
   getAppointmentsByListView: appointmentsApi.getAppointmentsByListView,
+  updateAppointment: appointmentsApi.updateAppointment,
   
   // Offline storage methods
   clearAllCachedData: offlineApi.clearAllCachedData,

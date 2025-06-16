@@ -9,6 +9,7 @@ import {
   waitForDatabase,
   isDatabaseReady
 } from '../utils/db';
+import offlineStorage from '../utils/offlineStorage';
 
 // Types
 interface PrefetchTask {
@@ -86,6 +87,19 @@ class PrefetchService {
 
   // Main prefetch method for appointments
   async startAppointmentPrefetch(appointmentId: string, orderNumber?: string): Promise<boolean> {
+    // Check if we already have data for this appointment
+    const cachedData = await this.checkPrefetchedData(appointmentId);
+    if (cachedData) {
+      console.log(`✅ Data already prefetched for appointment ${appointmentId} - skipping prefetch`);
+      return true;
+    }
+
+    // Check if we're already running a prefetch for this appointment
+    if (this.isActive && this.currentStats?.appointmentId === appointmentId) {
+      console.log(`⏳ Prefetch already running for appointment ${appointmentId}`);
+      return true;
+    }
+
     if (this.isActive) {
       console.log('Prefetch already in progress, aborting previous and starting new');
       this.stopPrefetch();
@@ -119,6 +133,13 @@ class PrefetchService {
         return false;
       }
 
+      // If queue is empty after building, we're done
+      if (this.queue.length === 0) {
+        console.log('✅ No items to prefetch - all data already cached');
+        this.completePrefetch();
+        return true;
+      }
+
       // Start processing queue in background
       this.processQueueInBackground();
       return true;
@@ -126,6 +147,42 @@ class PrefetchService {
     } catch (error) {
       console.error('❌ Error starting prefetch:', error);
       this.cleanup();
+      return false;
+    }
+  }
+
+  // Check if data is already prefetched
+  private async checkPrefetchedData(appointmentId: string): Promise<boolean> {
+    try {
+      // First check SQLite for risk assessment items specific to this appointment
+      const db = await waitForDatabase();
+      const results = await db.getAllAsync(
+        'SELECT COUNT(*) as count FROM risk_assessment_items WHERE appointmentid = ?',
+        [appointmentId]
+      );
+      
+      if (results && results.length > 0 && typeof results[0] === 'object' && results[0] !== null && 'count' in results[0]) {
+        const count = (results[0] as { count: number }).count;
+        if (count > 0) {
+          console.log(`✅ Found ${count} items in SQLite for appointment ${appointmentId}`);
+          return true;
+        }
+      }
+
+      // If no items in SQLite, check AsyncStorage as fallback
+      const cachedCategories = await AsyncStorage.getItem(`assessment_categories_${appointmentId}`);
+      const cachedSections = await AsyncStorage.getItem(`assessment_sections_${appointmentId}`);
+      const cachedTemplates = await AsyncStorage.getItem(`assessment_templates_${appointmentId}`);
+
+      if (cachedCategories || cachedSections || cachedTemplates) {
+        console.log(`✅ Found cached data in AsyncStorage for appointment ${appointmentId}`);
+        return true;
+      }
+
+      console.log(`❌ No prefetched data found for appointment ${appointmentId}`);
+      return false;
+    } catch (error) {
+      console.error('Error checking prefetched data:', error);
       return false;
     }
   }
@@ -213,9 +270,9 @@ class PrefetchService {
     console.log(`🚀 Starting background processing of ${this.queue.length} tasks`);
     
     // Rate limiting: Process max 3 requests concurrently with delays
-    const MAX_CONCURRENT = 3;
-    const DELAY_BETWEEN_BATCHES = 2000; // 2 seconds between batches
-    const DELAY_BETWEEN_REQUESTS = 500; // 500ms between individual requests
+    const MAX_CONCURRENT = 8;
+    const DELAY_BETWEEN_BATCHES = 200; // 200ms between batches
+    const DELAY_BETWEEN_REQUESTS = 50; // 50ms between individual requests
     
     let completed = 0;
     let failed = 0;
@@ -302,47 +359,45 @@ class PrefetchService {
       console.log(`✅ Database ready, proceeding with category ${categoryId}`);
     }
     
-    // Check if already cached
+    // Check if already cached for this appointment
     const existingItems = await getAllRiskAssessmentItems();
     const categoryItems = existingItems.filter(item => 
-      String(item.riskassessmentcategoryid) === String(categoryId)
+      String(item.riskassessmentcategoryid) === String(categoryId) &&
+      String(item.appointmentid) === String(this.currentStats?.appointmentId)
     );
 
     if (categoryItems.length > 0) {
-      console.log(`📦 PREFETCH - Category ${categoryId} already cached (${categoryItems.length} items)`);
+      console.log(`📦 PREFETCH - Category ${categoryId} already cached for appointment ${this.currentStats?.appointmentId} (${categoryItems.length} items)`);
       return;
     }
 
     console.log(`📡 PREFETCH - Fetching items for category ${categoryId}`);
     
-    const response = await api.getRiskAssessmentItems(categoryId);
-    
-    console.log(`🔍 PREFETCH DEBUG - API Response:`, {
-      success: response?.success,
-      status: response?.status,
-      fromCache: response?.fromCache,
-      dataType: typeof response?.data,
-      isArray: Array.isArray(response?.data),
-      dataLength: Array.isArray(response?.data) ? response.data.length : 'N/A'
-    });
-    
-    if (response?.success && response?.data) {
-      let itemsToProcess = [];
+    try {
+      const response = await api.getRiskAssessmentItems(categoryId);
       
-      // Handle different response structures
-      if (Array.isArray(response.data)) {
-        itemsToProcess = response.data;
-        console.log(`📋 PREFETCH - Direct array structure with ${itemsToProcess.length} items`);
-      } else if (response.data.data && Array.isArray(response.data.data)) {
-        itemsToProcess = response.data.data;
-        console.log(`📋 PREFETCH - Nested data structure with ${itemsToProcess.length} items`);
-      } else {
-        console.error(`❌ PREFETCH - Unexpected data structure:`, response.data);
-        throw new Error(`Unexpected data structure for category ${categoryId}`);
+      console.log(`🔍 PREFETCH DEBUG - API Response:`, {
+        success: response?.success,
+        status: response?.status,
+        fromCache: response?.fromCache,
+        dataType: typeof response?.data,
+        isArray: Array.isArray(response?.data),
+        dataLength: Array.isArray(response?.data) ? response.data.length : 'N/A'
+      });
+
+      // Handle 404 - No items found for category
+      if (response?.status === 404) {
+        console.log(`ℹ️ PREFETCH - No items found for category ${categoryId}, skipping...`);
+        return;
       }
-      
-      console.log(`💾 PREFETCH - Processing ${itemsToProcess.length} items for category ${categoryId}`);
-      console.log(`🔍 PREFETCH - Full items array:`, JSON.stringify(itemsToProcess, null, 2));
+
+      if (!response.success || !Array.isArray(response.data)) {
+        console.error('❌ PREFETCH - Invalid response format:', response);
+        return;
+      }
+
+      const itemsToProcess = response.data;
+      console.log(`📦 PREFETCH - Processing ${itemsToProcess.length} items for category ${categoryId}`);
       
       // Store each item in SQLite
       for (let i = 0; i < itemsToProcess.length; i++) {
@@ -383,32 +438,19 @@ class PrefetchService {
           latitude: Number(item.latitude) || 0,
           longitude: Number(item.longitude) || 0,
           notes: item.notes || '',
-          pending_sync: 0
+          appointmentid: this.currentStats?.appointmentId || ''
         };
         
-        //console.log(`💽 PREFETCH - Converted SQLite item ${i + 1}:`, sqliteItem);
-        
-        try {
-          await insertRiskAssessmentItem(sqliteItem);
-          console.log(`✅ PREFETCH - Successfully inserted item ${i + 1} (ID: ${sqliteItem.riskassessmentitemid})`);
-        } catch (insertError) {
-          console.error(`❌ PREFETCH - Failed to insert item ${i + 1}:`, insertError);
-          console.error(`❌ PREFETCH - Failed item data:`, sqliteItem);
-          throw insertError;
-        }
+        await insertRiskAssessmentItem(sqliteItem);
       }
-      
-      // Verify the insertion by counting items in the category
-      const verifyItems = await getAllRiskAssessmentItems();
-      const verifyCount = verifyItems.filter(item => 
-        String(item.riskassessmentcategoryid) === String(categoryId)
-      ).length;
-      
-      console.log(`🔍 PREFETCH - Verification: ${verifyCount} items now in SQLite for category ${categoryId}`);
-      
-    } else {
-      console.error(`❌ PREFETCH - Failed API response for category ${categoryId}:`, response);
-      throw new Error(`Failed to fetch items for category ${categoryId}`);
+    } catch (error: any) {
+      // Handle API errors gracefully
+      if (error?.response?.status === 404) {
+        console.log(`ℹ️ PREFETCH - No items found for category ${categoryId}, skipping...`);
+        return;
+      }
+      console.error(`❌ PREFETCH - Error processing category ${categoryId}:`, error);
+      throw error;
     }
   }
 

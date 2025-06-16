@@ -1,9 +1,11 @@
 import * as SQLite from 'expo-sqlite';
 
 // Initialize database using the new async API
-let db: SQLite.SQLiteDatabase;
+let db: SQLite.SQLiteDatabase | null = null;
 let isDbReady = false;
 let initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let lastConnectionCheck = 0;
+const CONNECTION_CHECK_INTERVAL = 30000; // 30 seconds
 
 interface SQLiteResult {
   rows: {
@@ -45,36 +47,62 @@ export async function initializeDatabase() {
   try {
     console.log('Initializing database...');
     
-    // If already initialized, return the existing database
-    if (isDbReady && db) {
-      console.log('Database already initialized, returning existing instance');
-      return db;
+    // Close existing connection if any
+    if (db) {
+      console.log('Closing existing database connection...');
+      await db.closeAsync();
+      db = null;
     }
     
+    // Open new connection
     db = await SQLite.openDatabaseAsync('valuations.db');
     console.log('Database opened successfully');
+    
+    // Create tables
     await createTables();
-    isDbReady = true;
-    initPromise = null; // Clear the promise since we're done
-    console.log('Database initialization fully completed');
+    
     return db;
   } catch (error) {
     console.error('Error initializing database:', error);
-    isDbReady = false;
-    initPromise = null; // Clear the promise on error
     throw error;
+  }
+}
+
+// Ensure database connection
+async function ensureDatabaseConnection() {
+  const now = Date.now();
+  if (!db || now - lastConnectionCheck > CONNECTION_CHECK_INTERVAL) {
+    console.log('Checking database connection...');
+    try {
+      if (!db) {
+        console.log('Database not initialized, initializing...');
+        await initializeDatabase();
+      } else {
+        // Test the connection
+        await db.execAsync('SELECT 1');
+      }
+      lastConnectionCheck = now;
+      console.log('Database connection verified');
+    } catch (error) {
+      console.error('Database connection check failed:', error);
+      console.log('Attempting to reinitialize database...');
+      await initializeDatabase();
+    }
   }
 }
 
 // Helper to run SQL with promise
 export async function runSql(sql: string, params: any[] = []): Promise<SQLiteResult> {
+  await ensureDatabaseConnection();
+  
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  
   try {
-    // Ensure database is ready before operation
-    const database = await ensureDbReady();
-    
     if (sql.trim().toLowerCase().startsWith('select')) {
       // For SELECT queries, use getAllAsync
-      const result = await database.getAllAsync(sql, params);
+      const result = await db.getAllAsync(sql, params);
       return {
         rows: {
           _array: result,
@@ -85,15 +113,15 @@ export async function runSql(sql: string, params: any[] = []): Promise<SQLiteRes
       };
     } else {
       // For other queries, use runAsync
-      const result = await database.runAsync(sql, params);
+      const result = await db.runAsync(sql, params);
       return {
         rows: { _array: [], length: 0 },
         rowsAffected: result.changes,
         insertId: result.lastInsertRowId
       };
     }
-  } catch (error: any) {
-    console.error('Error executing SQL:', sql.substring(0, 50) + '...', error.message);
+  } catch (error) {
+    console.error('Error executing SQL:', sql, params, error);
     throw error;
   }
 }
@@ -177,7 +205,8 @@ export async function createTables() {
         latitude REAL,
         longitude REAL,
         notes TEXT,
-        pending_sync INTEGER DEFAULT 0
+        pending_sync INTEGER DEFAULT 0,
+        appointmentid TEXT
       );
     `);
     
@@ -221,11 +250,49 @@ export async function createTables() {
     console.log('Test record:', testSelectResult);
     
     await db.runAsync('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = 0');
+    
+    // Run migrations
+    console.log('Running database migrations...');
+    await migrateDatabase();
+    
     console.log('Database initialization completed successfully');
     
   } catch (error) {
     console.error('Error creating database tables:', error);
-    throw error;
+    // Don't throw the error, just log it and continue
+    console.log('Continuing despite table creation error');
+  }
+}
+
+// Add migration function
+export async function migrateDatabase() {
+  try {
+    console.log('Starting database migration...');
+    
+    if (!db) {
+      throw new Error('Database not initialized');
+    }
+
+    // Check if appointmentid column exists using execAsync
+    const tableInfo = await db.getAllAsync("PRAGMA table_info(risk_assessment_items)") as Array<{ name: string }>;
+    console.log('Table info:', tableInfo);
+    
+    const hasAppointmentId = tableInfo.some(col => col.name === 'appointmentid');
+    console.log('Has appointmentid column:', hasAppointmentId);
+    
+    if (!hasAppointmentId) {
+      console.log('Adding appointmentid column to risk_assessment_items table...');
+      await db.execAsync('ALTER TABLE risk_assessment_items ADD COLUMN appointmentid TEXT');
+      console.log('Successfully added appointmentid column');
+    } else {
+      console.log('appointmentid column already exists');
+    }
+    
+    console.log('Database migration completed successfully');
+  } catch (error) {
+    console.error('Error during database migration:', error);
+    // Don't throw the error, just log it and continue
+    console.log('Continuing despite migration error');
   }
 }
 
@@ -291,6 +358,7 @@ export interface RiskAssessmentItem {
   longitude: number;
   notes: string;
   pending_sync?: number;
+  appointmentid?: string;
 }
 
 export interface MediaFile {
@@ -367,13 +435,21 @@ export async function deleteRiskAssessmentMaster(id: number) {
 // --- CRUD for Risk Assessment Items ---
 export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
   try {
+    await ensureDatabaseConnection();
+    
+    if (!db) {
+      throw new Error('Database connection not available');
+    }
+
     // Log the item being inserted
     console.log('Attempting to insert Risk Assessment Item:', {
       id: i.riskassessmentitemid,
       categoryId: i.riskassessmentcategoryid,
       prompt: i.itemprompt,
       type: i.itemtype,
-      rank: i.rank
+      rank: i.rank,
+      appointmentid: i.appointmentid,
+      pending_sync: i.pending_sync
     });
 
     // Use parameterized query for better safety and reliability
@@ -383,41 +459,44 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
         commaseparatedlist, selectedanswer, qty, price, description, model, location,
         assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
         dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
-        synctimestamp, hasphoto, latitude, longitude, notes, pending_sync
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-      )
+        synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
+
+    // Only set pending_sync if the item has been modified locally
+    // For items loaded from server (issynced = 1), set pending_sync = 0
+    const pendingSync = i.issynced ? 0 : (i.pending_sync ?? 1);
 
     const params = [
       i.riskassessmentitemid,
       i.riskassessmentcategoryid,
-      i.itemprompt,
-      i.itemtype,
-      i.rank,
-      i.commaseparatedlist,
-      i.selectedanswer,
-      i.qty,
-      i.price,
-      i.description,
-      i.model,
-      i.location,
-      i.assessmentregisterid,
-      i.assessmentregistertypeid,
-      i.datecreated,
-      i.createdbyid,
-      i.dateupdated,
-      i.updatedbyid,
+      i.itemprompt || '',
+      i.itemtype || 0,
+      i.rank || 0,
+      i.commaseparatedlist || '',
+      i.selectedanswer || '',
+      i.qty || 0,
+      i.price || 0,
+      i.description || '',
+      i.model || '',
+      i.location || '',
+      i.assessmentregisterid || 0,
+      i.assessmentregistertypeid || 0,
+      i.datecreated || new Date().toISOString(),
+      i.createdbyid || '',
+      i.dateupdated || new Date().toISOString(),
+      i.updatedbyid || '',
       i.issynced ? 1 : 0,
-      i.syncversion,
-      i.deviceid,
-      i.syncstatus,
-      i.synctimestamp,
+      i.syncversion || 0,
+      i.deviceid || '',
+      i.syncstatus || '',
+      i.synctimestamp || new Date().toISOString(),
       i.hasphoto ? 1 : 0,
-      i.latitude,
-      i.longitude,
-      i.notes,
-      i.pending_sync ?? 1
+      i.latitude || 0,
+      i.longitude || 0,
+      i.notes || '',
+      pendingSync,
+      i.appointmentid || null
     ];
 
     await runSql(sql, params);
@@ -454,7 +533,13 @@ export async function getRiskAssessmentItemById(id: number): Promise<RiskAssessm
   return res.rows.length > 0 ? res.rows._array[0] : undefined;
 }
 export async function updateRiskAssessmentItem(i: RiskAssessmentItem) {
-  await insertRiskAssessmentItem(i);
+  // Ensure pending_sync is set to 1 for updates
+  const updatedItem = {
+    ...i,
+    pending_sync: 1,
+    dateupdated: new Date().toISOString()
+  };
+  await insertRiskAssessmentItem(updatedItem);
 }
 export async function deleteRiskAssessmentItem(id: number) {
   await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [id]);

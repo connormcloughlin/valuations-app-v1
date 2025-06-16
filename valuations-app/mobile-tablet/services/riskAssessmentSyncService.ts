@@ -52,7 +52,7 @@ const riskAssessmentSyncService = {
       }
 
       console.log('Starting sync of pending changes...');
-
+      
       // Get all pending changes from SQLite
       const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
         getPendingSyncRiskAssessmentItems(),
@@ -152,7 +152,8 @@ const riskAssessmentSyncService = {
           // Detect if this is a new item created locally (timestamp-based ID > 1000000000000)
           const isNewItem = item.riskassessmentitemid > 1000000000000;
           
-          return {
+          // Create sync object without appointmentid
+          const syncItem = {
             riskassessmentitemid: isNewItem ? null : item.riskassessmentitemid, // Send null for new items
             riskassessmentcategoryid: item.riskassessmentcategoryid,
             itemprompt: item.itemprompt,
@@ -182,7 +183,12 @@ const riskAssessmentSyncService = {
             notes: item.notes,
             // Keep local ID for tracking response mapping
             _localId: item.riskassessmentitemid
-          };
+          } as any; // Use any to allow deleting appointmentid
+
+          // Remove appointmentid from the sync data
+          delete syncItem.appointmentid;
+          
+          return syncItem;
         }),
         deletedEntities: [] // TODO: Implement deleted entities tracking
       };
@@ -211,7 +217,7 @@ const riskAssessmentSyncService = {
         dataKeys: response.data ? Object.keys(response.data) : 'no data',
         message: response.message
       });
-
+      
       if (response.success) {
         console.log('Server sync successful:', response.data);
 
@@ -254,7 +260,7 @@ const riskAssessmentSyncService = {
           details: response
         };
       }
-
+      
     } catch (error) {
       console.error('=== SYNC ERROR ===');
       console.error('Error syncing pending changes:', error);

@@ -1,20 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, FlatList, TextInput, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
-import { Card, Button, Searchbar } from 'react-native-paper';
+import { StyleSheet, View, FlatList, Text, ActivityIndicator } from 'react-native';
+import { Card, Button, Searchbar, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
-import { logNavigation } from '../../utils/logger';
-import api from '../../api';
+import { logNavigation } from '../../../utils/logger';
+import api from '../../../api';
+import type { Appointment as ApiAppointment } from '../../../api/index.d';
 
-// Define the appointment type
-interface Appointment {
-  id: string;
-  address: string;
-  client: string;
-  date: string;
-  policyNo: string;
-  orderNumber: string;
-  status?: string;
+// Extend the API's Appointment type with any additional fields we need
+interface Appointment extends ApiAppointment {
+  submitted: string;
 }
 
 // Define pagination interface
@@ -26,30 +21,21 @@ interface PaginationInfo {
   hasMore: boolean;
 }
 
-// Fallback mock data in case API fails
-const fallbackData: Appointment[] = [
-  { id: '1001', address: '123 Main St', client: 'M.R. Gumede', date: '2024-04-30 09:00', policyNo: 'K 82 mil', orderNumber: 'ORD-2024-1001' },
-  { id: '1002', address: '456 Oak Ave', client: 'T. Mbatha', date: '2024-05-02 14:00', policyNo: 'P 56 mil', orderNumber: 'ORD-2024-1002' },
-];
-
-export default function ScheduledAppointmentsScreen() {
-  logNavigation('Scheduled Appointments');
+export default function CompletedAppointmentsScreen() {
+  logNavigation('Completed Appointments');
   const [searchQuery, setSearchQuery] = useState('');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Pagination state
   const [page, setPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState<PaginationInfo>({
     page: 1,
-    pageSize: 10,
+    pageSize: 50,
     totalItems: 0,
     totalPages: 1,
     hasMore: false
   });
-  const pageSize = 10; // Number of items per page
 
   // Fetch appointments from API
   useEffect(() => {
@@ -62,24 +48,24 @@ export default function ScheduledAppointmentsScreen() {
       setError(null);
       
       // Use the new list-view API method
-      console.log(`Fetching scheduled appointments page ${pageNum}...`);
+      console.log(`Fetching completed appointments page ${pageNum}...`);
       try {
         // @ts-ignore - this method exists in the API
         const response = await api.getAppointmentsByListView({
-          status: 'Booked', // Use 'Booked' status for scheduled appointments
+          status: 'Completed', // Use 'Completed' status for completed appointments
           page: pageNum,
-          pageSize: pageSize,
+          pageSize: paginationInfo.pageSize,
           surveyor: null // No surveyor filter by default
         });
         
         if (response.success && response.data) {
           const appointmentsArray = Array.isArray(response.data) ? response.data : [];
-          console.log(`Loaded ${appointmentsArray.length} scheduled appointments for page ${pageNum}`);
+          console.log(`Loaded ${appointmentsArray.length} completed appointments for page ${pageNum}`);
           
           // Get pagination info from response
           const pageInfo: PaginationInfo = response.pagination || {
             page: pageNum,
-            pageSize: pageSize,
+            pageSize: paginationInfo.pageSize,
             totalItems: appointmentsArray.length,
             totalPages: 1,
             hasMore: false
@@ -93,9 +79,9 @@ export default function ScheduledAppointmentsScreen() {
           setFilteredAppointments(appointmentsArray);
         } else {
           console.error('Failed to load appointments:', response.message);
-          setError('Failed to load appointments. Using fallback data.');
-          setAppointments(fallbackData);
-          setFilteredAppointments(fallbackData);
+          setError('Failed to load appointments. Please try again.');
+          setAppointments([]);
+          setFilteredAppointments([]);
         }
       } catch (err) {
         console.error('Error fetching appointments:', err);
@@ -104,7 +90,7 @@ export default function ScheduledAppointmentsScreen() {
         console.log('Trying fallback to regular appointment API...');
         try {
           // @ts-ignore - This method exists in API
-          const fallbackResponse = await api.getAppointmentsByStatus('scheduled');
+          const fallbackResponse = await api.getAppointmentsByStatus('completed');
           
           if (fallbackResponse.success && fallbackResponse.data) {
             setAppointments(fallbackResponse.data);
@@ -114,9 +100,9 @@ export default function ScheduledAppointmentsScreen() {
           }
         } catch (fallbackErr) {
           console.error('Error with fallback API method:', fallbackErr);
-          setError('Error loading appointments. Using fallback data.');
-          setAppointments(fallbackData);
-          setFilteredAppointments(fallbackData);
+          setError('Error loading appointments. Please try again.');
+          setAppointments([]);
+          setFilteredAppointments([]);
         }
       }
     } finally {
@@ -153,27 +139,29 @@ export default function ScheduledAppointmentsScreen() {
     }
   }, [searchQuery, appointments]);
 
-  const navigateToAppointment = (id: string) => {
-    // In API, IDs might start at 1, but in our navigation we might use 0-based
-    // Make sure to adjust the ID when needed
-    const navigationId = id === '1' ? '1' : id; // Preserve the ID as-is for now
-    console.log(`Navigating to appointment details for ID: ${navigationId}`);
-    
+  const navigateToSummary = (id: string) => {
     router.push({
-      pathname: '/appointment/[id]',
-      params: { id: navigationId }
+      pathname: '/survey/summary/[id]',
+      params: { id }
     });
   };
 
   const renderAppointmentItem = ({ item }: { item: Appointment }) => (
     <Card 
       style={styles.appointmentCard}
-      onPress={() => navigateToAppointment(item.id)}
+      onPress={() => navigateToSummary(item.id)}
     >
       <Card.Content>
         <View style={styles.appointmentHeader}>
-          <MaterialCommunityIcons name="map-marker" size={20} color="#4a90e2" style={styles.icon} />
+          <MaterialCommunityIcons name="map-marker" size={20} color="#2ecc71" style={styles.icon} />
           <Text style={styles.appointmentAddress}>{item.address || 'No address'}</Text>
+          <Chip 
+            style={styles.statusChip} 
+            textStyle={styles.statusChipText}
+            icon="check-circle"
+          >
+            Completed
+          </Chip>
         </View>
         
         <View style={styles.appointmentDetails}>
@@ -183,8 +171,8 @@ export default function ScheduledAppointmentsScreen() {
           </View>
           
           <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="calendar" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>{item.date || 'No date'}</Text>
+            <MaterialCommunityIcons name="calendar-check" size={16} color="#7f8c8d" style={styles.detailIcon} />
+            <Text style={styles.detailText}>Submitted: {item.submitted || 'Unknown'}</Text>
           </View>
           
           <View style={styles.detailRow}>
@@ -192,46 +180,24 @@ export default function ScheduledAppointmentsScreen() {
             <Text style={styles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
           </View>
         </View>
+        
+        <Button 
+          mode="outlined" 
+          onPress={() => navigateToSummary(item.id)} 
+          style={styles.viewButton}
+          labelStyle={styles.buttonLabel}
+        >
+          View Summary
+        </Button>
       </Card.Content>
     </Card>
   );
-
-  // Render pagination controls
-  const renderPaginationControls = () => {
-    return (
-      <View style={styles.paginationContainer}>
-        <Button 
-          mode="outlined" 
-          onPress={goToPreviousPage} 
-          disabled={page <= 1 || loading}
-          style={styles.paginationButton}
-        >
-          <MaterialCommunityIcons name="chevron-left" size={16} />
-          Previous
-        </Button>
-        
-        <Text style={styles.paginationText}>
-          Page {page} of {paginationInfo.totalPages || 1}
-        </Text>
-        
-        <Button 
-          mode="outlined" 
-          onPress={goToNextPage} 
-          disabled={page >= paginationInfo.totalPages || !paginationInfo.hasMore || loading}
-          style={styles.paginationButton}
-        >
-          Next
-          <MaterialCommunityIcons name="chevron-right" size={16} />
-        </Button>
-      </View>
-    );
-  };
 
   return (
     <>
       <Stack.Screen
         options={{
-          title: 'Scheduled Appointments',
+          title: 'Completed Appointments',
           headerTitleStyle: { fontWeight: '600' }
         }}
       />
@@ -242,12 +208,12 @@ export default function ScheduledAppointmentsScreen() {
           onChangeText={setSearchQuery}
           value={searchQuery}
           style={styles.searchBar}
-          iconColor="#4a90e2"
+          iconColor="#2ecc71"
         />
         
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#4a90e2" />
+            <ActivityIndicator size="large" color="#2ecc71" />
             <Text style={styles.loadingText}>Loading appointments...</Text>
           </View>
         ) : error ? (
@@ -257,7 +223,7 @@ export default function ScheduledAppointmentsScreen() {
               mode="contained" 
               onPress={() => fetchAppointments(page)} 
               style={styles.retryButton}
-              buttonColor="#4a90e2"
+              buttonColor="#2ecc71"
             >
               <Text style={{ color: 'white' }}>Retry</Text>
             </Button>
@@ -272,12 +238,36 @@ export default function ScheduledAppointmentsScreen() {
               refreshing={loading}
               onRefresh={() => fetchAppointments(page)}
             />
-            {renderPaginationControls()}
+            <View style={styles.paginationContainer}>
+              <Button 
+                mode="outlined" 
+                onPress={goToPreviousPage} 
+                disabled={page <= 1 || loading}
+                style={styles.paginationButton}
+              >
+                <MaterialCommunityIcons name="chevron-left" size={16} />
+                Previous
+              </Button>
+              
+              <Text style={styles.paginationText}>
+                Page {page} of {paginationInfo.totalPages || 1}
+              </Text>
+              
+              <Button 
+                mode="outlined" 
+                onPress={goToNextPage} 
+                disabled={page >= paginationInfo.totalPages || !paginationInfo.hasMore || loading}
+                style={styles.paginationButton}
+              >
+                Next
+                <MaterialCommunityIcons name="chevron-right" size={16} />
+              </Button>
+            </View>
           </>
         ) : (
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="calendar-search" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No appointments found</Text>
+            <MaterialCommunityIcons name="clipboard-check" size={64} color="#ccc" />
+            <Text style={styles.emptyText}>No completed appointments found</Text>
             <Text style={styles.emptySubtext}>Try a different search term or page</Text>
           </View>
         )}
@@ -318,8 +308,17 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
     flex: 1,
   },
+  statusChip: {
+    backgroundColor: '#e8f6ef',
+    height: 24,
+  },
+  statusChipText: {
+    fontSize: 10,
+    color: '#27ae60',
+  },
   appointmentDetails: {
     marginTop: 8,
+    marginBottom: 16,
   },
   detailRow: {
     flexDirection: 'row',
@@ -333,6 +332,17 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 14,
     color: '#7f8c8d',
+  },
+  viewButton: {
+    marginTop: 4,
+    borderColor: '#2ecc71',
+    borderRadius: 4,
+    height: 36,
+  },
+  buttonLabel: {
+    fontSize: 12,
+    marginVertical: 0,
+    color: '#2ecc71',
   },
   loadingContainer: {
     flex: 1,

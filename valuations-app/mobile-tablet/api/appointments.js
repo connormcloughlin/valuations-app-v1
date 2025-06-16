@@ -1088,6 +1088,24 @@ const appointmentsApi = {
       console.error('Error fetching appointments from list-view:', error);
       return error.success === false ? error : { success: false, message: error.message, data: [] };
     }
+  },
+
+  /**
+   * Update an appointment's status
+   * @param {string} appointmentId - ID of the appointment to update
+   * @param {Object} updates - Fields to update
+   * @param {string} updates.InviteStatus - New status value
+   * @returns {Promise<Object>} Response with updated appointment data
+   */
+  updateAppointment: async (appointmentId, updates) => {
+    try {
+      console.log(`Updating appointment ${appointmentId} with:`, updates);
+      const response = await apiClient.put(`/appointments/${appointmentId}`, updates);
+      return response;
+    } catch (error) {
+      console.error(`Error updating appointment ${appointmentId}:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
   }
 };
 

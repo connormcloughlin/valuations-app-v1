@@ -122,12 +122,6 @@ export const PrefetchProgressIndicator: React.FC<PrefetchProgressIndicatorProps>
           </View>
         </View>
 
-        {progress.currentTask && (
-          <Text style={styles.currentTask}>
-            Loading: {progress.currentTask.replace('category-', 'Category ')}
-          </Text>
-        )}
-
         {!progress.isActive && progress.total > 0 && (
           <View style={styles.completedContainer}>
             <MaterialCommunityIcons name="check-circle" size={20} color="#4CAF50" />

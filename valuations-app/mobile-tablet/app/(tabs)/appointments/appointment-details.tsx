@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../../utils/logger';
 import api from '../../../api';
 import prefetchService from '../../../services/prefetchService';
-import { PrefetchProgressIndicator, PrefetchStatusBadge } from '../../../components/PrefetchProgressIndicator';
+import { PrefetchProgressIndicator } from '../../../components/PrefetchProgressIndicator';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../../types/api';
@@ -88,10 +88,10 @@ export default function AppointmentDetails() {
           email: response.data.email || response.data.emailAddress || 'N/A',
           date: response.data.date || response.data.appointmentDate || response.data.startTime || new Date().toISOString(),
           policyNo: response.data.policyNo || response.data.policyNumber || 'N/A',
-          sumInsured: response.data.sumInsured || 'N/A',
+          sumInsured: String(response.data.sumInsured || 'N/A'),
           broker: response.data.broker || 'N/A',
           notes: response.data.notes || response.data.comments || 'No notes available',
-          orderNumber: response.data.orderNumber || String(response.data.orderID || 'N/A'),
+          orderNumber: String(response.data.orderNumber || response.data.orderID || 'N/A'),
           status: response.data.status,
           Invite_Status: response.data.Invite_Status,
           lastEdited: response.data.lastEdited,
@@ -138,10 +138,18 @@ export default function AppointmentDetails() {
     fetchAppointmentDetails();
   }, [id]);
   
+  // Start prefetch when appointment data is loaded
+  useEffect(() => {
+    if (appointment) {
+      console.log(`Starting prefetch for appointment ${appointment.id}`);
+      prefetchService.startAppointmentPrefetch(appointment.id, appointment.orderNumber);
+    }
+  }, [appointment]);
+  
   const startSurvey = () => {
     if (!appointment) return;
     
-    // Navigate to survey with pre-populated client data
+    // Navigate immediately
     router.push({
       pathname: '/(tabs)/new-survey',
       params: { 
@@ -153,6 +161,14 @@ export default function AppointmentDetails() {
         appointmentId: appointment.id,
         orderNumber: appointment.orderNumber
       }
+    });
+
+    // Update status in the background
+    // @ts-ignore - this method exists in the API
+    api.updateAppointment(appointment.id, {
+      inviteStatus: 'In-Progress'
+    }).catch((error: Error) => {
+      console.error('Error updating appointment status:', error);
     });
   };
   
@@ -216,71 +232,77 @@ export default function AppointmentDetails() {
       
       <View style={styles.container}>
         <ScrollView style={styles.scrollView}>
-          {/* Client Information */}
-          <Card style={styles.card}>
-            <Card.Title 
-              title="Client Information" 
-              left={(props) => <MaterialCommunityIcons name="account" {...props} size={24} color="#4a90e2" />}
-            />
-            <Card.Content>
-              <List.Item
-                title="Client Name"
-                description={appointment.client}
-                left={props => <List.Icon {...props} icon="account" />}
+          {/* Prefetch Progress Indicator */}
+          <PrefetchProgressIndicator />
+
+          {/* Client Information and Appointment Details in a row */}
+          <View style={styles.rowContainer}>
+            {/* Client Information */}
+            <Card style={[styles.card, styles.halfWidth]}>
+              <Card.Title 
+                title="Client Information" 
+                left={(props) => <MaterialCommunityIcons name="account" {...props} size={24} color="#4a90e2" />}
               />
-              <Divider />
-              <List.Item
-                title="Phone"
-                description={appointment.phone}
-                left={props => <List.Icon {...props} icon="phone" />}
+              <Card.Content>
+                <List.Item
+                  title="Client Name"
+                  description={appointment.client}
+                  left={props => <List.Icon {...props} icon="account" />}
+                />
+                <Divider />
+                <List.Item
+                  title="Phone"
+                  description={appointment.phone}
+                  left={props => <List.Icon {...props} icon="phone" />}
+                />
+                <Divider />
+                <List.Item
+                  title="Email"
+                  description={appointment.email}
+                  left={props => <List.Icon {...props} icon="email" />}
+                />
+              </Card.Content>
+            </Card>
+            
+            {/* Appointment Details */}
+            <Card style={[styles.card, styles.halfWidth]}>
+              <Card.Title 
+                title="Appointment Details" 
+                left={(props) => <MaterialCommunityIcons name="calendar-clock" {...props} size={24} color="#4a90e2" />}
               />
-              <Divider />
-              <List.Item
-                title="Email"
-                description={appointment.email}
-                left={props => <List.Icon {...props} icon="email" />}
-              />
-            </Card.Content>
-          </Card>
-          
-          {/* Appointment Details */}
-          <Card style={styles.card}>
-            <Card.Title 
-              title="Appointment Details" 
-              left={(props) => <MaterialCommunityIcons name="calendar-clock" {...props} size={24} color="#4a90e2" />}
-            />
-            <Card.Content>
-              <List.Item
-                title="Date"
-                description={formattedDate}
-                left={props => <List.Icon {...props} icon="calendar" />}
-              />
-              <Divider />
-              <List.Item
-                title="Time"
-                description={formattedTime}
-                left={props => <List.Icon {...props} icon="clock-outline" />}
-              />
-              <Divider />
-              <List.Item
-                title="Policy Number"
-                description={appointment.policyNo}
-                left={props => <List.Icon {...props} icon="file-document-outline" />}
-              />
-              <Divider />
-              <List.Item
-                title="Sum Insured"
-                description={appointment.sumInsured}
-                left={props => <List.Icon {...props} icon="currency-usd" />}
-              />
-              <Divider />
-              <List.Item
-                title="Broker"
-                description={appointment.broker}
-                left={props => <List.Icon {...props} icon="account-tie" />}
-              />
-            </Card.Content>
-          </Card>
+              <Card.Content>
+                <List.Item
+                  title="Date"
+                  description={formattedDate}
+                  left={props => <List.Icon {...props} icon="calendar" />}
+                />
+                <Divider />
+                <List.Item
+                  title="Time"
+                  description={formattedTime}
+                  left={props => <List.Icon {...props} icon="clock-outline" />}
+                />
+                <Divider />
+                <List.Item
+                  title="Policy Number"
+                  description={appointment.policyNo}
+                  left={props => <List.Icon {...props} icon="file-document-outline" />}
+                />
+                <Divider />
+                <List.Item
+                  title="Sum Insured"
+                  description={appointment.sumInsured}
+                  left={props => <List.Icon {...props} icon="currency-usd" />}
+                />
+                <Divider />
+                <List.Item
+                  title="Broker"
+                  description={appointment.broker}
+                  left={props => <List.Icon {...props} icon="account-tie" />}
+                />
+              </Card.Content>
+            </Card>
+          </View>
           
           {/* Location */}
           <View style={styles.mapContainer}>
@@ -306,7 +328,6 @@ export default function AppointmentDetails() {
         </ScrollView>
         
         <View style={styles.buttonContainer}>
-          <PrefetchStatusBadge style={styles.prefetchBadge} />
           <View style={styles.buttonRow}>
             <Button
               mode="outlined"
@@ -427,8 +448,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  prefetchBadge: {
-    marginBottom: 8,
-    alignSelf: 'flex-start',
+  prefetchContainer: {
+    padding: 16,
+    paddingBottom: 0,
+  },
+  rowContainer: {
+    flexDirection: 'row',
+    padding: 16,
+    paddingBottom: 8,
+  },
+  halfWidth: {
+    flex: 1,
+    margin: 0,
+    marginHorizontal: 4,
   },
 }); 
