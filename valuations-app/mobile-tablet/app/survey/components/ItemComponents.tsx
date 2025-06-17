@@ -699,6 +699,7 @@ export const ItemsTable: React.FC<{
             ...item,
             hasphoto: 1,
             pending_sync: 1,
+            issynced: 0, // Mark as not synced so it will be picked up for sync
             dateupdated: new Date().toISOString()
           };
           await updateRiskAssessmentItem(updatedItem);
@@ -709,6 +710,10 @@ export const ItemsTable: React.FC<{
               String(prevItem.riskassessmentitemid) === currentPhotoItemId ? updatedItem : prevItem
             )
           );
+          
+          // Update pending changes count after database update
+          const count = await riskAssessmentSyncService.getPendingChangesCount();
+          setPendingChangesCount(count.total);
         }
 
         // Reload photos for this item
@@ -756,6 +761,7 @@ export const ItemsTable: React.FC<{
             ...item,
             hasphoto: 1,
             pending_sync: 1,
+            issynced: 0, // Mark as not synced so it will be picked up for sync
             dateupdated: new Date().toISOString()
           };
           await updateRiskAssessmentItem(updatedItem);
@@ -766,6 +772,10 @@ export const ItemsTable: React.FC<{
               String(prevItem.riskassessmentitemid) === currentPhotoItemId ? updatedItem : prevItem
             )
           );
+          
+          // Update pending changes count after database update
+          const count = await riskAssessmentSyncService.getPendingChangesCount();
+          setPendingChangesCount(count.total);
         }
 
         // Reload photos for this item
@@ -908,6 +918,7 @@ export const ItemsTable: React.FC<{
         itemprompt: changes.description ?? item.itemprompt ?? '',
         assessmentregisterid: Number(changes.serialNumber ?? item.assessmentregisterid) || 0,
         pending_sync: 1,
+        issynced: 0, // Mark as not synced so it will be picked up for sync
         dateupdated: new Date().toISOString(),
       };
 
@@ -922,6 +933,10 @@ export const ItemsTable: React.FC<{
           String(prevItem.riskassessmentitemid) === id ? updated : prevItem
         )
       );
+
+      // Update pending changes count immediately after database update
+      const count = await riskAssessmentSyncService.getPendingChangesCount();
+      setPendingChangesCount(count.total);
 
       console.log('Auto-saved item successfully:', id);
     } catch (error) {
@@ -956,6 +971,10 @@ export const ItemsTable: React.FC<{
   const handleDelete = async (id: string) => {
     await deleteRiskAssessmentItem(Number(id));
     await refreshItems();
+    
+    // Update pending changes count after deletion
+    const count = await riskAssessmentSyncService.getPendingChangesCount();
+    setPendingChangesCount(count.total);
   };
 
   const handleAddNewItem = async () => {
@@ -997,6 +1016,10 @@ export const ItemsTable: React.FC<{
       
       // Add the new item to the items array directly without refreshing
       setItems(prevItems => [...prevItems, newItem]);
+      
+      // Update pending changes count immediately after database update
+      const count = await riskAssessmentSyncService.getPendingChangesCount();
+      setPendingChangesCount(count.total);
       
     } catch (error) {
       console.error('Failed to insert new item:', error);
