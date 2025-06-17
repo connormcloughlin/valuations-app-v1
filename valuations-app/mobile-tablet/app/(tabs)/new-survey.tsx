@@ -24,6 +24,8 @@ interface RiskTemplate {
   assessmentid?: number;
   assessmenttypeid?: number;
   assessmenttypename?: string;
+  templatename?: string;
+  prefix?: string;
   comments?: string;
   // ... other fields from the API response ...
 }
@@ -220,6 +222,14 @@ export default function NewSurveyScreen() {
             ...newData
           };
           console.log('📋 Updated survey data:', updated);
+          
+          // 🔍 LOG PREFETCH CONDITIONS 🔍
+          console.log('🔍 PREFETCH CONDITIONS CHECK:');
+          console.log(`  - appointmentId: "${updated.appointmentId}" (exists: ${!!updated.appointmentId})`);
+          console.log(`  - appointmentStatus: "${updated.appointmentStatus}" (lowercase: "${updated.appointmentStatus.toLowerCase()}")`);
+          console.log(`  - Is in-progress: ${updated.appointmentStatus.toLowerCase() === 'in-progress'}`);
+          console.log(`  - Both conditions met: ${!!updated.appointmentId && updated.appointmentStatus.toLowerCase() === 'in-progress'}`);
+          
           return updated;
         });
         
@@ -239,6 +249,31 @@ export default function NewSurveyScreen() {
       fetchTemplates();
     }
   }, []);
+
+  // Auto-start prefetch when survey data is loaded if conditions are met
+  useEffect(() => {
+    if (surveyData.appointmentId && surveyData.appointmentStatus.toLowerCase() === 'in-progress') {
+      console.log('🔄 AUTO-PREFETCH: Conditions met on screen load, starting prefetch');
+      console.log(`🔄 AUTO-PREFETCH: appointmentId: ${surveyData.appointmentId}, status: ${surveyData.appointmentStatus}`);
+      
+      const startAutoPrefetch = async () => {
+        try {
+          await prefetchService.startAppointmentPrefetch(surveyData.appointmentId, surveyData.orderNumber);
+          console.log('✅ AUTO-PREFETCH: Completed successfully');
+        } catch (error) {
+          console.error('❌ AUTO-PREFETCH: Failed:', error);
+        }
+      };
+      
+      startAutoPrefetch();
+    } else {
+      console.log('ℹ️ AUTO-PREFETCH: Conditions not met, skipping:', {
+        hasAppointmentId: !!surveyData.appointmentId,
+        appointmentStatus: surveyData.appointmentStatus,
+        isInProgress: surveyData.appointmentStatus?.toLowerCase() === 'in-progress'
+      });
+    }
+  }, [surveyData.appointmentId, surveyData.appointmentStatus]); // Run when these values change
 
   // Fetch all available templates
   const fetchTemplates = async (orderNumberParam?: string) => {
@@ -318,7 +353,7 @@ export default function NewSurveyScreen() {
     if (surveyData.appointmentId && surveyData.appointmentStatus.toLowerCase() === 'in-progress') {
       console.log(`🔄 Starting prefetch for in-progress appointment ${surveyData.appointmentId}`);
       try {
-        await prefetchService.startAppointmentPrefetch(surveyData.appointmentId);
+        await prefetchService.startAppointmentPrefetch(surveyData.appointmentId, surveyData.orderNumber);
         console.log('✅ Prefetch completed successfully');
       } catch (error) {
         console.error('❌ Error during prefetch:', error);
@@ -353,7 +388,7 @@ export default function NewSurveyScreen() {
     }
     
     // Get the template name using the correct field name
-    const templateName = template.assessmenttypename;
+    const templateName = template.templatename || template.assessmenttypename;
     if (!templateName) {
       console.error('❌ Template missing name:', template);
       return null;

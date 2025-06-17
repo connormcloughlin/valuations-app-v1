@@ -141,11 +141,29 @@ export default function InProgressAppointmentsScreen() {
   }, [searchQuery, appointments]);
 
   const navigateToSurvey = (appointment: Appointment) => {
+    // 🔍 DEBUG: Log all available appointment fields
+    console.log('🔍 AVAILABLE APPOINTMENT FIELDS FOR NAVIGATION:');
+    console.log('Full appointment object:', JSON.stringify(appointment, null, 2));
+    console.log('appointmentID:', appointment.appointmentID);
+    console.log('appointmentId:', appointment.appointmentId);
+    console.log('id:', appointment.id);
+    console.log('status:', appointment.status);
+    console.log('inviteStatus:', appointment.inviteStatus);
+    console.log('Invite_Status:', appointment.Invite_Status);
+    console.log('orderNumber:', appointment.orderNumber);
+    console.log('orderID:', appointment.orderID);
+    
     router.push({
       pathname: '/(tabs)/new-survey',
       params: { 
-        appointmentId: appointment.appointmentID?.toString(),
-        appointmentStatus: appointment.status
+        appointmentId: appointment.appointmentID?.toString() || appointment.appointmentId?.toString() || appointment.id?.toString(),
+        status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
+        orderNumber: appointment.orderNumber || appointment.orderID?.toString(),
+        clientName: appointment.client,
+        address: appointment.address,
+        policyNo: appointment.policyNo,
+        sumInsured: appointment.sumInsured,
+        broker: appointment.broker
       }
     });
   };
@@ -189,7 +207,7 @@ export default function InProgressAppointmentsScreen() {
       if (item.sumInsured === null || item.sumInsured === undefined) problematicFields.push('sumInsured');
       
       // Special logging for sumInsured 0.00 values
-      if (item.sumInsured === 0 || item.sumInsured === '0.00') {
+      if (Number(item.sumInsured) === 0 || item.sumInsured === '0.00' || item.sumInsured === '0') {
         console.log(`Order ${item.orderNumber}: sumInsured is 0.00, type:`, typeof item.sumInsured, 'value:', item.sumInsured);
       }
       
