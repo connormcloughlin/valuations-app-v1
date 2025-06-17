@@ -267,7 +267,7 @@ const SectionsCategoriesScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: 'linear-gradient(180deg, #f0f4fa 0%, #e9eef6 100%)', paddingTop: 24, paddingBottom: 32 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 24, marginBottom: 12 }}>
-        <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#1976d2', letterSpacing: 0.5 }}>Sections & Categories</Text>
+        <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#1976d2', letterSpacing: 0.5 }}>Sections & Categories New</Text>
         <PrefetchStatusBadge />
       </View>
       

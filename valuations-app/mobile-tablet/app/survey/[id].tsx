@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity } from 'react-native';
-import { Card, Button, Chip, ActivityIndicator } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { StyleSheet, View, ScrollView, Text } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { logNavigation } from '../../utils/logger';
+import api from '../../api';
+
+// Import new components
+import SurveyHeader from './components/SurveyHeader';
+import SurveyDetails from './components/SurveyDetails';
+import RiskAssessmentTemplates from './components/RiskAssessmentTemplates';
+import CategoriesList from './components/CategoriesList';
+import SurveyActions from './components/SurveyActions';
+import { SurveyLoading, SurveyError } from './components/SurveyStates';
 
 // Add Survey and Category types
 interface Category {
@@ -12,6 +19,17 @@ interface Category {
   items: number;
   value: number;
 }
+
+interface RiskTemplate {
+  riskassessmentid?: string;
+  assessmentid?: number;
+  assessmenttypeid?: number;
+  assessmenttypename?: string;
+  templatename?: string;
+  prefix?: string;
+  comments?: string;
+}
+
 interface Survey {
   id: string;
   address: string;
@@ -25,47 +43,11 @@ interface Survey {
   categories: Category[];
   totalValue: number;
   completedCategories: number;
+  appointmentId?: string;
+  status?: string;
 }
 
-// Add index signature to surveysData
-const surveysData: { [key: string]: Survey } = {
-  '1003': {
-    id: '1003',
-    address: '789 Pine Rd',
-    client: 'S. Naidoo',
-    date: '2024-04-25 10:00',
-    policyNo: 'J 12 mil',
-    sumInsured: 'R 2.8 mil',
-    orderNumber: 'ORD-2024-1003',
-    lastEdited: '2024-04-25',
-    broker: 'Old Mutual',
-    categories: [
-      { id: 'cat-1', name: 'CLOTHING (GENTS / BOYS)', items: 8, value: 24500 },
-      { id: 'cat-2', name: 'FURNITURE', items: 12, value: 85000 },
-      { id: 'cat-4', name: 'ELECTRONICS', items: 5, value: 32000 },
-    ],
-    totalValue: 141500,
-    completedCategories: 2
-  },
-  '1006': {
-    id: '1006',
-    address: '45 Mountain View',
-    client: 'P. Williams',
-    date: '2024-04-26 09:30',
-    policyNo: 'N 63 mil',
-    sumInsured: 'R 3.2 mil',
-    orderNumber: 'ORD-2024-1006',
-    lastEdited: '2024-04-26',
-    broker: 'Discovery',
-    categories: [
-      { id: 'cat-1', name: 'CLOTHING (GENTS / BOYS)', items: 6, value: 18500 },
-      { id: 'cat-2', name: 'FURNITURE', items: 9, value: 64000 },
-      { id: 'cat-3', name: 'KITCHENWARE', items: 14, value: 28000 },
-    ],
-    totalValue: 110500,
-    completedCategories: 1
-  }
-};
+
 
 export default function SurveyScreen() {
   logNavigation('Survey Detail Screen');
@@ -74,17 +56,119 @@ export default function SurveyScreen() {
   const surveyId = id as string;
   
   const [loading, setLoading] = useState(true);
-  const [survey, setSurvey] = useState<any>(null);
+  const [survey, setSurvey] = useState<Survey | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Categories state for section selection
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [selectedSectionTitle, setSelectedSectionTitle] = useState<string | null>(null);
   
   useEffect(() => {
-    // Simulate API call delay
-    setTimeout(() => {
-      if (surveysData[surveyId]) {
-        setSurvey(surveysData[surveyId]);
-      }
-      setLoading(false);
-    }, 800);
+    fetchSurveyData();
   }, [surveyId]);
+
+  // Fetch categories for a section (following SectionsCategories logic)
+  const fetchCategories = async (sectionId: string) => {
+    console.log('🔍 Fetching categories for section:', sectionId);
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    
+    try {
+      const res = await api.getRiskAssessmentCategories(sectionId);
+      console.log('✅ getRiskAssessmentCategories response:', res);
+      
+      if (res.success && res.data) {
+        const mappedCategories: Category[] = res.data.map((c: any) => ({
+          id: c.id || c.categoryid || c.riskassessmentcategoryid,
+          name: c.name || c.categoryname || 'Unnamed Category',
+          items: 0, // TODO: Fetch actual item count when needed
+          value: 0  // TODO: Calculate actual value when needed
+        }));
+        
+        setCategories(mappedCategories);
+        
+        // Update the survey categories as well
+        if (survey) {
+          setSurvey({
+            ...survey,
+            categories: mappedCategories,
+            totalValue: mappedCategories.reduce((sum, cat) => sum + cat.value, 0)
+          });
+        }
+      } else {
+        setCategoriesError(res.message || 'Failed to load categories');
+      }
+    } catch (err: any) {
+      console.error('❌ Error loading categories:', err);
+      setCategoriesError(err.message || 'Error loading categories');
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
+  const fetchSurveyData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log(`🔍 Fetching survey data for ID: ${surveyId}`);
+      
+      // Try to get appointment data using the same API as in-progress.tsx
+      // @ts-ignore - this method exists in the API
+      const response = await api.getAppointmentsByListView({
+        status: 'In-Progress',
+        page: 1,
+        pageSize: 50,
+        surveyor: null
+      });
+      
+      if (response && response.success && response.data) {
+        // Find the specific appointment by ID
+        const appointment = response.data.find((appt: any) => {
+          const apptId = String(appt.appointmentID || appt.appointmentId || appt.id);
+          return apptId === surveyId;
+        });
+        
+        if (appointment) {
+          console.log('✅ Found appointment data:', appointment);
+          
+          // Map appointment data to Survey interface using the same pattern as in-progress.tsx
+          const surveyData: Survey = {
+            id: surveyId,
+            address: String(appointment.address || 'No address provided'),
+            client: String(appointment.client || 'Unknown client'),
+            date: appointment.startTime || appointment.date || new Date().toISOString(),
+            policyNo: String(appointment.policyNo || 'N/A'),
+            sumInsured: String(appointment.sumInsured || 'Not specified'),
+            orderNumber: String(appointment.orderNumber || appointment.orderID || 'Unknown'),
+            lastEdited: appointment.lastEdited || appointment.dateModified || new Date().toISOString().split('T')[0],
+            broker: String(appointment.broker || 'Not specified'),
+            appointmentId: String(appointment.appointmentID || appointment.appointmentId || appointment.id),
+            status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
+            // TODO: Fetch real categories from risk assessment API
+            categories: [], // Will be populated when categories API is integrated
+            totalValue: 0,
+            completedCategories: 0
+          };
+          
+          setSurvey(surveyData);
+        } else {
+          console.warn(`❌ No appointment found with ID: ${surveyId}`);
+          setError('Survey not found or is not in progress');
+        }
+      } else {
+        console.error('❌ Failed to fetch appointments:', response);
+        setError('Failed to load survey data');
+      }
+    } catch (err) {
+      console.error('❌ Error fetching survey data:', err);
+      setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const navigateToCategory = (categoryId: string, categoryName: string) => {
     router.push({
@@ -92,25 +176,50 @@ export default function SurveyScreen() {
       params: { 
         categoryId, 
         categoryTitle: categoryName,
-        surveyId
+        surveyId,
+        appointmentId: survey?.appointmentId
       }
     });
   };
+
+  const handleTemplateSelection = (template: RiskTemplate) => {
+    console.log('🚀 Template selected for accordion view:', template);
+    // Template is now handled by the accordion in RiskAssessmentTemplates component
+    // No navigation needed as sections will be shown inline
+  };
+
+  const handleSectionSelection = (sectionId: string, sectionTitle: string) => {
+    console.log('🚀 Section selected:', sectionId, sectionTitle);
+    setSelectedSectionTitle(sectionTitle);
+    fetchCategories(sectionId);
+  };
   
   const continueSurvey = () => {
-    // router.push({
-    //   pathname: '/survey/categories',
-    //   params: { surveyId }
-    // });
-    // Use the new categories screen if needed
-    router.push({
-      pathname: '/survey/categories_old',
-      params: { surveyId }
-    });
+    // Navigate to new-survey with appointment data for proper template selection
+    if (survey?.appointmentId) {
+      router.push({
+        pathname: '/(tabs)/new-survey',
+        params: {
+          appointmentId: survey.appointmentId,
+          status: survey.status || 'in-progress',
+          orderNumber: survey.orderNumber,
+          clientName: survey.client,
+          address: survey.address,
+          policyNo: survey.policyNo,
+          sumInsured: survey.sumInsured,
+          broker: survey.broker
+        }
+      });
+    } else {
+      // Fallback to old categories screen
+      router.push({
+        pathname: '/survey/categories_old',
+        params: { surveyId }
+      });
+    }
   };
   
   const finishSurvey = () => {
-    // In a real app, you would save the survey as completed
     router.push({
       pathname: '/survey/summary/[id]',
       params: { id: surveyId }
@@ -126,40 +235,32 @@ export default function SurveyScreen() {
             headerTitleStyle: { fontWeight: '600' }
           }}
         />
-        <View style={[styles.container, styles.loadingContainer]}>
-          <ActivityIndicator size="large" color="#4a90e2" />
-          <Text style={styles.loadingText}>Loading survey data...</Text>
-        </View>
+        <SurveyLoading />
       </>
     );
   }
   
-  if (!survey) {
+  if (error || !survey) {
     return (
       <>
         <Stack.Screen
           options={{
-            title: 'Survey Not Found',
+            title: 'Survey Error',
             headerTitleStyle: { fontWeight: '600' }
           }}
         />
-        <View style={[styles.container, styles.centeredContainer]}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={64} color="#e74c3c" />
-          <Text style={styles.errorTitle}>Survey Not Found</Text>
-          <Text style={styles.errorMessage}>The survey you're looking for doesn't exist or has been deleted.</Text>
-          <Button 
-            mode="contained" 
-            onPress={() => router.back()} 
-            style={styles.errorButton}
-          >
-            Go Back
-          </Button>
-        </View>
+        <SurveyError 
+          title="Survey Not Found"
+          message={error || "The survey you're looking for doesn't exist or has been deleted."}
+          onGoBack={() => router.back()} 
+        />
       </>
     );
   }
   
-  const progress = Math.floor((survey.completedCategories / survey.categories.length) * 100);
+  // Calculate progress (mock for now until categories are integrated)
+  const progress = survey.categories.length > 0 ? 
+    Math.floor((survey.completedCategories / survey.categories.length) * 100) : 0;
   
   return (
     <>
@@ -172,105 +273,54 @@ export default function SurveyScreen() {
       
       <View style={styles.container}>
         <ScrollView style={styles.scrollView}>
-          <Card style={styles.headerCard}>
-            <Card.Content>
-              <View style={styles.addressRow}>
-                <MaterialCommunityIcons name="map-marker" size={20} color="#f39c12" />
-                <Text style={styles.addressText}>{survey.address}</Text>
-              </View>
-              
-              <View style={styles.progressContainer}>
-                <View style={styles.progressInfo}>
-                  <Text style={styles.progressTitle}>Survey Progress</Text>
-                  <Text style={styles.progressPercentage}>{progress}%</Text>
-                </View>
-                <View style={styles.progressBarContainer}>
-                  <View style={[styles.progressBar, { width: `${progress}%` }]} />
-                </View>
-                <Text style={styles.progressDetails}>
-                  {survey.completedCategories} of {survey.categories.length} categories completed
-                </Text>
-              </View>
-            </Card.Content>
-          </Card>
+          <SurveyHeader 
+            address={survey.address}
+            completedCategories={survey.completedCategories}
+            totalCategories={survey.categories.length || 1} // Avoid division by zero
+          />
           
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Survey Details</Text>
-            <Card style={styles.detailsCard}>
-              <Card.Content>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Client:</Text>
-                  <Text style={styles.detailValue}>{survey.client}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Order Number:</Text>
-                  <Text style={styles.detailValue}>{survey.orderNumber}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Policy Number:</Text>
-                  <Text style={styles.detailValue}>{survey.policyNo}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Sum Insured:</Text>
-                  <Text style={styles.detailValue}>{survey.sumInsured}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Broker:</Text>
-                  <Text style={styles.detailValue}>{survey.broker}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Last Edited:</Text>
-                  <Text style={styles.detailValue}>{survey.lastEdited}</Text>
-                </View>
-              </Card.Content>
-            </Card>
-          </View>
+          <SurveyDetails
+            client={survey.client}
+            orderNumber={survey.orderNumber}
+            policyNo={survey.policyNo}
+            sumInsured={survey.sumInsured}
+            broker={survey.broker}
+            lastEdited={survey.lastEdited}
+          />
           
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Categories</Text>
-              <Text style={styles.totalValue}>Total: R{survey.totalValue.toLocaleString()}</Text>
+          <RiskAssessmentTemplates
+            orderNumber={survey.orderNumber}
+            onTemplatePress={handleTemplateSelection}
+            onSectionPress={handleSectionSelection}
+          />
+          
+          {/* Show categories status when a section is selected */}
+          {selectedSectionTitle && (
+            <View style={styles.categoriesStatus}>
+              <Text style={styles.selectedSectionTitle}>
+                Categories from: {selectedSectionTitle}
+              </Text>
+              {categoriesLoading && (
+                <Text style={styles.loadingText}>Loading categories...</Text>
+              )}
+              {categoriesError && (
+                <Text style={styles.errorText}>{categoriesError}</Text>
+              )}
             </View>
-            
-            {survey.categories.map((category: Category) => (
-              <Card 
-                key={category.id} 
-                style={styles.categoryCard}
-                onPress={() => navigateToCategory(category.id, category.name)}
-              >
-                <Card.Content style={styles.categoryContent}>
-                  <View style={styles.categoryInfo}>
-                    <Text style={styles.categoryName}>{category.name}</Text>
-                    <Text style={styles.categoryDetails}>
-                      {category.items} items • R{category.value.toLocaleString()}
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={24} color="#95a5a6" />
-                </Card.Content>
-              </Card>
-            ))}
-          </View>
+          )}
+          
+          <CategoriesList
+            categories={categories.length > 0 ? categories : survey.categories}
+            totalValue={categories.length > 0 ? categories.reduce((sum, cat) => sum + cat.value, 0) : survey.totalValue}
+            onCategoryPress={navigateToCategory}
+          />
         </ScrollView>
         
-        <View style={styles.buttonContainer}>
-          <Button
-            mode="outlined"
-            onPress={continueSurvey}
-            style={styles.continueButton}
-            icon="clipboard-list"
-          >
-            Edit Categories
-          </Button>
-          <Button
-            mode="contained"
-            onPress={finishSurvey}
-            style={styles.finishButton}
-            icon="check-circle"
-            disabled={progress < 100}
-          >
-            Complete Survey
-          </Button>
-        </View>
+        <SurveyActions
+          progress={progress}
+          onContinueSurvey={continueSurvey}
+          onFinishSurvey={finishSurvey}
+        />
       </View>
     </>
   );
@@ -281,164 +331,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f6fa',
   },
-  loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d',
-  },
-  centeredContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 16,
-  },
-  errorMessage: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  errorButton: {
-    backgroundColor: '#3498db',
-  },
   scrollView: {
     flex: 1,
     padding: 16,
   },
-  headerCard: {
-    marginBottom: 16,
-    borderRadius: 8,
-  },
-  addressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  addressText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginLeft: 8,
-  },
-  progressContainer: {
-    marginTop: 4,
-  },
-  progressInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  progressTitle: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  progressPercentage: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#f39c12',
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: '#ecf0f1',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#f39c12',
-  },
-  progressDetails: {
-    fontSize: 12,
-    color: '#95a5a6',
-    marginTop: 4,
-    textAlign: 'right',
-  },
-  sectionContainer: {
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 12,
-  },
-  totalValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#27ae60',
-  },
-  detailsCard: {
-    borderRadius: 8,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  detailLabel: {
-    width: 120,
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  detailValue: {
-    flex: 1,
-    fontSize: 14,
-    color: '#2c3e50',
-    fontWeight: '500',
-  },
-  categoryCard: {
-    marginBottom: 8,
-    borderRadius: 8,
-  },
-  categoryContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  categoryInfo: {
-    flex: 1,
-  },
-  categoryName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2c3e50',
-  },
-  categoryDetails: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 4,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    padding: 16,
+  categoriesStatus: {
     backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    padding: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4a90e2',
   },
-  continueButton: {
-    flex: 1,
-    marginRight: 8,
-    borderColor: '#f39c12',
+  selectedSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 4,
   },
-  finishButton: {
-    flex: 1,
-    backgroundColor: '#27ae60',
+  loadingText: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    fontStyle: 'italic',
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#e74c3c',
+    fontStyle: 'italic',
   },
 }); 
