@@ -12,13 +12,14 @@ import mediaService from '../../../../services/mediaService';
 import {
   updateRiskAssessmentItem,
   RiskAssessmentItem,
-  MediaFile
+  MediaFile,
+  getAllRiskAssessmentItems
 } from '../../../../utils/db';
 // Use require for ImagePicker to avoid type issues
 const ImagePicker = require('expo-image-picker');
 
 export default function PredefinedItemsList({ 
-  items, 
+  items: propsItems, 
   loading, 
   error, 
   categoryTitle, 
@@ -28,6 +29,8 @@ export default function PredefinedItemsList({
   onSelectItem 
 }: PredefinedItemsListProps) {
   
+  // Manage local items state like ItemsTable does
+  const [items, setItems] = useState<Item[]>([]);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   // Editing state management
   const [editItems, setEditItems] = useState<{ [key: string]: any }>({});
@@ -43,6 +46,14 @@ export default function PredefinedItemsList({
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [currentPhotoItemId, setCurrentPhotoItemId] = useState<string | null>(null);
   const [addingAnotherPhoto, setAddingAnotherPhoto] = useState(false);
+
+  // Initialize local items state with props items (same pattern as ItemsTable)
+  useEffect(() => {
+    if (propsItems && propsItems.length > 0) {
+      console.log('PredefinedItemsList: Initializing local state with props items:', propsItems.length);
+      setItems(propsItems);
+    }
+  }, [propsItems]);
 
   // Load pending changes count on mount and when items change
   useEffect(() => {
@@ -116,7 +127,6 @@ export default function PredefinedItemsList({
       console.log('Changes:', changes);
 
       // First, get the existing RiskAssessmentItem from SQLite to preserve all fields
-      const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
       const existingItems = await getAllRiskAssessmentItems();
       const existingItem = existingItems.find(dbItem => 
         String(dbItem.riskassessmentitemid) === String(item.id)
@@ -145,6 +155,22 @@ export default function PredefinedItemsList({
       
       // Mark as auto-saved but keep the changes visible
       setAutoSavedItems(prev => ({ ...prev, [id]: true }));
+
+      // Update local items state immediately after database update (following ItemsTable pattern)
+      // This ensures UI shows the saved changes even after sync completes
+      setItems(prevItems => 
+        prevItems.map(prevItem => 
+          String(prevItem.id) === id ? {
+            ...prevItem,
+            quantity: String(updated.qty),
+            price: String(updated.price),
+            description: updated.description || '',
+            model: updated.model || '',
+            room: updated.location || '',
+            notes: updated.notes || ''
+          } : prevItem
+        )
+      );
 
       // Update pending changes count immediately after database update
       const count = await riskAssessmentSyncService.getPendingChangesCount();
@@ -263,7 +289,6 @@ export default function PredefinedItemsList({
         const itemToUpdate = items.find(i => String(i.id) === currentPhotoItemId);
         if (itemToUpdate) {
           // Get existing SQLite record to preserve all fields
-          const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
           const existingItems = await getAllRiskAssessmentItems();
           const existingItem = existingItems.find(dbItem => 
             String(dbItem.riskassessmentitemid) === String(itemToUpdate.id)
@@ -337,7 +362,6 @@ export default function PredefinedItemsList({
         const itemToUpdate = items.find(i => String(i.id) === currentPhotoItemId);
         if (itemToUpdate) {
           // Get existing SQLite record to preserve all fields
-          const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
           const existingItems = await getAllRiskAssessmentItems();
           const existingItem = existingItems.find(dbItem => 
             String(dbItem.riskassessmentitemid) === String(itemToUpdate.id)
