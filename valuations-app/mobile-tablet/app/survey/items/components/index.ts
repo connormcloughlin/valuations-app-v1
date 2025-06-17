@@ -5,6 +5,7 @@ export { default as ItemForm } from './ItemForm';
 export { default as UserItemsTable } from './UserItemsTable';
 export { default as HandwritingModal } from './HandwritingModal';
 export { default as CameraModal } from './CameraModal';
+export { default as PhotoGalleryModal } from './PhotoGalleryModal';
 export { default as ItemStates } from './ItemStates';
 
 // Export types

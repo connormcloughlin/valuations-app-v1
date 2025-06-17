@@ -86,7 +86,12 @@ const riskAssessmentSyncService = {
       if (pendingRiskAssessmentItems.length > 0) {
         console.log('=== PENDING RISK ASSESSMENT ITEMS (Raw from SQLite) ===');
         pendingRiskAssessmentItems.forEach((item, index) => {
-          console.log(`Item ${index + 1}:`, {
+          console.log(`Item ${index + 1} (Full SQLite Record):`, JSON.stringify(item, null, 2));
+        });
+        
+        console.log('=== SUMMARY OF PENDING ITEMS ===');
+        pendingRiskAssessmentItems.forEach((item, index) => {
+          console.log(`Item ${index + 1} Summary:`, {
             riskassessmentitemid: item.riskassessmentitemid,
             riskassessmentcategoryid: item.riskassessmentcategoryid,
             itemprompt: item.itemprompt,
@@ -97,7 +102,10 @@ const riskAssessmentSyncService = {
             assessmentregisterid: item.assessmentregisterid,
             pending_sync: item.pending_sync,
             datecreated: item.datecreated,
-            dateupdated: item.dateupdated
+            dateupdated: item.dateupdated,
+            hasphoto: item.hasphoto,
+            notes: item.notes,
+            location: item.location
           });
         });
       }
@@ -483,6 +491,47 @@ const riskAssessmentSyncService = {
         total: 0
       };
     }
+  },
+
+  // Debug function to inspect pending changes without syncing
+  debugPendingChanges: async () => {
+    console.log('=== DEBUG: INSPECTING PENDING CHANGES ===');
+    
+    const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
+      getPendingSyncRiskAssessmentItems(),
+      getPendingSyncAppointments(),
+      getPendingSyncRiskAssessmentMasters(),
+      getPendingSyncMediaFiles()
+    ]);
+
+    console.log('=== PENDING COUNTS ===');
+    console.log('Risk Assessment Items:', pendingRiskAssessmentItems.length);
+    console.log('Appointments:', pendingAppointments.length);
+    console.log('Risk Assessment Masters:', pendingRiskAssessmentMasters.length);
+    console.log('Media Files:', pendingMediaFiles.length);
+
+    if (pendingRiskAssessmentItems.length > 0) {
+      console.log('=== PENDING RISK ASSESSMENT ITEMS ===');
+      pendingRiskAssessmentItems.forEach((item, index) => {
+        console.log(`Item ${index + 1}:`, {
+          id: item.riskassessmentitemid,
+          categoryId: item.riskassessmentcategoryid,
+          prompt: item.itemprompt,
+          description: item.description,
+          qty: item.qty,
+          price: item.price,
+          pending_sync: item.pending_sync,
+          dateupdated: item.dateupdated
+        });
+      });
+    }
+
+    return {
+      riskAssessmentItems: pendingRiskAssessmentItems.length,
+      appointments: pendingAppointments.length,
+      riskAssessmentMasters: pendingRiskAssessmentMasters.length,
+      mediaFiles: pendingMediaFiles.length
+    };
   }
 };
 

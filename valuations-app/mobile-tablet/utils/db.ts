@@ -539,7 +539,15 @@ export async function updateRiskAssessmentItem(i: RiskAssessmentItem) {
     pending_sync: 1,
     dateupdated: new Date().toISOString()
   };
+  
+  console.log('=== DB UPDATE: Updating risk assessment item ===');
+  console.log('Item ID:', updatedItem.riskassessmentitemid);
+  console.log('Pending sync flag:', updatedItem.pending_sync);
+  console.log('Updated item (full):', JSON.stringify(updatedItem, null, 2));
+  
   await insertRiskAssessmentItem(updatedItem);
+  
+  console.log('=== DB UPDATE: Item updated successfully ===');
 }
 export async function deleteRiskAssessmentItem(id: number) {
   await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [id]);
@@ -548,9 +556,22 @@ export async function deleteRiskAssessmentItem(id: number) {
 // Get all items that need to be synced to the server
 export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmentItem[]> {
   try {
-    console.log('Fetching pending sync risk assessment items from SQLite');
+    console.log('=== DB QUERY: Fetching pending sync risk assessment items ===');
+    console.log('SQL Query: SELECT * FROM risk_assessment_items WHERE pending_sync = 1');
+    
     const res = await runSql('SELECT * FROM risk_assessment_items WHERE pending_sync = 1');
-    console.log('Pending sync items found:', res.rows._array.length);
+    
+    console.log('=== DB RESULT: Pending sync items found ===');
+    console.log('Total rows returned:', res.rows._array.length);
+    
+    if (res.rows._array.length > 0) {
+      console.log('=== FIRST ITEM FROM DB (Raw) ===');
+      console.log(JSON.stringify(res.rows._array[0], null, 2));
+      
+      console.log('=== ALL PENDING ITEMS IDs ===');
+      console.log('IDs:', res.rows._array.map(item => item.riskassessmentitemid));
+    }
+    
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching pending sync risk assessment items:', error);

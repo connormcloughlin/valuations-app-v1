@@ -110,6 +110,14 @@ apiClient.interceptors.request.use(
         
         console.log('🚀 === API REQUEST ===');
         console.log(`🚀 ${config.method?.toUpperCase() || 'GET'}: ${fullUrl}`);
+        console.log('🚀 Headers:', config.headers);
+        
+        // Log request data for sync requests
+        if (config.url?.includes('/sync/') && config.data) {
+          console.log('🚀 Request Data Size:', JSON.stringify(config.data).length, 'characters');
+          console.log('🚀 Request Data (first 500 chars):', JSON.stringify(config.data).substring(0, 500));
+        }
+        
         console.log('🚀 === END REQUEST ===');
       }
       
@@ -139,7 +147,14 @@ apiClient.interceptors.response.use(
     if (shouldLogDetails) {
       console.log('✅ === API RESPONSE SUCCESS ===');
       console.log(`✅ ${response.status}: ${response.config.url}`);
-      console.log(`✅ Data:`, response.data);
+      
+      // For sync responses, show detailed data
+      if (response.config.url?.includes('/sync/')) {
+        console.log('✅ Sync Response Data:', JSON.stringify(response.data, null, 2));
+      } else {
+        console.log(`✅ Data:`, response.data);
+      }
+      
       console.log('✅ === END RESPONSE ===');
     }
     

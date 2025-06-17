@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
-import { Card, Divider, Button, TextInput as PaperTextInput } from 'react-native-paper';
+import { Card, Divider, Button, TextInput as PaperTextInput, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { PredefinedItemsListProps, Item } from './types';
 import ItemStates from './ItemStates';
+import CameraModal from './CameraModal';
+import PhotoGalleryModal from './PhotoGalleryModal';
 // Import required services and utilities
 import riskAssessmentSyncService from '../../../../services/riskAssessmentSyncService';
+import mediaService from '../../../../services/mediaService';
 import {
   updateRiskAssessmentItem,
   RiskAssessmentItem,
+  MediaFile
 } from '../../../../utils/db';
+// Use require for ImagePicker to avoid type issues
+const ImagePicker = require('expo-image-picker');
 
 export default function PredefinedItemsList({ 
   items, 
@@ -30,6 +36,13 @@ export default function PredefinedItemsList({
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [syncMessage, setSyncMessage] = useState('');
+  
+  // Photo state management
+  const [itemPhotos, setItemPhotos] = useState<{ [key: string]: MediaFile[] }>({});
+  const [showCamera, setShowCamera] = useState(false);
+  const [showPhotoGallery, setShowPhotoGallery] = useState(false);
+  const [currentPhotoItemId, setCurrentPhotoItemId] = useState<string | null>(null);
+  const [addingAnotherPhoto, setAddingAnotherPhoto] = useState(false);
 
   // Load pending changes count on mount and when items change
   useEffect(() => {
@@ -44,6 +57,39 @@ export default function PredefinedItemsList({
     
     loadPendingChangesCount();
   }, [items]);
+
+  // Load photos for items
+  useEffect(() => {
+    loadPhotosForItems();
+  }, [items]);
+
+  // Request camera permissions
+  useEffect(() => {
+    (async () => {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Camera Permission', 
+          'Please grant camera permissions to take photos of items.',
+          [{ text: 'OK' }]
+        );
+      }
+    })();
+  }, []);
+
+  const loadPhotosForItems = async () => {
+    console.log('PredefinedItemsList: Loading photos for items...');
+    const photoMap: { [key: string]: MediaFile[] } = {};
+    
+    for (const item of items) {
+      const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', Number(item.id));
+      photoMap[String(item.id)] = photos;
+      console.log(`PredefinedItemsList: Item ${item.id} has ${photos.length} photos`);
+    }
+    
+    setItemPhotos(photoMap);
+    console.log('PredefinedItemsList: Photos loaded, total items with photos:', Object.keys(photoMap).filter(key => photoMap[key].length > 0).length);
+  };
 
   // Handle editing a field
   const handleEdit = (id: string, field: 'quantity' | 'price' | 'description' | 'model' | 'room' | 'notes', value: string) => {
@@ -65,38 +111,34 @@ export default function PredefinedItemsList({
       const item = items.find(i => String(i.id) === id);
       if (!item) return;
 
-      console.log('Auto-saving predefined item:', id, changes);
+      console.log('=== PREDEFINED ITEMS: Auto-saving item ===');
+      console.log('Item ID:', id);
+      console.log('Changes:', changes);
 
-             // Map to RiskAssessmentItem format for database
-       const updated: RiskAssessmentItem = {
-         riskassessmentitemid: Number(item.id),
-         riskassessmentcategoryid: Number(item.categoryId || '1'),
-        qty: Number(changes.quantity ?? item.quantity) || 0,
-        price: Number(changes.price ?? item.price) || 0,
-        description: changes.description ?? item.description ?? '',
-        model: changes.model ?? item.model ?? '',
-        location: changes.room ?? item.room ?? '',
-        notes: changes.notes ?? item.notes ?? '',
-        itemprompt: item.type || '',
-        itemtype: 0,
-        rank: 0,
-        commaseparatedlist: '',
-        selectedanswer: '',
-        assessmentregisterid: 0,
-        assessmentregistertypeid: 0,
-        datecreated: new Date().toISOString(),
-        createdbyid: '',
-        dateupdated: new Date().toISOString(),
-        updatedbyid: '',
-        issynced: 0,
-        syncversion: 0,
-        deviceid: '',
-        syncstatus: '',
-        synctimestamp: new Date().toISOString(),
-        hasphoto: item.photo ? 1 : 0,
-        latitude: 0,
-        longitude: 0,
+      // First, get the existing RiskAssessmentItem from SQLite to preserve all fields
+      const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
+      const existingItems = await getAllRiskAssessmentItems();
+      const existingItem = existingItems.find(dbItem => 
+        String(dbItem.riskassessmentitemid) === String(item.id)
+      );
+
+      if (!existingItem) {
+        console.error('No existing SQLite record found for predefined item:', id);
+        return;
+      }
+
+      // Preserve existing data and only update changed fields (like ItemComponents.tsx)
+      const updated: RiskAssessmentItem = {
+        ...existingItem,  // Preserve all existing database fields
+        qty: Number(changes.quantity ?? existingItem.qty) || 0,
+        price: Number(changes.price ?? existingItem.price) || 0,
+        description: changes.description ?? existingItem.description ?? '',
+        model: changes.model ?? existingItem.model ?? '',
+        location: changes.room ?? existingItem.location ?? '',
+        notes: changes.notes ?? existingItem.notes ?? '',
         pending_sync: 1,
+        issynced: 0,
+        dateupdated: new Date().toISOString(),
       };
 
       await updateRiskAssessmentItem(updated);
@@ -108,7 +150,9 @@ export default function PredefinedItemsList({
       const count = await riskAssessmentSyncService.getPendingChangesCount();
       setPendingChangesCount(count.total);
 
-      console.log('Auto-saved predefined item successfully:', id);
+      console.log('=== PREDEFINED ITEMS: Auto-save completed successfully ===');
+      console.log('Item ID:', id);
+      console.log('Updated record sent to database:', JSON.stringify(updated, null, 2));
     } catch (error) {
       console.error('Auto-save failed for predefined item:', id, error);
     }
@@ -122,6 +166,22 @@ export default function PredefinedItemsList({
     
     try {
       console.log('=== PREDEFINED ITEMS: STARTING SYNC PROCESS ===');
+      console.log('Current predefined items state:', items.length, 'items');
+      console.log('Current edit state:', Object.keys(editItems).length, 'items being edited');
+      console.log('Auto-saved items:', Object.keys(autoSavedItems).length, 'items auto-saved');
+      
+      // Debug: Log all current predefined items
+      console.log('=== ALL PREDEFINED ITEMS IN STATE ===');
+      items.forEach((item, index) => {
+        console.log(`Predefined Item ${index + 1}:`, {
+          id: item.id,
+          type: item.type,
+          description: item.description,
+          quantity: item.quantity,
+          price: item.price,
+          categoryId: item.categoryId
+        });
+      });
       
       const result = await riskAssessmentSyncService.syncPendingChanges();
       
@@ -172,6 +232,191 @@ export default function PredefinedItemsList({
       setSyncing(false);
     }
   };
+
+  // Photo functions
+  const takePhoto = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        aspect: undefined,
+        quality: 1.0, // Full quality for high-value art
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        exif: true
+      });
+      
+      if (!result.canceled && currentPhotoItemId) {
+        const photoUri = result.assets[0].uri;
+        
+        // Save photo using media service
+        const mediaFile = await mediaService.savePhoto(
+          photoUri, 
+          'riskAssessmentItem', 
+          Number(currentPhotoItemId),
+          {
+            category: 'predefined-item',
+            timestamp: new Date().toISOString(),
+            exif: result.assets[0].exif
+          }
+        );
+
+        // Update the item to indicate it has a photo - use same pattern as ItemComponents.tsx
+        const itemToUpdate = items.find(i => String(i.id) === currentPhotoItemId);
+        if (itemToUpdate) {
+          // Get existing SQLite record to preserve all fields
+          const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
+          const existingItems = await getAllRiskAssessmentItems();
+          const existingItem = existingItems.find(dbItem => 
+            String(dbItem.riskassessmentitemid) === String(itemToUpdate.id)
+          );
+
+          if (existingItem) {
+            const updated: RiskAssessmentItem = {
+              ...existingItem,  // Preserve all existing database fields
+              hasphoto: 1,
+              pending_sync: 1,
+              issynced: 0,
+              dateupdated: new Date().toISOString()
+            };
+            
+            await updateRiskAssessmentItem(updated);
+            
+            // Update pending changes count after database update
+            const count = await riskAssessmentSyncService.getPendingChangesCount();
+            setPendingChangesCount(count.total);
+          }
+        }
+
+        // Reload photos for this item
+        console.log('PredefinedItemsList: Reloading photos after taking photo...');
+        await loadPhotosForItems();
+        console.log('PredefinedItemsList: Photos reloaded after taking photo');
+        
+        Alert.alert('Success', 'Photo saved successfully!');
+      }
+      
+      setShowCamera(false);
+      // If we're adding another photo, reopen gallery
+      // Otherwise clear currentPhotoItemId
+      if (addingAnotherPhoto) {
+        setShowPhotoGallery(true);
+        setAddingAnotherPhoto(false);
+      } else {
+        setCurrentPhotoItemId(null);
+      }
+    } catch (err) {
+      console.error('Error taking photo:', err);
+      Alert.alert('Error', 'Failed to capture photo. Please try again.');
+    }
+  };
+  
+  const selectFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        aspect: undefined,
+        quality: 1.0, // Full quality for high-value art
+        mediaTypes: ImagePicker.MediaTypeOptions.Images
+      });
+      
+      if (!result.canceled && currentPhotoItemId) {
+        const photoUri = result.assets[0].uri;
+        
+        // Save photo using media service
+        const mediaFile = await mediaService.savePhoto(
+          photoUri, 
+          'riskAssessmentItem', 
+          Number(currentPhotoItemId),
+          {
+            category: 'predefined-item',
+            timestamp: new Date().toISOString(),
+            source: 'gallery'
+          }
+        );
+
+        // Update the item to indicate it has a photo - use same pattern as ItemComponents.tsx
+        const itemToUpdate = items.find(i => String(i.id) === currentPhotoItemId);
+        if (itemToUpdate) {
+          // Get existing SQLite record to preserve all fields
+          const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
+          const existingItems = await getAllRiskAssessmentItems();
+          const existingItem = existingItems.find(dbItem => 
+            String(dbItem.riskassessmentitemid) === String(itemToUpdate.id)
+          );
+
+          if (existingItem) {
+            const updated: RiskAssessmentItem = {
+              ...existingItem,  // Preserve all existing database fields
+              hasphoto: 1,
+              pending_sync: 1,
+              issynced: 0,
+              dateupdated: new Date().toISOString()
+            };
+            
+            await updateRiskAssessmentItem(updated);
+            
+            // Update pending changes count after database update
+            const count = await riskAssessmentSyncService.getPendingChangesCount();
+            setPendingChangesCount(count.total);
+          }
+        }
+
+        // Reload photos for this item
+        console.log('PredefinedItemsList: Reloading photos after selecting from gallery...');
+        await loadPhotosForItems();
+        console.log('PredefinedItemsList: Photos reloaded after selecting from gallery');
+        
+        Alert.alert('Success', 'Photo saved successfully!');
+      }
+      
+      setShowCamera(false);
+      // If we're adding another photo, reopen gallery
+      // Otherwise clear currentPhotoItemId
+      if (addingAnotherPhoto) {
+        setShowPhotoGallery(true);
+        setAddingAnotherPhoto(false);
+      } else {
+        setCurrentPhotoItemId(null);
+      }
+    } catch (err) {
+      console.error('Error selecting photo:', err);
+      Alert.alert('Error', 'Failed to select photo. Please try again.');
+    }
+  };
+
+  const handleTakePhoto = (itemId: string) => {
+    setCurrentPhotoItemId(itemId);
+    setShowCamera(true);
+  };
+
+  const handleViewPhotos = (itemId: string) => {
+    const photos = itemPhotos[itemId] || [];
+    if (photos.length === 0) {
+      // If no photos, directly open camera
+      handleTakePhoto(itemId);
+      return;
+    }
+    
+    setCurrentPhotoItemId(itemId);
+    setShowPhotoGallery(true);
+  };
+
+  const handleDeletePhoto = async (photoId: number) => {
+    try {
+      await mediaService.deletePhoto(photoId);
+      
+      // Reload photos for all items
+      await loadPhotosForItems();
+      
+      // Update pending changes count
+      const count = await riskAssessmentSyncService.getPendingChangesCount();
+      setPendingChangesCount(count.total);
+      
+      Alert.alert('Success', 'Photo deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting photo:', error);
+      Alert.alert('Error', 'Failed to delete photo. Please try again.');
+    }
+  };
   
   if (loading) {
     return <ItemStates loading={true} />;
@@ -199,6 +444,7 @@ export default function PredefinedItemsList({
   };
 
   return (
+    <>
     <Card style={styles.card}>
       <Card.Title title="Predefined Items New" subtitle={`Select from ${categoryTitle}`} />
       <Divider />
@@ -352,16 +598,24 @@ export default function PredefinedItemsList({
                             />
                           </View>
                           <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Has Photo:</Text>
-                            <View style={styles.photoStatus}>
-                              <MaterialCommunityIcons 
-                                name={item.photo ? "camera" : "camera-off"} 
-                                size={16} 
-                                color={item.photo ? "#4CAF50" : "#757575"} 
-                              />
-                              <Text style={[styles.detailValue, { marginLeft: 4 }]}>
-                                {item.photo ? 'Yes' : 'No'}
-                              </Text>
+                            <Text style={styles.detailLabel}>Photos:</Text>
+                            <View style={styles.photoSection}>
+                              <TouchableOpacity
+                                style={styles.photoButton}
+                                onPress={() => handleViewPhotos(itemId)}
+                              >
+                                <MaterialCommunityIcons 
+                                  name={(itemPhotos[itemId]?.length || 0) > 0 ? "image-multiple" : "camera"} 
+                                  size={16} 
+                                  color="#4a90e2" 
+                                />
+                                <Text style={styles.photoButtonText}>
+                                  {(itemPhotos[itemId]?.length || 0) > 0 
+                                    ? `${itemPhotos[itemId]?.length || 0} photo${(itemPhotos[itemId]?.length || 0) !== 1 ? 's' : ''}`
+                                    : 'Take Photo'
+                                  }
+                                </Text>
+                              </TouchableOpacity>
                             </View>
                           </View>
                         </View>
@@ -411,6 +665,36 @@ export default function PredefinedItemsList({
         )}
       </Card.Content>
     </Card>
+    
+    {/* Camera Modal */}
+    <CameraModal
+      visible={showCamera}
+      onClose={() => {
+        setShowCamera(false);
+        setCurrentPhotoItemId(null);
+      }}
+      onTakePhoto={takePhoto}
+      onSelectFromGallery={selectFromGallery}
+    />
+    
+    {/* Photo Gallery Modal */}
+    <PhotoGalleryModal
+      key={`gallery-${currentPhotoItemId}-${(currentPhotoItemId ? itemPhotos[currentPhotoItemId]?.length : 0)}`}
+      visible={showPhotoGallery}
+      photos={currentPhotoItemId ? (itemPhotos[currentPhotoItemId] || []) : []}
+      onClose={() => {
+        setShowPhotoGallery(false);
+        setCurrentPhotoItemId(null);
+      }}
+      onDeletePhoto={handleDeletePhoto}
+      onTakeNewPhoto={() => {
+        setShowPhotoGallery(false);
+        setShowCamera(true);
+        setAddingAnotherPhoto(true);
+        // Don't clear currentPhotoItemId - we need it for the new photo
+      }}
+    />
+  </>
   );
 }
 
@@ -527,6 +811,26 @@ const styles = StyleSheet.create({
   photoStatus: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  photoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  photoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    backgroundColor: '#f0f4f7',
+    borderWidth: 1,
+    borderColor: '#4a90e2',
+  },
+  photoButtonText: {
+    fontSize: 12,
+    color: '#4a90e2',
+    marginLeft: 4,
+    fontWeight: '500',
   },
   notesSection: {
     marginTop: 8,
