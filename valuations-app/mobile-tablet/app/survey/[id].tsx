@@ -80,21 +80,119 @@ export default function SurveyScreen() {
       console.log('✅ getRiskAssessmentCategories response:', res);
       
       if (res.success && res.data) {
-        const mappedCategories: Category[] = res.data.map((c: any) => ({
-          id: c.id || c.categoryid || c.riskassessmentcategoryid,
-          name: c.name || c.categoryname || 'Unnamed Category',
-          items: 0, // TODO: Fetch actual item count when needed
-          value: 0  // TODO: Calculate actual value when needed
-        }));
+        const categoriesWithItems: Category[] = [];
         
-        setCategories(mappedCategories);
+        // Fetch items for each category (following ItemComponents logic)
+        for (const c of res.data) {
+          const categoryId = c.id || c.categoryid || c.riskassessmentcategoryid;
+          const categoryName = c.name || c.categoryname || 'Unnamed Category';
+          
+          console.log('🔍 Fetching items for category:', categoryId);
+          
+          try {
+            // Check SQLite first, then API (same pattern as ItemComponents.tsx)
+            const { getAllRiskAssessmentItems } = await import('../../utils/db');
+            const localItems = await getAllRiskAssessmentItems();
+            const categoryItems = localItems.filter(item => 
+              String(item.riskassessmentcategoryid) === String(categoryId)
+            );
+            
+            let itemCount = 0;
+            let totalValue = 0;
+            
+            if (categoryItems.length === 0) {
+              // No items in SQLite, fetch from API
+              console.log('No items in SQLite for category, fetching from API:', categoryId);
+              const apiResponse = await api.getRiskAssessmentItems(categoryId);
+              
+              if (apiResponse?.success && Array.isArray(apiResponse.data)) {
+                console.log('Got items from API:', apiResponse.data.length);
+                itemCount = apiResponse.data.length;
+                totalValue = apiResponse.data.reduce((sum: number, item: any) => {
+                  const price = Number(item.price) || 0;
+                  const qty = Number(item.qty) || 1;
+                  return sum + (price * qty);
+                }, 0);
+                
+                // Store in SQLite for future use (same as ItemComponents)
+                const { insertRiskAssessmentItem } = await import('../../utils/db');
+                for (const item of apiResponse.data) {
+                  const sqliteItem = {
+                    riskassessmentitemid: Number(item.riskassessmentitemid),
+                    riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
+                    itemprompt: item.itemprompt || '',
+                    itemtype: Number(item.itemtype) || 0,
+                    rank: Number(item.rank) || 0,
+                    commaseparatedlist: item.commaseparatedlist || '',
+                    selectedanswer: item.selectedanswer || '',
+                    qty: Number(item.qty) || 0,
+                    price: Number(item.price) || 0,
+                    description: item.description || '',
+                    model: item.model || '',
+                    location: item.location || '',
+                    assessmentregisterid: Number(item.assessmentregisterid) || 0,
+                    assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
+                    datecreated: item.datecreated || new Date().toISOString(),
+                    createdbyid: item.createdbyid || '',
+                    dateupdated: item.dateupdated || new Date().toISOString(),
+                    updatedbyid: item.updatedbyid || '',
+                    issynced: Number(item.issynced) || 0,
+                    syncversion: Number(item.syncversion) || 0,
+                    deviceid: item.deviceid || '',
+                    syncstatus: item.syncstatus || '',
+                    synctimestamp: item.synctimestamp || new Date().toISOString(),
+                    hasphoto: Number(item.hasphoto) || 0,
+                    latitude: Number(item.latitude) || 0,
+                    longitude: Number(item.longitude) || 0,
+                    notes: item.notes || '',
+                    pending_sync: 0
+                  };
+                  
+                  try {
+                    await insertRiskAssessmentItem(sqliteItem);
+                  } catch (insertError) {
+                    console.warn('Failed to insert item to SQLite:', insertError);
+                  }
+                }
+              }
+            } else {
+              // Use SQLite items
+              console.log('Using existing SQLite items for category:', categoryItems.length);
+              itemCount = categoryItems.length;
+              totalValue = categoryItems.reduce((sum, item) => {
+                const price = Number(item.price) || 0;
+                const qty = Number(item.qty) || 1;
+                return sum + (price * qty);
+              }, 0);
+            }
+            
+            categoriesWithItems.push({
+              id: String(categoryId),
+              name: categoryName,
+              items: itemCount,
+              value: totalValue
+            });
+            
+          } catch (itemError) {
+            console.warn(`Failed to fetch items for category ${categoryId}:`, itemError);
+            // Add category with zero values if item fetch fails
+            categoriesWithItems.push({
+              id: String(categoryId),
+              name: categoryName,
+              items: 0,
+              value: 0
+            });
+          }
+        }
+        
+        setCategories(categoriesWithItems);
         
         // Update the survey categories as well
         if (survey) {
           setSurvey({
             ...survey,
-            categories: mappedCategories,
-            totalValue: mappedCategories.reduce((sum, cat) => sum + cat.value, 0)
+            categories: categoriesWithItems,
+            totalValue: categoriesWithItems.reduce((sum, cat) => sum + cat.value, 0)
           });
         }
       } else {

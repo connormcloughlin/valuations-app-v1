@@ -37,7 +37,7 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
       const response = await api.getAppointmentsByListView({
         status: 'In-Progress', // Use exact status from the working component
         page: 1,
-        pageSize: 10,
+        pageSize: 5,
         surveyor: null
       });
       
