@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Card, Divider, Button, TextInput as PaperTextInput, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -57,7 +57,8 @@ export default function PredefinedItemsList({
   }, [propsItems]);
 
   // Function to add a new custom item to the list
-  const addNewCustomItem = () => {
+  const addNewCustomItem = useCallback(() => {
+    console.log('PredefinedItemsList: addNewCustomItem called!');
     const newItem: Item = {
       id: `custom-new-${Date.now()}`,
       type: '', // Empty - user will fill this in
@@ -70,11 +71,17 @@ export default function PredefinedItemsList({
       categoryId: propsItems[0]?.categoryId || ''
     };
     
+    console.log('PredefinedItemsList: Creating new item:', newItem);
+    
     // Add to local items state
-    setItems(prevItems => [newItem, ...prevItems]);
+    setItems(prevItems => {
+      console.log('PredefinedItemsList: Adding new item to list, current items:', prevItems.length);
+      return [newItem, ...prevItems];
+    });
     
     // Immediately expand the new item for editing
     setExpandedItem(newItem.id);
+    console.log('PredefinedItemsList: Expanded item set to:', newItem.id);
     
     // Set it as being edited
     setEditItems(prev => ({
@@ -89,15 +96,17 @@ export default function PredefinedItemsList({
         notes: ''
       }
     }));
-  };
+    console.log('PredefinedItemsList: Edit state set for new item');
+  }, [propsItems]);
 
   // Expose the addNewCustomItem function to parent component
   useEffect(() => {
+    console.log('PredefinedItemsList: onAddNewItem prop:', onAddNewItem);
     if (onAddNewItem) {
-      // This will be called from the parent when "Add Item" is pressed
+      console.log('PredefinedItemsList: Passing addNewCustomItem function to parent');
       onAddNewItem(addNewCustomItem);
     }
-  }, [onAddNewItem]);
+  }, [onAddNewItem, addNewCustomItem]);
 
   // Load pending changes count on mount and when items change
   useEffect(() => {
@@ -170,53 +179,128 @@ export default function PredefinedItemsList({
       console.log('Item ID:', id);
       console.log('Changes:', changes);
 
-      // First, get the existing RiskAssessmentItem from SQLite to preserve all fields
-      const existingItems = await getAllRiskAssessmentItems();
-      const existingItem = existingItems.find(dbItem => 
-        String(dbItem.riskassessmentitemid) === String(item.id)
-      );
+      const isNewItem = id.startsWith('custom-new-');
+      
+      if (isNewItem) {
+        // Handle new custom items - insert them into SQLite
+        console.log('Inserting new custom item into SQLite');
+        
+        // For new items, require at least the type to be filled
+        if (!changes.type || changes.type.trim() === '') {
+          console.log('New item requires type field - skipping save');
+          return;
+        }
+        
+        const { insertRiskAssessmentItem } = await import('../../../../utils/db');
+        
+        // Create a new SQLite record for the custom item
+        const newSqliteItem = {
+          riskassessmentitemid: Date.now(), // Use timestamp as unique ID
+          riskassessmentcategoryid: Number(item.categoryId) || 0,
+          itemprompt: changes.type || '',
+          itemtype: 1, // Custom item type
+          rank: 0,
+          commaseparatedlist: '',
+          selectedanswer: '',
+          qty: Number(changes.quantity) || 1,
+          price: Number(changes.price) || 0,
+          description: changes.description || '',
+          model: changes.model || '',
+          location: changes.room || '',
+          assessmentregisterid: 0,
+          assessmentregistertypeid: 0,
+          datecreated: new Date().toISOString(),
+          createdbyid: '',
+          dateupdated: new Date().toISOString(),
+          updatedbyid: '',
+          issynced: 0,
+          syncversion: 0,
+          deviceid: '',
+          syncstatus: '',
+          synctimestamp: new Date().toISOString(),
+          hasphoto: 0,
+          latitude: 0,
+          longitude: 0,
+          notes: changes.notes || '',
+          pending_sync: 1 // Mark for sync
+        };
+        
+        await insertRiskAssessmentItem(newSqliteItem);
+        
+        // Update the item ID to match the SQLite ID for future updates
+        const newId = String(newSqliteItem.riskassessmentitemid);
+        setItems(prevItems => 
+          prevItems.map(prevItem => 
+            prevItem.id === id ? { ...prevItem, id: newId } : prevItem
+          )
+        );
+        
+        // Update edit items with new ID
+        setEditItems(prev => {
+          const newEditItems = { ...prev };
+          if (newEditItems[id]) {
+            newEditItems[newId] = newEditItems[id];
+            delete newEditItems[id];
+          }
+          return newEditItems;
+        });
+        
+        // Update expanded item if needed
+        if (expandedItem === id) {
+          setExpandedItem(newId);
+        }
+        
+        console.log('New custom item inserted successfully with ID:', newId);
+        
+      } else {
+        // Handle existing items - update them in SQLite
+        const existingItems = await getAllRiskAssessmentItems();
+        const existingItem = existingItems.find(dbItem => 
+          String(dbItem.riskassessmentitemid) === String(item.id)
+        );
 
-      if (!existingItem) {
-        console.error('No existing SQLite record found for predefined item:', id);
-        return;
+        if (!existingItem) {
+          console.error('No existing SQLite record found for predefined item:', id);
+          return;
+        }
+        
+        // Preserve existing data and only update changed fields (like ItemComponents.tsx)
+        const updated: RiskAssessmentItem = {
+          ...existingItem,  // Preserve all existing database fields
+          itemprompt: changes.type ?? existingItem.itemprompt ?? '',
+          qty: Number(changes.quantity ?? existingItem.qty) || 0,
+          price: Number(changes.price ?? existingItem.price) || 0,
+          description: changes.description ?? existingItem.description ?? '',
+          model: changes.model ?? existingItem.model ?? '',
+          location: changes.room ?? existingItem.location ?? '',
+          notes: changes.notes ?? existingItem.notes ?? '',
+          pending_sync: 1,
+          issynced: 0,
+          dateupdated: new Date().toISOString(),
+        };
+        
+        await updateRiskAssessmentItem(updated);
+        
+        // Update local items state immediately after database update (following ItemsTable pattern)
+        // This ensures UI shows the saved changes even after sync completes
+        setItems(prevItems => 
+          prevItems.map(prevItem => 
+            String(prevItem.id) === id ? {
+              ...prevItem,
+              type: updated.itemprompt || '',
+              quantity: String(updated.qty),
+              price: String(updated.price),
+              description: updated.description || '',
+              model: updated.model || '',
+              room: updated.location || '',
+              notes: updated.notes || ''
+            } : prevItem
+          )
+        );
       }
 
-      // Preserve existing data and only update changed fields (like ItemComponents.tsx)
-      const updated: RiskAssessmentItem = {
-        ...existingItem,  // Preserve all existing database fields
-        itemprompt: changes.type ?? existingItem.itemprompt ?? '',
-        qty: Number(changes.quantity ?? existingItem.qty) || 0,
-        price: Number(changes.price ?? existingItem.price) || 0,
-        description: changes.description ?? existingItem.description ?? '',
-        model: changes.model ?? existingItem.model ?? '',
-        location: changes.room ?? existingItem.location ?? '',
-        notes: changes.notes ?? existingItem.notes ?? '',
-        pending_sync: 1,
-        issynced: 0,
-        dateupdated: new Date().toISOString(),
-      };
-
-      await updateRiskAssessmentItem(updated);
-      
       // Mark as auto-saved but keep the changes visible
       setAutoSavedItems(prev => ({ ...prev, [id]: true }));
-
-      // Update local items state immediately after database update (following ItemsTable pattern)
-      // This ensures UI shows the saved changes even after sync completes
-      setItems(prevItems => 
-        prevItems.map(prevItem => 
-          String(prevItem.id) === id ? {
-            ...prevItem,
-            type: updated.itemprompt || '',
-            quantity: String(updated.qty),
-            price: String(updated.price),
-            description: updated.description || '',
-            model: updated.model || '',
-            room: updated.location || '',
-            notes: updated.notes || ''
-          } : prevItem
-        )
-      );
 
       // Update pending changes count immediately after database update
       const count = await riskAssessmentSyncService.getPendingChangesCount();
@@ -224,7 +308,7 @@ export default function PredefinedItemsList({
 
       console.log('=== PREDEFINED ITEMS: Auto-save completed successfully ===');
       console.log('Item ID:', id);
-      console.log('Updated record sent to database:', JSON.stringify(updated, null, 2));
+      console.log('Changes applied:', JSON.stringify(changes, null, 2));
     } catch (error) {
       console.error('Auto-save failed for predefined item:', id, error);
     }
@@ -727,14 +811,35 @@ export default function PredefinedItemsList({
                         </View>
                       </View>
 
-                      {/* Action button */}
-                      <TouchableOpacity
-                        style={styles.selectButton}
-                        onPress={() => handleSelectItem(item)}
-                      >
-                        <MaterialCommunityIcons name="plus-circle" size={20} color="#fff" />
-                        <Text style={styles.selectButtonText}>Add to My Items</Text>
-                      </TouchableOpacity>
+                      {/* Action buttons */}
+                      {isNewItem ? (
+                        <View style={styles.actionButtonsContainer}>
+                          <TouchableOpacity
+                            style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
+                            onPress={() => autoSaveItem(itemId)}
+                            disabled={!type}
+                          >
+                            <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
+                            <Text style={styles.saveButtonText}>Save New Item</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.selectButton}
+                            onPress={() => handleSelectItem(item)}
+                            disabled={!type}
+                          >
+                            <MaterialCommunityIcons name="plus-circle" size={20} color="#fff" />
+                            <Text style={styles.selectButtonText}>Add to My Items</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.selectButton}
+                          onPress={() => handleSelectItem(item)}
+                        >
+                          <MaterialCommunityIcons name="plus-circle" size={20} color="#fff" />
+                          <Text style={styles.selectButtonText}>Add to My Items</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 )}
@@ -952,6 +1057,27 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e9ecef',
   },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  saveButton: {
+    backgroundColor: '#27ae60',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    flex: 1,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 8,
+    fontSize: 14,
+  },
   selectButton: {
     backgroundColor: '#4a90e2',
     flexDirection: 'row',
@@ -961,6 +1087,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     marginTop: 8,
+    flex: 1,
   },
   selectButtonText: {
     color: '#fff',

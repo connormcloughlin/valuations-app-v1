@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, ScrollView, Alert } from 'react-native';
 import { Button } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -14,7 +14,6 @@ import { AppLayout, TabConfig } from '../../components/layout';
 import {
   ItemsSummary,
   PredefinedItemsList,
-  ItemForm,
   UserItemsTable,
   HandwritingModal,
   CameraModal,
@@ -65,22 +64,11 @@ export default function ItemsScreen() {
     }
   }, [categoryId]);
 
-  const [showForm, setShowForm] = useState(false);
+
   const [predefinedItems, setPredefinedItems] = useState<Item[]>([]); // For storing category items from API
   const [userItems, setUserItems] = useState<Item[]>([]); // For storing user-added items
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentItem, setCurrentItem] = useState<Item>({
-    id: '',
-    type: '',
-    description: '',
-    room: '',
-    quantity: '1',
-    price: '',
-    notes: '',
-    model: '',
-    selection: ''
-  });
   
   // Handwriting recognition states
   const [showHandwritingModal, setShowHandwritingModal] = useState(false);
@@ -95,8 +83,8 @@ export default function ItemsScreen() {
   const includeRooms = roomsForCategory[categoryId as string] || [];
   const hasRooms = includeRooms.length > 0;
   
-  // Store the add function from PredefinedItemsList
-  const [addNewItemFunction, setAddNewItemFunction] = useState<(() => void) | null>(null);
+  // Store the add function from PredefinedItemsList using ref
+  const addNewItemFunctionRef = useRef<(() => void) | null>(null);
 
   // Define navigation tabs - using standard app navigation
   const surveyTabs: TabConfig[] = [
@@ -308,10 +296,7 @@ export default function ItemsScreen() {
   
   const confirmHandwriting = () => {
     if (recognizedText) {
-      setCurrentItem(prev => ({
-        ...prev,
-        [currentField]: recognizedText
-      }));
+      // Handwriting functionality would need to be integrated with the new inline editing system
       setShowHandwritingModal(false);
       clearCanvas();
     }
@@ -354,11 +339,7 @@ export default function ItemsScreen() {
         const photoUri = result.assets[0].uri;
         setPhoto(photoUri);
         
-        // Update current item with photo
-        setCurrentItem(prev => ({
-          ...prev,
-          photo: photoUri
-        }));
+        // Photo captured successfully
       }
       
       // Close camera modal
@@ -382,11 +363,7 @@ export default function ItemsScreen() {
         const photoUri = result.assets[0].uri;
         setPhoto(photoUri);
         
-        // Update current item with photo
-        setCurrentItem(prev => ({
-          ...prev,
-          photo: photoUri
-        }));
+        // Photo selected successfully
       }
       
       // Close camera modal
@@ -397,33 +374,10 @@ export default function ItemsScreen() {
     }
   };
   
-  const addItem = () => {
-    if (currentItem.description && currentItem.price) {
-      const newItem: Item = {
-        id: `custom-${Date.now().toString()}`,
-        type: currentItem.type,
-        description: currentItem.description,
-        room: currentItem.room,
-        quantity: currentItem.quantity || '1',
-        price: currentItem.price,
-        notes: currentItem.notes,
-        photo: currentItem.photo,
-        model: currentItem.model,
-        selection: currentItem.selection
-      };
-      
-      setUserItems(prev => [...prev, newItem]);
-      setCurrentItem({
-        ...currentItem,
-        description: '',
-        price: '',
-        notes: ''
-      });
-      
-      // Close form after adding
-      setShowForm(false);
-    }
-  };
+  // This function is no longer needed since we add items directly through PredefinedItemsList
+  // const addItem = () => {
+  //   // Functionality moved to inline editing in PredefinedItemsList
+  // };
   
   const deleteItem = (itemId: string) => {
     setUserItems(userItems.filter(item => item.id !== itemId));
@@ -435,13 +389,21 @@ export default function ItemsScreen() {
   );
 
   const selectPredefinedItem = (item: Item) => {
-    setCurrentItem({
-      ...item,
-      description: item.description || item.type, // Use type as default description
+    // Add the selected predefined item directly to user items
+    const newItem: Item = {
+      id: `selected-${Date.now().toString()}`,
+      type: item.type,
+      description: item.description || item.type,
+      room: item.room,
       quantity: '1',
-      price: item.price || '0'
-    });
-    setShowForm(true);
+      price: item.price || '0',
+      notes: item.notes,
+      photo: item.photo,
+      model: item.model,
+      selection: item.selection
+    };
+    
+    setUserItems(prev => [...prev, newItem]);
   };
   
   return (
@@ -457,43 +419,31 @@ export default function ItemsScreen() {
           userItemsCount={userItems.length}
           totalValue={totalValue}
           onAddItem={() => {
-            if (addNewItemFunction) {
-              addNewItemFunction();
+            console.log('Add Item button pressed, addNewItemFunction:', addNewItemFunctionRef.current);
+            if (addNewItemFunctionRef.current) {
+              console.log('Calling addNewItemFunction');
+              addNewItemFunctionRef.current();
             } else {
-              setShowForm(true);
+              console.log('addNewItemFunction is null - function not set yet');
             }
           }}
         />
       
         <ScrollView style={styles.scrollView}>
-          {!showForm ? (
-            <>
-              <PredefinedItemsList
-                items={predefinedItems}
-                loading={loading}
-                error={error}
-                categoryTitle={categoryTitle as string}
-                isOffline={isOffline}
-                fromCache={fromCache}
-                onRefresh={fetchCategoryItems}
-                onSelectItem={selectPredefinedItem}
-                onAddNewItem={setAddNewItemFunction}
-              />
-            </>
-          ) : (
-            <ItemForm
-              currentItem={currentItem}
-              onUpdateItem={setCurrentItem}
-              handwritingEnabled={handwritingEnabled}
-              hasRooms={hasRooms}
-              includeRooms={includeRooms}
-              photo={photo}
-              onCancel={() => setShowForm(false)}
-              onSave={addItem}
-              onOpenCamera={() => setShowCamera(true)}
-              onOpenHandwriting={openHandwritingModal}
-            />
-          )}
+          <PredefinedItemsList
+            items={predefinedItems}
+            loading={loading}
+            error={error}
+            categoryTitle={categoryTitle as string}
+            isOffline={isOffline}
+            fromCache={fromCache}
+            onRefresh={fetchCategoryItems}
+            onSelectItem={selectPredefinedItem}
+            onAddNewItem={(func) => {
+              console.log('Setting addNewItemFunction via ref:', func);
+              addNewItemFunctionRef.current = func;
+            }}
+          />
 
           <UserItemsTable
             items={userItems}
@@ -501,22 +451,20 @@ export default function ItemsScreen() {
             onDeleteItem={deleteItem}
           />
           
-          {/* {!showForm && userItems.length === 0 && (
+          {/* {userItems.length === 0 && (
             <ItemStates isEmpty={true} />
           )} */}
         </ScrollView>
 
-        {!showForm && (
-          <View style={styles.buttonContainer}>
-            <Button
-              mode="contained"
-              style={styles.doneButton}
-              onPress={() => router.back()}
-            >
-              Done
-            </Button>
-          </View>
-        )}
+        <View style={styles.buttonContainer}>
+          <Button
+            mode="contained"
+            style={styles.doneButton}
+            onPress={() => router.back()}
+          >
+            Done
+          </Button>
+        </View>
       </View>
 
       <HandwritingModal
