@@ -48,6 +48,7 @@ export interface PredefinedItemsListProps {
   fromCache: boolean;
   onRefresh: () => void;
   onSelectItem: (item: Item) => void;
+  onAddNewItem?: (addFunction: () => void) => void;
 }
 
 export interface ItemFormProps {

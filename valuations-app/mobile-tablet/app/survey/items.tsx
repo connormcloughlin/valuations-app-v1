@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, Alert } from 'react-native';
 import { Button } from 'react-native-paper';
-import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import api from '../../api';
 // Use require instead of import to avoid type declaration issues
 const ImagePicker = require('expo-image-picker');
 import { logNavigation } from '../../utils/logger';
 import ConnectionStatus from '../../components/ConnectionStatus';
 import connectionUtils from '../../utils/connectionUtils';
+import { AppLayout, TabConfig } from '../../components/layout';
 
 // Import components
 import {
@@ -93,6 +94,43 @@ export default function ItemsScreen() {
   
   const includeRooms = roomsForCategory[categoryId as string] || [];
   const hasRooms = includeRooms.length > 0;
+  
+  // Store the add function from PredefinedItemsList
+  const [addNewItemFunction, setAddNewItemFunction] = useState<(() => void) | null>(null);
+
+  // Define navigation tabs - using standard app navigation
+  const surveyTabs: TabConfig[] = [
+    {
+      name: 'dashboard',
+      title: 'Dashboard',
+      icon: 'view-dashboard',
+      path: '/(tabs)'
+    },
+    {
+      name: 'valuations',
+      title: 'Valuations',
+      icon: 'clipboard-list',
+      path: '/(tabs)/valuations'
+    },
+    {
+      name: 'survey',
+      title: 'Survey',
+      icon: 'note-text',
+      path: '/(tabs)/survey'
+    },
+    {
+      name: 'new-survey',
+      title: 'New Survey',
+      icon: 'plus-circle',
+      path: '/(tabs)/new-survey'
+    },
+    {
+      name: 'profile',
+      title: 'Profile',
+      icon: 'account',
+      path: '/(tabs)/profile'
+    }
+  ];
 
   // Fetch items from SQLite first, then API (following ItemComponents.tsx pattern)
   const fetchCategoryItems = async () => {
@@ -407,28 +445,29 @@ export default function ItemsScreen() {
   };
   
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: categoryTitle as string,
-          headerTitleStyle: {
-            fontWeight: '600',
-          },
-        }}
-      />
-
+    <AppLayout
+      title={categoryTitle as string || 'Survey Items'}
+      tabs={surveyTabs}
+    >
       <View style={styles.container}>
         <ConnectionStatus showOffline={true} showOnline={false} />
+        
+        {/* Fixed ItemsSummary at top */}
+        <ItemsSummary
+          userItemsCount={userItems.length}
+          totalValue={totalValue}
+          onAddItem={() => {
+            if (addNewItemFunction) {
+              addNewItemFunction();
+            } else {
+              setShowForm(true);
+            }
+          }}
+        />
       
         <ScrollView style={styles.scrollView}>
           {!showForm ? (
             <>
-              <ItemsSummary
-                userItemsCount={userItems.length}
-                totalValue={totalValue}
-                onAddItem={() => setShowForm(true)}
-              />
-              
               <PredefinedItemsList
                 items={predefinedItems}
                 loading={loading}
@@ -438,6 +477,7 @@ export default function ItemsScreen() {
                 fromCache={fromCache}
                 onRefresh={fetchCategoryItems}
                 onSelectItem={selectPredefinedItem}
+                onAddNewItem={setAddNewItemFunction}
               />
             </>
           ) : (
@@ -461,9 +501,9 @@ export default function ItemsScreen() {
             onDeleteItem={deleteItem}
           />
           
-          {!showForm && userItems.length === 0 && (
+          {/* {!showForm && userItems.length === 0 && (
             <ItemStates isEmpty={true} />
-          )}
+          )} */}
         </ScrollView>
 
         {!showForm && (
@@ -501,7 +541,7 @@ export default function ItemsScreen() {
         onTakePhoto={takePhoto}
         onSelectFromGallery={selectFromGallery}
       />
-    </>
+    </AppLayout>
   );
 }
 

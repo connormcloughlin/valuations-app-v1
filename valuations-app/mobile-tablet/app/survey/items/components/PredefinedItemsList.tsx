@@ -26,7 +26,8 @@ export default function PredefinedItemsList({
   isOffline, 
   fromCache, 
   onRefresh, 
-  onSelectItem 
+  onSelectItem,
+  onAddNewItem 
 }: PredefinedItemsListProps) {
   
   // Manage local items state like ItemsTable does
@@ -54,6 +55,49 @@ export default function PredefinedItemsList({
       setItems(propsItems);
     }
   }, [propsItems]);
+
+  // Function to add a new custom item to the list
+  const addNewCustomItem = () => {
+    const newItem: Item = {
+      id: `custom-new-${Date.now()}`,
+      type: '', // Empty - user will fill this in
+      description: '',
+      model: '',
+      quantity: '1',
+      price: '0',
+      room: '',
+      notes: '',
+      categoryId: propsItems[0]?.categoryId || ''
+    };
+    
+    // Add to local items state
+    setItems(prevItems => [newItem, ...prevItems]);
+    
+    // Immediately expand the new item for editing
+    setExpandedItem(newItem.id);
+    
+    // Set it as being edited
+    setEditItems(prev => ({
+      ...prev,
+      [newItem.id]: {
+        type: '',
+        description: '',
+        model: '',
+        quantity: '1',
+        price: '0',
+        room: '',
+        notes: ''
+      }
+    }));
+  };
+
+  // Expose the addNewCustomItem function to parent component
+  useEffect(() => {
+    if (onAddNewItem) {
+      // This will be called from the parent when "Add Item" is pressed
+      onAddNewItem(addNewCustomItem);
+    }
+  }, [onAddNewItem]);
 
   // Load pending changes count on mount and when items change
   useEffect(() => {
@@ -103,7 +147,7 @@ export default function PredefinedItemsList({
   };
 
   // Handle editing a field
-  const handleEdit = (id: string, field: 'quantity' | 'price' | 'description' | 'model' | 'room' | 'notes', value: string) => {
+  const handleEdit = (id: string, field: 'type' | 'quantity' | 'price' | 'description' | 'model' | 'room' | 'notes', value: string) => {
     setEditItems(prev => ({
       ...prev,
       [id]: {
@@ -140,6 +184,7 @@ export default function PredefinedItemsList({
       // Preserve existing data and only update changed fields (like ItemComponents.tsx)
       const updated: RiskAssessmentItem = {
         ...existingItem,  // Preserve all existing database fields
+        itemprompt: changes.type ?? existingItem.itemprompt ?? '',
         qty: Number(changes.quantity ?? existingItem.qty) || 0,
         price: Number(changes.price ?? existingItem.price) || 0,
         description: changes.description ?? existingItem.description ?? '',
@@ -162,6 +207,7 @@ export default function PredefinedItemsList({
         prevItems.map(prevItem => 
           String(prevItem.id) === id ? {
             ...prevItem,
+            type: updated.itemprompt || '',
             quantity: String(updated.qty),
             price: String(updated.price),
             description: updated.description || '',
@@ -470,7 +516,7 @@ export default function PredefinedItemsList({
   return (
     <>
     <Card style={styles.card}>
-      <Card.Title title="Predefined Items New" subtitle={`Select from ${categoryTitle}`} />
+      <Card.Title title="Predefined Items" subtitle={`Select from ${categoryTitle}`} />
       <Divider />
       
       {/* Sync indicator and button */}
@@ -517,12 +563,16 @@ export default function PredefinedItemsList({
             const isAutoSaved = autoSavedItems[itemId];
             
             // Get current field values (edited or original)
+            const type = editItems[itemId]?.type ?? (item.type || '');
             const quantity = editItems[itemId]?.quantity ?? String(item.quantity || '1');
             const price = editItems[itemId]?.price ?? String(item.price || '0');
             const description = editItems[itemId]?.description ?? (item.description || 'Not specified');
             const model = editItems[itemId]?.model ?? (item.model || 'Not specified');
             const room = editItems[itemId]?.room ?? (item.room || 'Not specified');
             const notes = editItems[itemId]?.notes ?? (item.notes || '');
+            
+            // Check if this is a new custom item (starts with 'custom-new-')
+            const isNewItem = item.id.startsWith('custom-new-');
             
             return (
               <View key={item.id} style={styles.accordionContainer}>
@@ -538,7 +588,7 @@ export default function PredefinedItemsList({
                   activeOpacity={0.7}
                 >
                   <Text style={styles.predefinedItemType} numberOfLines={1} ellipsizeMode="tail">
-                    {item.type}
+                    {type || item.type || (isNewItem ? 'New Item - Enter Type' : 'Unknown Item')}
                   </Text>
                   {isAutoSaved && (
                     <MaterialCommunityIcons name="check-circle" size={16} color="#4CAF50" style={{ marginRight: 8 }} />
@@ -556,6 +606,24 @@ export default function PredefinedItemsList({
                     <View style={styles.detailsContainer}>
                       {/* Editable Item Details Grid */}
                       <View style={styles.detailsGrid}>
+                        {/* Show type field for new custom items */}
+                        {isNewItem && (
+                          <View style={styles.detailRow}>
+                            <View style={[styles.detailItem, { flex: 2 }]}>
+                              <Text style={styles.detailLabel}>Item Type (Required):</Text>
+                              <PaperTextInput
+                                value={type}
+                                onChangeText={(value) => handleEdit(itemId, 'type', value)}
+                                onBlur={() => autoSaveItem(itemId)}
+                                style={[styles.editInput, { borderColor: type ? '#e0e0e0' : '#f44336' }]}
+                                dense
+                                placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
+                                autoFocus={true}
+                              />
+                            </View>
+                          </View>
+                        )}
+                        
                         <View style={styles.detailRow}>
                           <View style={styles.detailItem}>
                             <Text style={styles.detailLabel}>Description:</Text>
@@ -723,7 +791,29 @@ export default function PredefinedItemsList({
 }
 
 const styles = StyleSheet.create({
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  header: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginTop: 2,
+  },
   card: {
+    flex: 1,
     margin: 16,
     borderRadius: 8,
     overflow: 'hidden',
@@ -757,8 +847,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   predefinedList: {
-    maxHeight: 400, // Increased to accommodate expanded content
-    minHeight: 100,
+    flex: 1, // Use full available space
+    minHeight: 200,
   },
   accordionContainer: {
     marginBottom: 2,

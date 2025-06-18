@@ -326,47 +326,48 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
 
 const styles = StyleSheet.create({
   sectionContainer: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   templateCount: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#4a90e2',
   },
   templateCard: {
-    marginBottom: 8,
-    borderRadius: 8,
+    marginBottom: 3,
+    borderRadius: 6,
   },
   templateContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 3,
+    paddingHorizontal: 2,
   },
   templateInfo: {
     flex: 1,
   },
   templateName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#2c3e50',
   },
   templateDescription: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#7f8c8d',
-    marginTop: 4,
+    marginTop: 2,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -400,15 +401,15 @@ const styles = StyleSheet.create({
     padding: 15,
   },
   sectionsContainer: {
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 6,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
   },
   sectionsLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
+    padding: 4,
   },
   sectionsLoadingText: {
     marginLeft: 8,
@@ -421,28 +422,29 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   sectionCard: {
-    marginBottom: 6,
-    borderRadius: 8,
-    marginLeft: 16, // Indent sections under templates
+    marginBottom: 2,
+    borderRadius: 6,
+    marginLeft: 12, // Indent sections under templates
   },
   sectionContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 3,
+    paddingHorizontal: 2,
   },
   sectionInfo: {
     flex: 1,
   },
   sectionName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#2c3e50',
   },
   sectionDetails: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#7f8c8d',
-    marginTop: 2,
+    marginTop: 1,
   },
   noSectionsText: {
     textAlign: 'center',
