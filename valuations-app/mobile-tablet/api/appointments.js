@@ -885,6 +885,8 @@ const appointmentsApi = {
    * @param {string} options.surveyor - Surveyor ID to filter by (optional)
    * @param {number} options.page - Page number (1-based)
    * @param {number} options.pageSize - Number of items per page
+   * @param {string} options.startDateFrom - Start date filter (ISO string)
+   * @param {string} options.startDateTo - End date filter (ISO string)
    * @returns {Promise<Object>} Response with filtered appointments
    */
   getAppointmentsByListView: async (options = {}) => {
@@ -894,6 +896,8 @@ const appointmentsApi = {
       const pageSize = options.pageSize || 10;
       const status = options.status || 'Booked'; // Default to 'Booked' for scheduled appointments
       const surveyor = options.surveyor || null;
+      const startDateFrom = options.startDateFrom || null;
+      const startDateTo = options.startDateTo || null;
 
       // Check if we're online first
       const isOnline = connectionUtils.isConnected();
@@ -905,12 +909,32 @@ const appointmentsApi = {
         if (cachedResponse && cachedResponse.data) {
           console.log(`Using cached list-view appointments (offline)`);
           
-          // Extract data and filter by status
+          // Extract data and filter by status, surveyor, and date range
           const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
-          const filteredData = cachedData.filter(appointment => 
-            appointment.inviteStatus === status && 
-            (!surveyor || appointment.surveyorID === surveyor)
-          );
+          const filteredData = cachedData.filter(appointment => {
+            // Filter by status
+            if (appointment.inviteStatus !== status) return false;
+            
+            // Filter by surveyor if provided
+            if (surveyor && appointment.surveyorID !== surveyor) return false;
+            
+            // Filter by date range if provided
+            if (startDateFrom || startDateTo) {
+              const appointmentDate = new Date(appointment.date || appointment.Start_Time);
+              
+              if (startDateFrom) {
+                const fromDate = new Date(startDateFrom);
+                if (appointmentDate < fromDate) return false;
+              }
+              
+              if (startDateTo) {
+                const toDate = new Date(startDateTo);
+                if (appointmentDate > toDate) return false;
+              }
+            }
+            
+            return true;
+          });
           
           // Calculate pagination
           const startIndex = (page - 1) * pageSize;
@@ -950,6 +974,14 @@ const appointmentsApi = {
       // Add surveyor parameter if provided
       if (surveyor) {
         params.surveyor = surveyor;
+      }
+      
+      // Add date range parameters if provided
+      if (startDateFrom) {
+        params.startDateFrom = startDateFrom;
+      }
+      if (startDateTo) {
+        params.startDateTo = startDateTo;
       }
       
       // Make the API call with parameters - try with direct axios call to troubleshoot
@@ -1104,6 +1136,27 @@ const appointmentsApi = {
       return response;
     } catch (error) {
       console.error(`Error updating appointment ${appointmentId}:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Get appointment statistics
+   * @returns {Promise<Object>} Response with appointment stats by invite status
+   */
+  getAppointmentStats: async () => {
+    try {
+      console.log('Fetching appointment statistics');
+      
+      const response = await apiClient.get('/appointments/stats');
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error fetching appointment stats:', error);
       return error.success === false ? error : { success: false, message: error.message };
     }
   }

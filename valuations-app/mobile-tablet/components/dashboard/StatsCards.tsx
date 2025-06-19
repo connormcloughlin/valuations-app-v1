@@ -3,12 +3,19 @@ import { StyleSheet } from 'react-native';
 import { View } from '../Themed';
 import { Card, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import appointmentsApi from '../../api/appointments';
 
 interface StatsData {
   scheduled: number;
   inProgress: number;
   completed: number;
   lastSync: string;
+}
+
+interface ApiStatsResponse {
+  byInviteStatus: {
+    [key: string]: number;
+  };
 }
 
 interface StatsCardsProps {
@@ -32,29 +39,65 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     try {
       setLoading(true);
       
-      // TODO: Replace with actual API calls
-      // const [scheduledRes, inProgressRes, completedRes] = await Promise.all([
-      //   api.getScheduledCount(),
-      //   api.getInProgressCount(),
-      //   api.getCompletedCount()
-      // ]);
+      // Fetch stats from the appointments/stats API
+      const response = await appointmentsApi.getAppointmentStats();
       
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Mock data for now
-      setStats({
-        scheduled: 2,
-        inProgress: 1,
-        completed: 3,
-        lastSync: 'Today 11:45'
-      });
+      if (response?.success && response?.data?.byInviteStatus) {
+        const inviteStats = response.data.byInviteStatus;
+        
+        // Map invite statuses to our stats
+        const scheduled = inviteStats['Booked'] || 0;
+        const inProgress = (inviteStats['In-progress'] || 0) + (inviteStats['In Progress'] || 0);
+        const completed = inviteStats['Completed'] || 0;
+        
+        console.log('Appointment stats loaded:', { scheduled, inProgress, completed });
+        
+        setStats({
+          scheduled,
+          inProgress,
+          completed,
+          lastSync: new Date().toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          })
+        });
+      } else {
+        console.warn('Invalid API response format or failed request:', response);
+        
+        // Set error state but keep trying to show something useful
+        setStats({
+          scheduled: 0,
+          inProgress: 0,
+          completed: 0,
+          lastSync: response?.success === false ? 'API Error' : 'Invalid Data'
+        });
+      }
     } catch (error) {
-      console.error('Error fetching stats:', error);
-      // Keep default values on error
+      console.error('Error fetching appointment stats:', error);
+      
+      // Show error state
+      setStats({
+        scheduled: 0,
+        inProgress: 0,
+        completed: 0,
+        lastSync: 'Connection Error'
+      });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCardPress = (cardType: 'scheduled' | 'inProgress' | 'completed' | 'sync') => {
+    // If it's a sync card press or there's an error, refresh the stats
+    if (cardType === 'sync' || stats.lastSync.includes('Error') || stats.lastSync.includes('Invalid')) {
+      fetchStats();
+    }
+    
+    // Call the original onCardPress handler
+    onCardPress(cardType);
   };
 
   const renderCard = (
@@ -67,7 +110,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     <Card 
       key={cardType}
       style={styles.card} 
-      onPress={() => onCardPress(cardType)}
+      onPress={() => handleCardPress(cardType)}
     >
       <Card.Content>
         <MaterialCommunityIcons name={icon as any} size={32} color={color} />
@@ -79,15 +122,15 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
 
   return (
     <View style={styles.cardsContainer}>
-      {renderCard('Scheduled', loading ? '...' : stats.scheduled, 'calendar-clock', '#4a90e2', 'scheduled')}
+      {renderCard('Booked', loading ? '...' : stats.scheduled, 'calendar-clock', '#4a90e2', 'scheduled')}
       {renderCard('In Progress', loading ? '...' : stats.inProgress, 'clipboard-edit-outline', '#f39c12', 'inProgress')}
       {renderCard('Completed', loading ? '...' : stats.completed, 'clipboard-check', '#2ecc71', 'completed')}
       
-      <Card style={styles.card} onPress={() => onCardPress('sync')}>
+      <Card style={styles.card} onPress={() => handleCardPress('sync')}>
         <Card.Content>
           <MaterialCommunityIcons name="cloud-sync" size={32} color="#95a5a6" />
-          <Text style={styles.cardTitle}>Sync</Text>
-          <Text style={styles.syncStatus}>Last: {loading ? '...' : stats.lastSync}</Text>
+          <Text style={styles.cardTitle}>Last Sync</Text>
+          <Text style={styles.syncStatus}>{loading ? '...' : stats.lastSync}</Text>
         </Card.Content>
       </Card>
 

@@ -487,7 +487,7 @@ export default function ItemsScreen() {
                   
                   {/* Predefined Items List */}
                   <Card style={styles.card}>
-                    <Card.Title title="Predefined Items New" subtitle={`Select from ${categoryTitle}`} />
+                    <Card.Title title="Predefined Items New" subtitle={`Selectfff from ${categoryTitle}`} />
                     <Divider />
                     <Card.Content style={styles.predefinedContent}>
                       <View style={styles.scrollIndicator}>

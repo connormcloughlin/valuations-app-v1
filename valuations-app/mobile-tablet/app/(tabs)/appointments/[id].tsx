@@ -151,15 +151,17 @@ export default function AppointmentDetails() {
     
     // Navigate immediately
     router.push({
-      pathname: '/(tabs)/new-survey',
+      pathname: '/survey/[id]',
       params: { 
+        id: appointment.id?.toString(),
+        appointmentId: appointment.appointmentID?.toString() || appointment.appointmentId?.toString() || appointment.id?.toString(),
+        status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
+        orderNumber: appointment.orderNumber || appointment.orderID?.toString(),
         clientName: appointment.client,
         address: appointment.address,
         policyNo: appointment.policyNo,
         sumInsured: appointment.sumInsured,
-        broker: appointment.broker,
-        appointmentId: appointment.id,
-        orderNumber: appointment.orderNumber
+        broker: appointment.broker
       }
     });
 
@@ -335,7 +337,7 @@ export default function AppointmentDetails() {
               icon="calendar-clock"
               onPress={() => router.back()}
             >
-              Reschedule
+              Reschedule 111111
             </Button>
             <Button
               mode="contained"

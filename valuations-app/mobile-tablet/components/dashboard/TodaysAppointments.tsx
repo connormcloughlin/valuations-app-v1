@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import appointmentsApi from '../../api/appointments';
 
 interface Appointment {
   id: string;
@@ -10,6 +11,8 @@ interface Appointment {
   client: string;
   date: string;
   policyNo: string;
+  status?: string;
+  Invite_Status?: string;
 }
 
 interface TodaysAppointmentsProps {
@@ -30,34 +33,52 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
       setLoading(true);
       setError(null);
       
-      // TODO: Replace with actual API call
-      // const response = await api.getTodaysAppointments();
-      // setAppointments(response.data);
+      // Create today's date range
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
       
-      // For now, using mock data (simulate API delay)
-      await new Promise(resolve => setTimeout(resolve, 400));
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
       
-      const mockData: Appointment[] = [
-        { 
-          id: '1001', 
-          address: '123 Main St', 
-          client: 'M.R. Gumede', 
-          date: '2024-04-30 09:00', 
-          policyNo: 'K 82 mil' 
-        },
-        { 
-          id: '1002', 
-          address: '456 Oak Ave', 
-          client: 'T. Mbatha', 
-          date: '2024-05-02 14:00', 
-          policyNo: 'P 56 mil' 
-        },
-      ];
+      // Format dates to ISO string format
+      const startDateFrom = startOfDay.toISOString();
+      const startDateTo = endOfDay.toISOString();
       
-      setAppointments(mockData);
-    } catch (err) {
+      console.log('Fetching today\'s appointments:', { startDateFrom, startDateTo });
+      
+      // Fetch appointments using the list-view endpoint with date filtering
+      const response = await appointmentsApi.getAppointmentsByListView({
+        page: 1,
+        pageSize: 50, // Get more appointments to ensure we don't miss any
+        status: 'Booked', // Default to booked appointments
+        surveyor: '', // Add empty surveyor parameter
+        startDateFrom,
+        startDateTo
+      });
+      
+      if ((response as any).success && Array.isArray((response as any).data)) {
+        // Map the response data to our interface
+        const todaysAppointments: Appointment[] = (response as any).data.map((appointment: any) => ({
+          id: appointment.id || appointment.appointmentId,
+          address: appointment.address || appointment.fullAddress || 'No address provided',
+          client: appointment.client || 'Unknown client',
+          date: appointment.date || new Date().toISOString(),
+          policyNo: appointment.policyNo || appointment.policyNumber || 'No policy',
+          status: appointment.status,
+          Invite_Status: appointment.Invite_Status
+        }));
+        
+        console.log(`Found ${todaysAppointments.length} appointments for today`);
+        setAppointments(todaysAppointments);
+      } else {
+        console.warn('No appointments found for today or API call failed:', response);
+        setAppointments([]);
+      }
+    } catch (err: any) {
       setError('Failed to load today\'s appointments');
       console.error('Error fetching today\'s appointments:', err);
+      setAppointments([]);
     } finally {
       setLoading(false);
     }
@@ -65,6 +86,19 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
 
   const handleRefresh = () => {
     fetchTodaysAppointments();
+  };
+
+  const formatTime = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
+    } catch {
+      return 'Time TBD';
+    }
   };
 
   if (loading) {
@@ -106,8 +140,9 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
                 <View style={styles.appointmentContent}>
                   <Text style={styles.appointmentAddress}>{appointment.address}</Text>
                   <Text style={styles.appointmentDetails}>
-                    {appointment.client} • {appointment.date.split(' ')[1]}
+                    {appointment.client} • {formatTime(appointment.date)}
                   </Text>
+                  <Text style={styles.policyText}>Policy: {appointment.policyNo}</Text>
                 </View>
               </View>
             </Card.Content>
@@ -154,6 +189,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#7f8c8d',
     marginTop: 2,
+  },
+  policyText: {
+    fontSize: 12,
+    color: '#95a5a6',
+    marginTop: 1,
   },
   emptyMessage: {
     textAlign: 'center',

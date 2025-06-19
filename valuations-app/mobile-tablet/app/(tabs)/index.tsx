@@ -31,6 +31,13 @@ export default function Dashboard() {
     }
   };
 
+  const navigateToAppointmentDetails = (id: string) => {
+    router.push({
+      pathname: '/(tabs)/appointments/[id]' as any,
+      params: { id }
+    });
+  };
+
   const handleCardPress = (cardType: 'scheduled' | 'inProgress' | 'completed' | 'sync') => {
     switch (cardType) {
       case 'scheduled':
@@ -55,7 +62,7 @@ export default function Dashboard() {
       <StatsCards onCardPress={handleCardPress} />
       
       <TodaysAppointments 
-        onAppointmentPress={(id) => navigateToAppointment(id, 'scheduled')} 
+        onAppointmentPress={navigateToAppointmentDetails} 
       />
 
       <SurveysInProgress 

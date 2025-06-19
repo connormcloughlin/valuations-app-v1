@@ -4,6 +4,7 @@ import { Card, Button, Chip, ActivityIndicator, Divider } from 'react-native-pap
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { logNavigation } from '../../../utils/logger';
+import api from '../../../api';
 
 // Define the types for our data
 interface CategorySummary {
@@ -33,85 +34,107 @@ type SurveysDataType = {
   [key: string]: CompletedSurvey;
 };
 
-// Mock completed survey data
-const surveysData: SurveysDataType = {
-  '1004': { 
-    id: '1004',
-    address: '29 Killarney Avenue',
-    client: 'J. Smith',
-    date: '2024-04-20 11:30',
-    policyNo: 'L 94 mil',
-    sumInsured: 'R 4.2 mil',
-    orderNumber: 'ORD-2024-1004',
-    submitted: '2024-04-20',
-    broker: 'Sanlam',
-    completionDate: '2024-04-20',
-    categories: [
-      { id: 'cat-1', name: 'CLOTHING (GENTS / BOYS)', items: 10, value: 28500 },
-      { id: 'cat-2', name: 'FURNITURE', items: 15, value: 92000 },
-      { id: 'cat-3', name: 'KITCHENWARE', items: 20, value: 34500 },
-      { id: 'cat-4', name: 'ELECTRONICS', items: 8, value: 45000 },
-    ],
-    totalValue: 200000,
-    notes: 'Client has valuable antique furniture that requires special attention.'
-  },
-  '1005': { 
-    id: '1005',
-    address: '12 Beach Road',
-    client: 'L. Johnson',
-    date: '2024-04-18 15:00',
-    policyNo: 'M 17 mil',
-    sumInsured: 'R 2.1 mil',
-    orderNumber: 'ORD-2024-1005',
-    submitted: '2024-04-18',
-    broker: 'Old Mutual',
-    completionDate: '2024-04-18',
-    categories: [
-      { id: 'cat-1', name: 'CLOTHING (GENTS / BOYS)', items: 6, value: 15000 },
-      { id: 'cat-2', name: 'FURNITURE', items: 10, value: 58000 },
-      { id: 'cat-4', name: 'ELECTRONICS', items: 12, value: 62000 },
-    ],
-    totalValue: 135000
-  },
-  '1006': { 
-    id: '1006',
-    address: '45 Mountain View',
-    client: 'P. Williams',
-    date: '2024-04-15 09:30',
-    policyNo: 'N 63 mil',
-    sumInsured: 'R 3.2 mil',
-    orderNumber: 'ORD-2024-1006',
-    submitted: '2024-04-15',
-    broker: 'Discovery',
-    completionDate: '2024-04-15',
-    categories: [
-      { id: 'cat-1', name: 'CLOTHING (GENTS / BOYS)', items: 7, value: 19500 },
-      { id: 'cat-2', name: 'FURNITURE', items: 12, value: 78000 },
-      { id: 'cat-3', name: 'KITCHENWARE', items: 18, value: 32000 },
-      { id: 'cat-4', name: 'ELECTRONICS', items: 6, value: 38000 },
-    ],
-    totalValue: 167500
-  }
-};
-
 export default function SurveySummaryScreen() {
   logNavigation('Survey Summary Detail');
   const params = useLocalSearchParams();
-  const { id } = params;
+  const { id, orderNumber: orderNumberFromParams } = params;
   const surveyId = id as string;
   
   const [loading, setLoading] = useState(true);
   const [survey, setSurvey] = useState<CompletedSurvey | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
-    // Simulate API call delay
-    setTimeout(() => {
-      if (surveysData[surveyId]) {
-        setSurvey(surveysData[surveyId]);
+    const fetchSurveySummary = async () => {
+      if (!surveyId) {
+        setError('No survey ID provided.');
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-    }, 600);
-  }, [surveyId]);
+
+      try {
+        setLoading(true);
+        setError(null);
+        
+        let appointmentData: any = {};
+        let orderNumber: string | undefined = orderNumberFromParams as string;
+
+        // 1. Fetch appointment details ONLY if we don't have an order number
+        if (!orderNumber) {
+          console.log('Order number not found in params, fetching appointment details...');
+          // @ts-ignore
+          const appointmentResponse = await api.getAppointmentById(surveyId);
+
+          if (!appointmentResponse.success || !appointmentResponse.data) {
+            throw new Error('Failed to fetch appointment details.');
+          }
+          appointmentData = appointmentResponse.data;
+          orderNumber = appointmentData.orderNumber || appointmentData.orderID;
+        } else {
+          // If we have an order number, we can use the params that were likely passed in
+          appointmentData = params;
+          console.log('Using appointment data from navigation params');
+        }
+
+        if (!orderNumber) {
+          throw new Error('Order number could not be determined for this appointment.');
+        }
+
+        // 2. Fetch survey summary (risk assessment master) using order number
+        // @ts-ignore
+        const summaryResponse = await api.getRiskAssessmentMasterByOrder(orderNumber.toString());
+        
+        let summaryData: any = {};
+        let categorySummary: CategorySummary[] = [];
+        let totalValue = 0;
+
+        if (summaryResponse.success && summaryResponse.data) {
+          console.log('Successfully fetched survey summary data.');
+          summaryData = summaryResponse.data;
+          
+          // Map categories if they exist
+          categorySummary = (summaryData.categories || []).map((cat: any) => ({
+            id: cat.id?.toString() || Math.random().toString(),
+            name: cat.name || 'Unnamed Category',
+            items: cat.itemCount || cat.items || 0,
+            value: cat.totalValue || cat.value || 0,
+          }));
+
+          totalValue = summaryData.totalValue || categorySummary.reduce((total, cat) => total + cat.value, 0);
+        } else {
+          console.warn('Could not fetch survey summary data. Displaying partial info.');
+          // Don't throw an error, just proceed with empty summary data
+        }
+
+        // 3. Map data to CompletedSurvey interface
+        const completedSurvey: CompletedSurvey = {
+          id: surveyId,
+          address: appointmentData.address || 'No address provided',
+          client: appointmentData.clientName || appointmentData.client || 'Unknown Client',
+          date: appointmentData.date || new Date().toISOString(),
+          policyNo: appointmentData.policyNo || 'N/A',
+          sumInsured: String(appointmentData.sumInsured || 'N/A'),
+          orderNumber: String(orderNumber),
+          submitted: summaryData.dateCompleted || appointmentData.dateModified || new Date().toISOString(),
+          broker: appointmentData.broker || 'N/A',
+          completionDate: summaryData.dateCompleted || new Date().toISOString().split('T')[0],
+          categories: categorySummary,
+          totalValue: totalValue,
+          notes: summaryData.notes || appointmentData.notes || '',
+        };
+
+        setSurvey(completedSurvey);
+
+      } catch (err: any) {
+        console.error('Error fetching survey summary:', err);
+        setError(err.message || 'An unexpected error occurred while loading the summary.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSurveySummary();
+  }, [surveyId, orderNumberFromParams]);
   
   const shareSummary = async () => {
     if (!survey) return;

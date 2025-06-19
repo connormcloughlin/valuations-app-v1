@@ -27,7 +27,10 @@ export default function PredefinedItemsList({
   fromCache, 
   onRefresh, 
   onSelectItem,
-  onAddNewItem 
+  onAddNewItem,
+  onSyncStatusChange,
+  onSyncRequest,
+  onTotalsChange
 }: PredefinedItemsListProps) {
   
   // Manage local items state like ItemsTable does
@@ -107,6 +110,66 @@ export default function PredefinedItemsList({
       onAddNewItem(addNewCustomItem);
     }
   }, [onAddNewItem, addNewCustomItem]);
+
+  // Expose sync status to parent component
+  useEffect(() => {
+    if (onSyncStatusChange) {
+      onSyncStatusChange(pendingChangesCount, syncing);
+    }
+  }, [pendingChangesCount, syncing, onSyncStatusChange]);
+
+  // Expose sync function to parent component
+  useEffect(() => {
+    if (onSyncRequest) {
+      onSyncRequest(handleSync);
+    }
+  }, [onSyncRequest]);
+
+  // Calculate and expose totals to parent component
+  const calculateTotals = useCallback(() => {
+    let itemCount = 0;
+    let totalValue = 0;
+
+    items.forEach(item => {
+      const itemId = String(item.id);
+      const editedItem = editItems[itemId];
+      
+      // Count item if it has been edited and has a quantity > 0, or if it's an original item with values
+      const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '0', 10);
+      const price = editedItem?.price ? parseFloat(editedItem.price) : parseFloat(item.price || '0');
+      
+      // Include items that have been edited or have existing values
+      if (editedItem || (quantity > 0 && price > 0)) {
+        if (quantity > 0) {
+          itemCount += 1;
+          totalValue += (quantity * price) || 0;
+        }
+      }
+    });
+
+    return { itemCount, totalValue };
+  }, [items, editItems]);
+
+  // Check if an item has meaningful data captured
+  const hasDataCaptured = useCallback((item: Item) => {
+    const itemId = String(item.id);
+    const editedItem = editItems[itemId];
+    
+    // Get current values (edited or original)
+    const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '0', 10);
+    const price = editedItem?.price ? parseFloat(editedItem.price) : parseFloat(item.price || '0');
+    
+    // Has data if quantity > 0 and price > 0
+    return quantity > 0 && price > 0;
+  }, [editItems]);
+
+  // Expose totals to parent component
+  useEffect(() => {
+    if (onTotalsChange) {
+      const { itemCount, totalValue } = calculateTotals();
+      onTotalsChange(itemCount, totalValue);
+    }
+  }, [onTotalsChange, calculateTotals]);
 
   // Load pending changes count on mount and when items change
   useEffect(() => {
@@ -591,44 +654,12 @@ export default function PredefinedItemsList({
     setExpandedItem(expandedItem === itemId ? null : itemId);
   };
 
-  const handleSelectItem = (item: Item) => {
-    // Close accordion and pass to form
-    setExpandedItem(null);
-    onSelectItem(item);
-  };
-
   return (
     <>
     <Card style={styles.card}>
-      <Card.Title title="Predefined Items" subtitle={`Select from ${categoryTitle}`} />
+      <Card.Title title={categoryTitle}  />
       <Divider />
       
-      {/* Sync indicator and button */}
-      <View style={styles.syncContainer}>
-        <Button
-          mode="outlined"
-          onPress={handleSync}
-          disabled={syncing || pendingChangesCount === 0}
-          loading={syncing}
-          style={{ 
-            borderColor: pendingChangesCount > 0 ? '#4CAF50' : '#ccc'
-          }}
-          contentStyle={{ height: 35 }}
-          labelStyle={{ 
-            color: pendingChangesCount > 0 ? '#4CAF50' : '#ccc', 
-            fontWeight: 'bold',
-            fontSize: 12
-          }}
-          icon="cloud-upload"
-        >
-          {syncing ? 'Syncing...' : `Sync (${pendingChangesCount})`}
-        </Button>
-      </View>
-
-      {/* Status messages */}
-      {syncStatus === 'success' && <Text style={styles.successMessage}>{syncMessage}</Text>}
-      {syncStatus === 'error' && <Text style={styles.errorMessage}>{syncMessage}</Text>}
-
       <Card.Content style={styles.predefinedContent}>
         <View style={styles.scrollIndicator}>
           <MaterialCommunityIcons name="gesture-swipe-down" size={16} color="#7f8c8d" />
@@ -658,6 +689,9 @@ export default function PredefinedItemsList({
             // Check if this is a new custom item (starts with 'custom-new-')
             const isNewItem = item.id.startsWith('custom-new-');
             
+            // Check if item has meaningful data captured
+            const hasData = hasDataCaptured(item);
+            
             return (
               <View key={item.id} style={styles.accordionContainer}>
                 {/* Main item row */}
@@ -674,9 +708,30 @@ export default function PredefinedItemsList({
                   <Text style={styles.predefinedItemType} numberOfLines={1} ellipsizeMode="tail">
                     {type || item.type || (isNewItem ? 'New Item - Enter Type' : 'Unknown Item')}
                   </Text>
-                  {isAutoSaved && (
-                    <MaterialCommunityIcons name="check-circle" size={16} color="#4CAF50" style={{ marginRight: 8 }} />
-                  )}
+                  
+                  {/* Indicators container */}
+                  <View style={styles.indicatorsContainer}>
+                    {/* Data capture indicator */}
+                    {hasData && (
+                      <MaterialCommunityIcons 
+                        name="database-check" 
+                        size={16} 
+                        color="#2196F3" 
+                        style={{ marginRight: 4 }} 
+                      />
+                    )}
+                    
+                    {/* Auto-save indicator */}
+                    {isAutoSaved && (
+                      <MaterialCommunityIcons 
+                        name="check-circle" 
+                        size={16} 
+                        color="#4CAF50" 
+                        style={{ marginRight: 4 }} 
+                      />
+                    )}
+                  </View>
+                  
                   <MaterialCommunityIcons 
                     name={isExpanded ? "chevron-down" : "chevron-right"} 
                     size={20} 
@@ -812,7 +867,7 @@ export default function PredefinedItemsList({
                       </View>
 
                       {/* Action buttons */}
-                      {isNewItem ? (
+                      {isNewItem && (
                         <View style={styles.actionButtonsContainer}>
                           <TouchableOpacity
                             style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
@@ -822,23 +877,7 @@ export default function PredefinedItemsList({
                             <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
                             <Text style={styles.saveButtonText}>Save New Item</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.selectButton}
-                            onPress={() => handleSelectItem(item)}
-                            disabled={!type}
-                          >
-                            <MaterialCommunityIcons name="plus-circle" size={20} color="#fff" />
-                            <Text style={styles.selectButtonText}>Add to My Items</Text>
-                          </TouchableOpacity>
                         </View>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.selectButton}
-                          onPress={() => handleSelectItem(item)}
-                        >
-                          <MaterialCommunityIcons name="plus-circle" size={20} color="#fff" />
-                          <Text style={styles.selectButtonText}>Add to My Items</Text>
-                        </TouchableOpacity>
                       )}
                     </View>
                   </View>
@@ -922,27 +961,6 @@ const styles = StyleSheet.create({
     margin: 16,
     borderRadius: 8,
     overflow: 'hidden',
-  },
-  syncContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    backgroundColor: '#f8f9fa',
-  },
-  successMessage: {
-    color: '#4CAF50',
-    fontSize: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    backgroundColor: '#f0f8f0',
-  },
-  errorMessage: {
-    color: '#f44336',
-    fontSize: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    backgroundColor: '#fef0f0',
   },
   predefinedContent: {
     padding: 0,
@@ -1123,5 +1141,9 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     marginTop: 4,
     textAlign: 'center',
+  },
+  indicatorsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 }); 

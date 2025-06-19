@@ -37,6 +37,11 @@ export interface ItemsSummaryProps {
   userItemsCount: number;
   totalValue: number;
   onAddItem: () => void;
+  onDone: () => void;
+  // Sync props
+  pendingChangesCount: number;
+  syncing: boolean;
+  onSync: () => void;
 }
 
 export interface PredefinedItemsListProps {
@@ -49,6 +54,11 @@ export interface PredefinedItemsListProps {
   onRefresh: () => void;
   onSelectItem: (item: Item) => void;
   onAddNewItem?: (addFunction: () => void) => void;
+  // Sync functionality exposure
+  onSyncStatusChange?: (pendingChangesCount: number, syncing: boolean) => void;
+  onSyncRequest?: (syncFunction: () => void) => void;
+  // Totals calculation exposure
+  onTotalsChange?: (itemCount: number, totalValue: number) => void;
 }
 
 export interface ItemFormProps {

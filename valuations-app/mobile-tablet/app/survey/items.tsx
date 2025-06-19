@@ -14,7 +14,6 @@ import { AppLayout, TabConfig } from '../../components/layout';
 import {
   ItemsSummary,
   PredefinedItemsList,
-  UserItemsTable,
   HandwritingModal,
   CameraModal,
   ItemStates,
@@ -66,9 +65,12 @@ export default function ItemsScreen() {
 
 
   const [predefinedItems, setPredefinedItems] = useState<Item[]>([]); // For storing category items from API
-  const [userItems, setUserItems] = useState<Item[]>([]); // For storing user-added items
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Category totals (calculated from predefined items)
+  const [categoryItemCount, setCategoryItemCount] = useState(0);
+  const [categoryTotalValue, setCategoryTotalValue] = useState(0);
   
   // Handwriting recognition states
   const [showHandwritingModal, setShowHandwritingModal] = useState(false);
@@ -85,6 +87,11 @@ export default function ItemsScreen() {
   
   // Store the add function from PredefinedItemsList using ref
   const addNewItemFunctionRef = useRef<(() => void) | null>(null);
+
+  // Sync-related state
+  const [pendingChangesCount, setPendingChangesCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const syncFunctionRef = useRef<(() => void) | null>(null);
 
   // Define navigation tabs - using standard app navigation
   const surveyTabs: TabConfig[] = [
@@ -379,33 +386,6 @@ export default function ItemsScreen() {
   //   // Functionality moved to inline editing in PredefinedItemsList
   // };
   
-  const deleteItem = (itemId: string) => {
-    setUserItems(userItems.filter(item => item.id !== itemId));
-  };
-  
-  const totalValue = userItems.reduce(
-    (sum, item) => sum + (parseFloat(item.price) * parseInt(item.quantity || '1', 10) || 0), 
-    0
-  );
-
-  const selectPredefinedItem = (item: Item) => {
-    // Add the selected predefined item directly to user items
-    const newItem: Item = {
-      id: `selected-${Date.now().toString()}`,
-      type: item.type,
-      description: item.description || item.type,
-      room: item.room,
-      quantity: '1',
-      price: item.price || '0',
-      notes: item.notes,
-      photo: item.photo,
-      model: item.model,
-      selection: item.selection
-    };
-    
-    setUserItems(prev => [...prev, newItem]);
-  };
-  
   return (
     <AppLayout
       title={categoryTitle as string || 'Survey Items'}
@@ -414,21 +394,6 @@ export default function ItemsScreen() {
       <View style={styles.container}>
         <ConnectionStatus showOffline={true} showOnline={false} />
         
-        {/* Fixed ItemsSummary at top */}
-        <ItemsSummary
-          userItemsCount={userItems.length}
-          totalValue={totalValue}
-          onAddItem={() => {
-            console.log('Add Item button pressed, addNewItemFunction:', addNewItemFunctionRef.current);
-            if (addNewItemFunctionRef.current) {
-              console.log('Calling addNewItemFunction');
-              addNewItemFunctionRef.current();
-            } else {
-              console.log('addNewItemFunction is null - function not set yet');
-            }
-          }}
-        />
-      
         <ScrollView style={styles.scrollView}>
           <PredefinedItemsList
             items={predefinedItems}
@@ -438,17 +403,22 @@ export default function ItemsScreen() {
             isOffline={isOffline}
             fromCache={fromCache}
             onRefresh={fetchCategoryItems}
-            onSelectItem={selectPredefinedItem}
+            onSelectItem={() => {}} // No longer needed since items are edited inline
             onAddNewItem={(func) => {
               console.log('Setting addNewItemFunction via ref:', func);
               addNewItemFunctionRef.current = func;
             }}
-          />
-
-          <UserItemsTable
-            items={userItems}
-            totalValue={totalValue}
-            onDeleteItem={deleteItem}
+            onSyncStatusChange={(pendingCount, syncingStatus) => {
+              setPendingChangesCount(pendingCount);
+              setSyncing(syncingStatus);
+            }}
+            onSyncRequest={(syncFunc) => {
+              syncFunctionRef.current = syncFunc;
+            }}
+            onTotalsChange={(itemCount, totalValue) => {
+              setCategoryItemCount(itemCount);
+              setCategoryTotalValue(totalValue);
+            }}
           />
           
           {/* {userItems.length === 0 && (
@@ -456,15 +426,32 @@ export default function ItemsScreen() {
           )} */}
         </ScrollView>
 
-        <View style={styles.buttonContainer}>
-          <Button
-            mode="contained"
-            style={styles.doneButton}
-            onPress={() => router.back()}
-          >
-            Done
-          </Button>
-        </View>
+        {/* ItemsSummary moved to bottom with combined buttons */}
+        <ItemsSummary
+          userItemsCount={categoryItemCount}
+          totalValue={categoryTotalValue}
+          onAddItem={() => {
+            console.log('Add Item button pressed, addNewItemFunction:', addNewItemFunctionRef.current);
+            if (addNewItemFunctionRef.current) {
+              console.log('Calling addNewItemFunction');
+              addNewItemFunctionRef.current();
+            } else {
+              console.log('addNewItemFunction is null - function not set yet');
+            }
+          }}
+          onDone={() => router.back()}
+          pendingChangesCount={pendingChangesCount}
+          syncing={syncing}
+          onSync={() => {
+            console.log('Sync button pressed, syncFunction:', syncFunctionRef.current);
+            if (syncFunctionRef.current) {
+              console.log('Calling syncFunction');
+              syncFunctionRef.current();
+            } else {
+              console.log('syncFunction is null - function not set yet');
+            }
+          }}
+        />
       </View>
 
       <HandwritingModal
@@ -500,16 +487,5 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  buttonContainer: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  doneButton: {
-    height: 50,
-    justifyContent: 'center',
-    backgroundColor: '#2c3e50',
   },
 });
