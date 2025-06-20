@@ -240,51 +240,35 @@ export default function SurveyScreen() {
       
       console.log(`🔍 Fetching survey data for ID: ${surveyId}`);
       
-      // Try to get appointment data using the same API as in-progress.tsx
-      // @ts-ignore - this method exists in the API
-      const response = await api.getAppointmentsByListView({
-        status: 'In-Progress',
-        page: 1,
-        pageSize: 5,
-        surveyor: null
-      });
+      // Use the same API approach as appointment details screen
+      const appointmentsApi = await import('../../api/appointments');
+      const response = await appointmentsApi.default.getAppointmentById(surveyId) as any;
       
       if (response && response.success && response.data) {
-        // Find the specific appointment by ID
-        const appointment = response.data.find((appt: any) => {
-          const apptId = String(appt.appointmentID || appt.appointmentId || appt.id);
-          return apptId === surveyId;
-        });
+        const appointment = response.data;
         
-        if (appointment) {
-          console.log('✅ Found appointment data:', appointment);
-          
-          // Map appointment data to Survey interface using the same pattern as in-progress.tsx
-          const surveyData: Survey = {
-            id: surveyId,
-            address: String(appointment.address || 'No address provided'),
-            client: String(appointment.client || 'Unknown client'),
-            date: appointment.startTime || appointment.date || new Date().toISOString(),
-            policyNo: String(appointment.policyNo || 'N/A'),
-            sumInsured: String(appointment.sumInsured || 'Not specified'),
-            orderNumber: String(appointment.orderNumber || appointment.orderID || 'Unknown'),
-            lastEdited: appointment.lastEdited || appointment.dateModified || new Date().toISOString().split('T')[0],
-            broker: String(appointment.broker || 'Not specified'),
-            appointmentId: String(appointment.appointmentID || appointment.appointmentId || appointment.id),
-            status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
-            // Categories load on-demand through component interactions
-            categories: [],
-            totalValue: 0,
-            completedCategories: 0
-          };
-          
-          setSurvey(surveyData);
-        } else {
-          console.warn(`❌ No appointment found with ID: ${surveyId}`);
-          setError('Survey not found or is not in progress');
-        }
+        // Map appointment data to Survey interface using the same pattern as appointment details
+        const surveyData: Survey = {
+          id: surveyId,
+          address: String(appointment.address || appointment.location || appointment.property_address || 'No address provided'),
+          client: String(appointment.client || appointment.clientName || appointment.customer_name || 'Unknown client'),
+          date: appointment.startTime || appointment.date || appointment.appointment_date || new Date().toISOString(),
+          policyNo: String(appointment.policyNo || appointment.policyNumber || 'N/A'),
+          sumInsured: String(appointment.sumInsured || 'Not specified'),
+          orderNumber: String(appointment.orderNumber || appointment.orderID || appointment.order_id || 'Unknown'),
+          lastEdited: appointment.lastEdited || appointment.lastModified || appointment.dateModified || new Date().toISOString().split('T')[0],
+          broker: String(appointment.broker || 'Not specified'),
+          appointmentId: String(appointment.appointmentID || appointment.appointmentId || appointment.id || surveyId),
+          status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
+          // Categories load on-demand through component interactions
+          categories: [],
+          totalValue: 0,
+          completedCategories: 0
+        };
+        
+        setSurvey(surveyData);
       } else {
-        console.error('❌ Failed to fetch appointments:', response);
+        console.error('❌ Failed to fetch appointment:', response);
         setError('Failed to load survey data');
       }
     } catch (err) {
