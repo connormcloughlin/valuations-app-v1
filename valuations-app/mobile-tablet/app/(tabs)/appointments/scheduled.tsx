@@ -77,9 +77,15 @@ export default function ScheduledAppointmentsScreen() {
           // Update pagination info
           setPaginationInfo(pageInfo);
           
+          // Map appointments with proper ID handling (same as TodaysAppointments)
+          const mappedAppointments = appointmentsArray.map((appointment: any) => ({
+            ...appointment,
+            id: String(appointment.id || appointment.appointmentId || appointment.appointmentID || appointment.AppointmentID)
+          }));
+          
           // Set appointments
-          setAppointments(appointmentsArray);
-          setFilteredAppointments(appointmentsArray);
+          setAppointments(mappedAppointments);
+          setFilteredAppointments(mappedAppointments);
         } else {
           console.error('Failed to load appointments:', response.message);
           setError('Failed to load appointments. Please try again.');
@@ -149,7 +155,7 @@ export default function ScheduledAppointmentsScreen() {
     console.log(`Navigating to appointment details for ID: ${navigationId}`);
     
     router.push({
-      pathname: '/(tabs)/appointments/appointment-details',
+      pathname: '/(tabs)/appointments/[id]',
       params: { id: navigationId }
     });
   };
