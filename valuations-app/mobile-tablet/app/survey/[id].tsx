@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { logNavigation } from '../../utils/logger';
 import api from '../../api';
 import { AppLayout, TabConfig } from '../../components/layout';
+import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
 
 // Import new components
 import SurveyHeader from './components/SurveyHeader';
@@ -102,7 +103,28 @@ export default function SurveyScreen() {
     setCategoriesLoading(true);
     setCategoriesError(null);
     
+    const cacheKey = `section_categories_${sectionId}`;
+    
     try {
+      // Check cache first
+      console.log('📦 Checking cache for section categories...');
+      const cachedData = await getDataForKey(cacheKey);
+      if (cachedData && cachedData.data) {
+        console.log('✅ Using cached section categories data');
+        setCategories(cachedData.data);
+        setCategoriesLoading(false);
+        
+        // Update survey with cached categories
+        if (survey) {
+          setSurvey({
+            ...survey,
+            categories: cachedData.data,
+            totalValue: cachedData.data.reduce((sum: number, cat: Category) => sum + cat.value, 0)
+          });
+        }
+        // Continue to fetch fresh data in background
+      }
+      
       const res = await api.getRiskAssessmentCategories(sectionId);
       console.log('✅ getRiskAssessmentCategories response:', res);
       
@@ -214,6 +236,10 @@ export default function SurveyScreen() {
         
         setCategories(categoriesWithItems);
         
+        // Cache the processed categories data
+        console.log('💾 Caching section categories data...');
+        await storeDataForKey(cacheKey, categoriesWithItems);
+        
         // Update the survey categories as well
         if (survey) {
           setSurvey({
@@ -239,6 +265,18 @@ export default function SurveyScreen() {
       setError(null);
       
       console.log(`🔍 Fetching survey data for ID: ${surveyId}`);
+      
+      const cacheKey = `survey_data_${surveyId}`;
+      
+      // Check cache first
+      console.log('📦 Checking cache for survey data...');
+      const cachedData = await getDataForKey(cacheKey);
+      if (cachedData && cachedData.data) {
+        console.log('✅ Using cached survey data');
+        setSurvey(cachedData.data);
+        setLoading(false);
+        // Continue to fetch fresh data in background
+      }
       
       // Use the same API approach as appointment details screen
       const appointmentsApi = await import('../../api/appointments');
@@ -267,6 +305,10 @@ export default function SurveyScreen() {
         };
         
         setSurvey(surveyData);
+        
+        // Cache the fresh survey data
+        console.log('💾 Caching survey data...');
+        await storeDataForKey(cacheKey, surveyData);
       } else {
         console.error('❌ Failed to fetch appointment:', response);
         setError('Failed to load survey data');
