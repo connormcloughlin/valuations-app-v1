@@ -1159,6 +1159,80 @@ const appointmentsApi = {
       console.error('Error fetching appointment stats:', error);
       return error.success === false ? error : { success: false, message: error.message };
     }
+  },
+
+  /**
+   * Get appointment by order number
+   * @param {string} orderNumber - Order number to search for
+   * @returns {Promise<Object>} Response with appointment data
+   */
+  getAppointmentByOrder: async (orderNumber) => {
+    try {
+      console.log(`Fetching appointment for order number: ${orderNumber}`);
+      
+      const response = await apiClient.get(`/appointments/order/${orderNumber}`);
+      
+      if (response.data) {
+        // Process the appointment data similar to getAppointmentById
+        let appointmentData = response.data;
+        if (response.data && response.data.data && typeof response.data.data === 'object') {
+          appointmentData = response.data.data;
+        }
+        
+        // Normalize the appointment data
+        if (appointmentData && typeof appointmentData === 'object') {
+          const address = appointmentData.address || 
+                         appointmentData.location || 
+                         appointmentData.property_address || 
+                         appointmentData.FullAddress ||
+                         'No address provided';
+          
+          const client = appointmentData.client || 
+                        appointmentData.clientName || 
+                        appointmentData.clientsName || 
+                        appointmentData.Client ||
+                        'Unknown client';
+          
+          const date = appointmentData.date || 
+                      appointmentData.appointmentDate || 
+                      appointmentData.startTime ||
+                      appointmentData.Start_Time ||
+                      appointmentData.appointment_date || 
+                      new Date().toISOString().split('T')[0];
+          
+          const appointmentId = appointmentData.id || 
+                               appointmentData.appointmentId || 
+                               appointmentData.appointmentID || 
+                               appointmentData.AppointmentID;
+          
+          // Update the appointment data with normalized fields
+          appointmentData = {
+            ...appointmentData,
+            id: appointmentId?.toString(),
+            appointmentId: appointmentId?.toString(),
+            address,
+            client,
+            date,
+            orderNumber: orderNumber,
+            // Preserve the original Invite_Status if available
+            Invite_Status: appointmentData.Invite_Status || appointmentData.status || 'booked',
+            // Keep the status field as a backup
+            status: appointmentData.status || appointmentData.Invite_Status || 'booked'
+          };
+        }
+        
+        return {
+          success: true,
+          data: appointmentData,
+          status: response.status
+        };
+      }
+      
+      throw new Error('Empty response from API');
+    } catch (error) {
+      console.error(`Error fetching appointment for order ${orderNumber}:`, error);
+      return error.success === false ? error : { success: false, message: error.message };
+    }
   }
 };
 

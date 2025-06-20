@@ -2,30 +2,29 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Button } from 'react-native-paper';
 
-interface SurveyActionsProps {
-  progress: number;
-  onContinueSurvey: () => void;
-  onFinishSurvey: () => void;
+interface SurveySummaryActionsProps {
+  onShare: () => void;
+  onDownloadPdf: () => void;
 }
 
-export default function SurveyActions({ progress, onContinueSurvey, onFinishSurvey }: SurveyActionsProps) {
+export default function SurveySummaryActions({ onShare, onDownloadPdf }: SurveySummaryActionsProps) {
   return (
     <View style={styles.buttonContainer}>
       <Button
         mode="outlined"
-        onPress={onContinueSurvey}
-        style={styles.continueButton}
-        icon="clipboard-list"
+        onPress={onShare}
+        style={styles.shareButton}
+        icon="share-variant"
       >
-        Edit Categories
+        Share Summary
       </Button>
       <Button
         mode="contained"
-        onPress={onFinishSurvey}
-        style={styles.finishButton}
-        icon="check-circle"
+        onPress={onDownloadPdf}
+        style={styles.pdfButton}
+        icon="file-pdf-box"
       >
-        Complete Survey
+        Download PDF
       </Button>
     </View>
   );
@@ -39,13 +38,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#eee',
   },
-  continueButton: {
+  shareButton: {
     flex: 1,
     marginRight: 8,
-    borderColor: '#f39c12',
+    borderColor: '#2ecc71',
   },
-  finishButton: {
+  pdfButton: {
     flex: 1,
-    backgroundColor: '#27ae60',
+    backgroundColor: '#2ecc71',
   },
 }); 

@@ -31,7 +31,7 @@ export default function CompletedAppointmentsScreen() {
   const [page, setPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState<PaginationInfo>({
     page: 1,
-    pageSize: 50,
+    pageSize: 20,
     totalItems: 0,
     totalPages: 1,
     hasMore: false

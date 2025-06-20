@@ -245,7 +245,7 @@ export default function SurveyScreen() {
       const response = await api.getAppointmentsByListView({
         status: 'In-Progress',
         page: 1,
-        pageSize: 50,
+        pageSize: 5,
         surveyor: null
       });
       
@@ -272,8 +272,8 @@ export default function SurveyScreen() {
             broker: String(appointment.broker || 'Not specified'),
             appointmentId: String(appointment.appointmentID || appointment.appointmentId || appointment.id),
             status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
-            // TODO: Fetch real categories from risk assessment API
-            categories: [], // Will be populated when categories API is integrated
+            // Categories load on-demand through component interactions
+            categories: [],
             totalValue: 0,
             completedCategories: 0
           };
@@ -383,9 +383,15 @@ export default function SurveyScreen() {
     );
   }
   
-  // Calculate progress (mock for now until categories are integrated)
-  const progress = survey.categories.length > 0 ? 
-    Math.floor((survey.completedCategories / survey.categories.length) * 100) : 0;
+  // Calculate progress based on available categories
+  const totalCategories = categories.length > 0 ? categories.length : survey.categories.length;
+  const completedCategories = categories.length > 0 ? 
+    categories.filter(cat => cat.items > 0).length : survey.completedCategories;
+  
+  const progress = totalCategories > 0 ? 
+    Math.floor((completedCategories / totalCategories) * 100) : 
+    // If no categories loaded yet, allow completion (user can still finish survey)
+    100;
   
   return (
     <AppLayout

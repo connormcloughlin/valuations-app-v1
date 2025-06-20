@@ -714,5 +714,23 @@ export default {
       console.error('Error checking sync health:', error);
       return handleApiError(error);
     }
+  },
+
+  // Get risk assessment masters by order number
+  getRiskAssessmentMasterByOrder: async (orderNumber: string): Promise<ApiResponse> => {
+    try {
+      console.log('Fetching risk assessment masters for order:', orderNumber);
+      
+      const response = await axiosInstance.get(`/risk-assessment-master/by-order/${orderNumber}`);
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error fetching risk assessment masters by order:', error);
+      return handleApiError(error);
+    }
   }
 }; 
