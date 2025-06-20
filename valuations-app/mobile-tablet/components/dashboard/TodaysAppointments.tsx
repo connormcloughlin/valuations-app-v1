@@ -4,6 +4,7 @@ import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import appointmentsApi from '../../api/appointments';
+import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
 
 interface Appointment {
   id: string;
@@ -45,6 +46,19 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
       const startDateFrom = startOfDay.toISOString();
       const startDateTo = endOfDay.toISOString();
       
+      // Create cache key for today's appointments
+      const cacheKey = `todays_appointments_${today.toDateString()}`;
+      
+      // Check cache first
+      console.log('📦 Checking cache for today\'s appointments...');
+      const cachedData = await getDataForKey(cacheKey);
+      if (cachedData && cachedData.data) {
+        console.log('✅ Using cached today\'s appointments data');
+        setAppointments(cachedData.data);
+        setLoading(false);
+        // Continue to fetch fresh data in background
+      }
+      
       console.log('Fetching today\'s appointments:', { startDateFrom, startDateTo });
       
       // Fetch appointments using the list-view endpoint with date filtering
@@ -71,6 +85,10 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
         
         console.log(`Found ${todaysAppointments.length} appointments for today`);
         setAppointments(todaysAppointments);
+        
+        // Cache the fresh data
+        console.log('💾 Caching today\'s appointments data...');
+        await storeDataForKey(cacheKey, todaysAppointments);
       } else {
         console.warn('No appointments found for today or API call failed:', response);
         setAppointments([]);

@@ -331,6 +331,7 @@ class PrefetchService {
         case 'category':
           if (task.categoryId) {
             await this.prefetchCategoryItems(task.categoryId);
+            await this.prefetchFieldConfiguration(task.categoryId);
             this.emitCategoryCompleted(task.categoryId);
           }
           break;
@@ -347,6 +348,54 @@ class PrefetchService {
     } catch (error) {
       task.status = 'failed';
       console.error(`❌ Task failed: ${task.id}`, error);
+    }
+  }
+
+  // Prefetch field configuration for a specific category
+  private async prefetchFieldConfiguration(categoryId: string): Promise<void> {
+    console.log(`📋 PREFETCH - Fetching field configuration for category ${categoryId}`);
+    
+    try {
+      // Check if already cached
+      const { getFieldConfiguration, storeFieldConfiguration } = offlineStorage;
+      const cachedConfig = await getFieldConfiguration(categoryId);
+      
+      if (cachedConfig && cachedConfig.data) {
+        console.log(`📦 PREFETCH - Field configuration already cached for category ${categoryId}`);
+        return;
+      }
+
+      // Fetch from API
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        console.log('❌ PREFETCH - No auth token available for field configuration');
+        return;
+      }
+
+      const axios = await import('axios');
+      const axiosInstance = axios.default.create({
+        baseURL: API_BASE_URL,
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const response = await axiosInstance.get(`/risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
+      
+      if (response.data) {
+        console.log(`💾 PREFETCH - Caching field configuration for category ${categoryId}`);
+        await storeFieldConfiguration(categoryId, response.data);
+      }
+
+    } catch (error: any) {
+      // Handle 404 gracefully - not all categories have field configurations
+      if (error?.response?.status === 404) {
+        console.log(`ℹ️ PREFETCH - No field configuration found for category ${categoryId}`);
+        return;
+      }
+      console.error(`❌ PREFETCH - Error fetching field configuration for category ${categoryId}:`, error);
     }
   }
 

@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   TEMPLATE_ITEMS: 'template_items_',
   LAST_SYNC: 'last_sync_timestamp',
   APPOINTMENTS: 'appointments',
+  FIELD_CONFIG: 'field_config_',
 };
 
 // Store API data in AsyncStorage
@@ -108,7 +109,8 @@ export const clearAllOfflineData = async (): Promise<void> => {
       key.startsWith(STORAGE_KEYS.TEMPLATE_SECTIONS) ||
       key.startsWith(STORAGE_KEYS.TEMPLATE_CATEGORIES) ||
       key.startsWith(STORAGE_KEYS.TEMPLATE_ITEMS) ||
-      key.startsWith(STORAGE_KEYS.APPOINTMENTS)
+      key.startsWith(STORAGE_KEYS.APPOINTMENTS) ||
+      key.startsWith(STORAGE_KEYS.FIELD_CONFIG)
     );
     
     if (apiKeys.length > 0) {
@@ -176,6 +178,16 @@ export const getAssessmentItems = async (categoryId: string): Promise<any | null
   return await getApiData(`assessment_items_${categoryId}`);
 };
 
+// Store field configuration data
+export const storeFieldConfiguration = async (categoryId: string, data: any): Promise<void> => {
+  await storeApiData(`${STORAGE_KEYS.FIELD_CONFIG}${categoryId}`, data);
+};
+
+// Get field configuration data
+export const getFieldConfiguration = async (categoryId: string): Promise<any | null> => {
+  return await getApiData(`${STORAGE_KEYS.FIELD_CONFIG}${categoryId}`);
+};
+
 export default {
   storeRiskTemplates,
   getRiskTemplates,
@@ -199,4 +211,6 @@ export default {
   getAssessmentCategories,
   storeAssessmentItems,
   getAssessmentItems,
+  storeFieldConfiguration,
+  getFieldConfiguration,
 }; 

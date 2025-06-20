@@ -141,8 +141,31 @@ export default function ItemsScreen() {
     console.log('🚀 fetchFieldConfiguration called with categoryId:', categoryId);
     console.log('🏷️  CATEGORY ID BEING PASSED TO API:', categoryId);
     console.log('🏷️  CATEGORY ID TYPE:', typeof categoryId);
+    
     try {
-      console.log('=== STARTING FIELD CONFIGURATION FETCH ===');
+      // Check cache first
+      const { getFieldConfiguration, storeFieldConfiguration } = await import('../../utils/offlineStorage');
+      console.log('📦 Checking cache for field configuration...');
+      
+      const cachedData = await getFieldConfiguration(categoryId);
+      if (cachedData && cachedData.data) {
+        console.log('✅ Using cached field configuration data');
+        console.log('📦 Cached data:', JSON.stringify(cachedData.data, null, 2));
+        
+        // Handle both direct array and nested data structure
+        const fieldsArray = Array.isArray(cachedData.data) ? cachedData.data : 
+                           cachedData.data?.data && Array.isArray(cachedData.data.data) ? cachedData.data.data : null;
+        
+        if (fieldsArray && fieldsArray.length > 0) {
+          console.log('🔧 Setting fieldConfig state with cached data:', fieldsArray);
+          console.log('🔧 Setting useCustomFields to: true');
+          setFieldConfig(fieldsArray);
+          setUseCustomFields(true);
+          return; // Use cached data and return early
+        }
+      }
+      
+      console.log('=== STARTING FIELD CONFIGURATION FETCH FROM API ===');
       console.log(`📋 Category ID: ${categoryId}`);
       console.log(`🌐 Endpoint: /risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
       
@@ -203,6 +226,10 @@ export default function ItemsScreen() {
         console.log('🔧 Setting useCustomFields to: true');
         setFieldConfig(fieldsArray);
         setUseCustomFields(true);
+        
+        // Cache the response data for offline use
+        console.log('💾 Caching field configuration data...');
+        await storeFieldConfiguration(categoryId, response.data);
       } else {
         console.log('❌ No field configuration found, using default fields');
         console.log('Reason:', !response.data ? 'No data' : 

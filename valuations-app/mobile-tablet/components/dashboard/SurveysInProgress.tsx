@@ -4,6 +4,7 @@ import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../../api';
+import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
 
 interface Survey {
   id: string;
@@ -32,6 +33,18 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
       setLoading(true);
       setError(null);
       
+      const cacheKey = 'surveys_in_progress';
+      
+      // Check cache first
+      console.log('📦 Checking cache for in-progress surveys...');
+      const cachedData = await getDataForKey(cacheKey);
+      if (cachedData && cachedData.data) {
+        console.log('✅ Using cached in-progress surveys data');
+        setSurveys(cachedData.data);
+        setLoading(false);
+        // Continue to fetch fresh data in background
+      }
+      
       console.log('Fetching in-progress surveys from API...');
       // @ts-ignore - this method exists in the API
       const response = await api.getAppointmentsByListView({
@@ -56,6 +69,10 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
         }));
         
         setSurveys(surveysData);
+        
+        // Cache the fresh data
+        console.log('💾 Caching in-progress surveys data...');
+        await storeDataForKey(cacheKey, surveysData);
       } else {
         console.warn('Invalid API response:', response);
         setSurveys([]);
