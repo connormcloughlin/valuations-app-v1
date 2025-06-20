@@ -217,6 +217,7 @@ export default function ItemsScreen() {
           // Transform SQLite items to match interface
           const formattedItems = updatedCategoryItems.map((item: any) => ({
             id: String(item.riskassessmentitemid) || '',
+            categoryId: String(currentCategoryId), // Set the categoryId for new items
             type: item.itemprompt || '',
             description: item.description || '',
             model: item.model || '',
@@ -243,6 +244,7 @@ export default function ItemsScreen() {
         // Transform SQLite items to match interface
         const formattedItems = categoryItems.map((item: any) => ({
           id: String(item.riskassessmentitemid) || '',
+          categoryId: String(currentCategoryId), // Set the categoryId for existing items
           type: item.itemprompt || '',
           description: item.description || '',
           model: item.model || '',
@@ -400,6 +402,7 @@ export default function ItemsScreen() {
             loading={loading}
             error={error}
             categoryTitle={categoryTitle as string}
+            categoryId={categoryId as string}
             isOffline={isOffline}
             fromCache={fromCache}
             onRefresh={fetchCategoryItems}

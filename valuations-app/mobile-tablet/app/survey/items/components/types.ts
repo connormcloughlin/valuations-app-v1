@@ -49,6 +49,7 @@ export interface PredefinedItemsListProps {
   loading: boolean;
   error: string | null;
   categoryTitle: string;
+  categoryId: string; // Add categoryId prop
   isOffline: boolean;
   fromCache: boolean;
   onRefresh: () => void;

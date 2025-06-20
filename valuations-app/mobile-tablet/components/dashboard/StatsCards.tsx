@@ -3,12 +3,14 @@ import { StyleSheet } from 'react-native';
 import { View } from '../Themed';
 import { Card, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import appointmentsApi from '../../api/appointments';
 
 interface StatsData {
   scheduled: number;
   inProgress: number;
   completed: number;
+  pendingSync: number;
   lastSync: string;
 }
 
@@ -27,6 +29,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     scheduled: 0,
     inProgress: 0,
     completed: 0,
+    pendingSync: 0,
     lastSync: 'Never'
   });
   const [loading, setLoading] = useState(true);
@@ -40,7 +43,29 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
       setLoading(true);
       
       // Fetch stats from the appointments/stats API
-      const response = await appointmentsApi.getAppointmentStats();
+      const response = await appointmentsApi.getAppointmentStats() as any;
+      
+      // Get pending sync count from SQLite
+      let pendingSync = 0;
+      try {
+        const { 
+          getPendingSyncRiskAssessmentItems, 
+          getPendingSyncAppointments, 
+          getPendingSyncRiskAssessmentMasters, 
+          getPendingSyncMediaFiles 
+        } = await import('../../utils/db');
+        
+        const [pendingItems, pendingAppointments, pendingMasters, pendingMedia] = await Promise.all([
+          getPendingSyncRiskAssessmentItems(),
+          getPendingSyncAppointments(),
+          getPendingSyncRiskAssessmentMasters(),
+          getPendingSyncMediaFiles()
+        ]);
+        
+        pendingSync = pendingItems.length + pendingAppointments.length + pendingMasters.length + pendingMedia.length;
+      } catch (syncError) {
+        console.warn('Could not fetch pending sync count:', syncError);
+      }
       
       if (response?.success && response?.data?.byInviteStatus) {
         const inviteStats = response.data.byInviteStatus;
@@ -50,12 +75,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         const inProgress = (inviteStats['In-progress'] || 0) + (inviteStats['In Progress'] || 0);
         const completed = inviteStats['Completed'] || 0;
         
-        console.log('Appointment stats loaded:', { scheduled, inProgress, completed });
+        console.log('Appointment stats loaded:', { scheduled, inProgress, completed, pendingSync });
         
         setStats({
           scheduled,
           inProgress,
           completed,
+          pendingSync,
           lastSync: new Date().toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
@@ -72,6 +98,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
           scheduled: 0,
           inProgress: 0,
           completed: 0,
+          pendingSync,
           lastSync: response?.success === false ? 'API Error' : 'Invalid Data'
         });
       }
@@ -83,6 +110,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         scheduled: 0,
         inProgress: 0,
         completed: 0,
+        pendingSync: 0,
         lastSync: 'Connection Error'
       });
     } finally {
@@ -91,8 +119,14 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
   };
 
   const handleCardPress = (cardType: 'scheduled' | 'inProgress' | 'completed' | 'sync') => {
-    // If it's a sync card press or there's an error, refresh the stats
-    if (cardType === 'sync' || stats.lastSync.includes('Error') || stats.lastSync.includes('Invalid')) {
+    // If it's a sync card press, navigate to the sync component
+    if (cardType === 'sync') {
+      router.push('/sync');
+      return;
+    }
+    
+    // If there's an error, refresh the stats
+    if (stats.lastSync.includes('Error') || stats.lastSync.includes('Invalid')) {
       fetchStats();
     }
     
@@ -128,9 +162,18 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
       
       <Card style={styles.card} onPress={() => handleCardPress('sync')}>
         <Card.Content>
-          <MaterialCommunityIcons name="cloud-sync" size={32} color="#95a5a6" />
-          <Text style={styles.cardTitle}>Last Sync</Text>
-          <Text style={styles.syncStatus}>{loading ? '...' : stats.lastSync}</Text>
+          <MaterialCommunityIcons 
+            name="cloud-sync" 
+            size={32} 
+            color={stats.pendingSync > 0 ? "#f39c12" : "#95a5a6"} 
+          />
+          <Text style={styles.cardTitle}>Pending Sync</Text>
+          <Text style={[
+            styles.cardCount,
+            stats.pendingSync > 0 && styles.pendingCount
+          ]}>
+            {loading ? '...' : stats.pendingSync}
+          </Text>
         </Card.Content>
       </Card>
 
@@ -174,6 +217,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2c3e50',
     marginTop: 5,
+  },
+  pendingCount: {
+    color: '#f39c12',
   },
   syncStatus: {
     fontSize: 14,

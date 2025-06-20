@@ -23,6 +23,7 @@ export default function PredefinedItemsList({
   loading, 
   error, 
   categoryTitle, 
+  categoryId,
   isOffline, 
   fromCache, 
   onRefresh, 
@@ -71,7 +72,7 @@ export default function PredefinedItemsList({
       price: '0',
       room: '',
       notes: '',
-      categoryId: propsItems[0]?.categoryId || ''
+      categoryId: categoryId // Use the categoryId prop
     };
     
     console.log('PredefinedItemsList: Creating new item:', newItem);
@@ -100,7 +101,7 @@ export default function PredefinedItemsList({
       }
     }));
     console.log('PredefinedItemsList: Edit state set for new item');
-  }, [propsItems]);
+  }, [categoryId]);
 
   // Expose the addNewCustomItem function to parent component
   useEffect(() => {
