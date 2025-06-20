@@ -56,10 +56,15 @@ export default function ItemsScreen() {
     };
   }, []);
 
-  // Fetch predefined items when component loads or categoryId changes
+  // Fetch predefined items and field configuration when component loads or categoryId changes
   useEffect(() => {
+    console.log('🔄 useEffect triggered with categoryId:', categoryId);
     if (categoryId) {
+      console.log('🔄 CategoryId exists, calling fetchCategoryItems and fetchFieldConfiguration');
       fetchCategoryItems();
+      fetchFieldConfiguration(categoryId as string);
+    } else {
+      console.log('🔄 No categoryId, skipping API calls');
     }
   }, [categoryId]);
 
@@ -67,6 +72,10 @@ export default function ItemsScreen() {
   const [predefinedItems, setPredefinedItems] = useState<Item[]>([]); // For storing category items from API
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Field visibility configuration
+  const [fieldConfig, setFieldConfig] = useState<any[]>([]);
+  const [useCustomFields, setUseCustomFields] = useState(false);
   
   // Category totals (calculated from predefined items)
   const [categoryItemCount, setCategoryItemCount] = useState(0);
@@ -126,6 +135,98 @@ export default function ItemsScreen() {
       path: '/(tabs)/profile'
     }
   ];
+
+  // Fetch field configuration for the category
+  const fetchFieldConfiguration = async (categoryId: string) => {
+    console.log('🚀 fetchFieldConfiguration called with categoryId:', categoryId);
+    console.log('🏷️  CATEGORY ID BEING PASSED TO API:', categoryId);
+    console.log('🏷️  CATEGORY ID TYPE:', typeof categoryId);
+    try {
+      console.log('=== STARTING FIELD CONFIGURATION FETCH ===');
+      console.log(`📋 Category ID: ${categoryId}`);
+      console.log(`🌐 Endpoint: /risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
+      
+      // Use the same pattern as other API calls in this file
+      const { API_BASE_URL } = await import('../../constants/apiConfig');
+      const AsyncStorage = await import('@react-native-async-storage/async-storage');
+      const axios = await import('axios');
+      
+      console.log(`API Base URL: ${API_BASE_URL}`);
+      
+      const token = await AsyncStorage.default.getItem('authToken');
+      console.log(`Auth Token: ${token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN'}`);
+      
+      const axiosInstance = axios.default.create({
+        baseURL: API_BASE_URL,
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        }
+      });
+      
+      const fullUrl = `${API_BASE_URL}/risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`;
+      console.log(`Making API request to: ${fullUrl}`);
+      
+      const response = await axiosInstance.get(`/risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
+      
+      console.log('=== FIELD CONFIGURATION API RESPONSE ===');
+      console.log('📋 Category ID requested:', categoryId);
+      console.log('📊 Status:', response.status);
+      console.log('📊 Headers:', response.headers);
+      console.log('📊 Response structure:', {
+        hasData: !!response.data,
+        dataType: typeof response.data,
+        isArray: Array.isArray(response.data),
+        dataLength: Array.isArray(response.data) ? response.data.length : 'N/A'
+      });
+      console.log('🎯 ===== FULL API PAYLOAD RETURNED =====');
+      console.log('🎯 RAW PAYLOAD:', JSON.stringify(response.data, null, 2));
+      console.log('🎯 ===== END OF API PAYLOAD =====');
+      
+      // Handle both direct array and nested data structure
+      const fieldsArray = Array.isArray(response.data) ? response.data : 
+                         response.data?.data && Array.isArray(response.data.data) ? response.data.data : null;
+      
+      if (fieldsArray && fieldsArray.length > 0) {
+        console.log('✅ Field configuration found:', fieldsArray.length, 'fields');
+        console.log('✅ Individual field configurations:');
+        fieldsArray.forEach((field: any, index: number) => {
+          console.log(`  Field ${index + 1}:`, {
+            item_fields: field.item_fields,
+            display_on_ui: field.display_on_ui,
+            field_label: field.field_label,
+            all_properties: Object.keys(field)
+          });
+        });
+        console.log('🔧 Setting fieldConfig state with:', fieldsArray);
+        console.log('🔧 Setting useCustomFields to: true');
+        setFieldConfig(fieldsArray);
+        setUseCustomFields(true);
+      } else {
+        console.log('❌ No field configuration found, using default fields');
+        console.log('Reason:', !response.data ? 'No data' : 
+                   !response.data.data ? 'No data.data property' : 
+                   !Array.isArray(response.data.data) ? 'data.data is not array' : 'Array is empty');
+        setFieldConfig([]);
+        setUseCustomFields(false);
+      }
+    } catch (error: any) {
+      console.log('=== FIELD CONFIGURATION API ERROR ===');
+      console.log('Error type:', typeof error);
+      console.log('Error message:', error?.message || 'No message');
+      console.log('Error response:', error?.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers
+      } : 'No response object');
+      console.log('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      console.log('Will use default fields (show all)');
+      setFieldConfig([]);
+      setUseCustomFields(false);
+    }
+  };
 
   // Fetch items from SQLite first, then API (following ItemComponents.tsx pattern)
   const fetchCategoryItems = async () => {
@@ -405,6 +506,8 @@ export default function ItemsScreen() {
             categoryId={categoryId as string}
             isOffline={isOffline}
             fromCache={fromCache}
+            fieldConfig={fieldConfig}
+            useCustomFields={useCustomFields}
             onRefresh={fetchCategoryItems}
             onSelectItem={() => {}} // No longer needed since items are edited inline
             onAddNewItem={(func) => {

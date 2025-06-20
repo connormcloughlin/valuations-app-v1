@@ -52,6 +52,8 @@ export interface PredefinedItemsListProps {
   categoryId: string; // Add categoryId prop
   isOffline: boolean;
   fromCache: boolean;
+  fieldConfig?: any[]; // Field configuration from API
+  useCustomFields?: boolean; // Whether to use custom field configuration
   onRefresh: () => void;
   onSelectItem: (item: Item) => void;
   onAddNewItem?: (addFunction: () => void) => void;

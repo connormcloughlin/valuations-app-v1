@@ -26,6 +26,8 @@ export default function PredefinedItemsList({
   categoryId,
   isOffline, 
   fromCache, 
+  fieldConfig = [],
+  useCustomFields = false,
   onRefresh, 
   onSelectItem,
   onAddNewItem,
@@ -719,6 +721,48 @@ export default function PredefinedItemsList({
     console.log('Duplicated item created:', duplicatedItem);
   }, [categoryId]);
 
+  // Helper function to check if a field should be visible
+  const isFieldVisible = useCallback((fieldName: string) => {
+    console.log(`🔍 Checking field '${fieldName}' - useCustomFields: ${useCustomFields}, fieldConfig:`, fieldConfig);
+    
+    if (!useCustomFields || !fieldConfig || fieldConfig.length === 0) {
+      // No custom configuration, show all fields
+      console.log(`Field '${fieldName}': visible (no custom config) - useCustomFields: ${useCustomFields}, fieldConfig: ${fieldConfig ? `array[${fieldConfig.length}]` : 'null/undefined'}`);
+      return true;
+    }
+    
+    // Map UI field names to API field names
+    const fieldNameMapping: { [key: string]: string } = {
+      'description': 'Description',
+      'model': 'Model',
+      'quantity': 'Qty',
+      'price': 'Price',
+      'room': 'Location',
+      'notes': 'Notes',
+      'photos': 'HasPhoto'
+    };
+    
+    const apiFieldName = fieldNameMapping[fieldName.toLowerCase()];
+    if (!apiFieldName) {
+      console.log(`Field '${fieldName}': hidden (no mapping found for field name)`);
+      return false;
+    }
+    
+    // Check if the field name exists in the fieldConfig array and has display_on_ui = 1
+    const fieldConfigItem = fieldConfig.find((config: any) => 
+      config.item_fields && config.item_fields.toLowerCase() === apiFieldName.toLowerCase()
+    );
+    
+    if (!fieldConfigItem) {
+      console.log(`Field '${fieldName}': hidden (API field '${apiFieldName}' not found in field configuration)`);
+      return false;
+    }
+    
+    const isVisible = fieldConfigItem.display_on_ui === 1;
+    console.log(`Field '${fieldName}': ${isVisible ? 'visible' : 'hidden'} (API field: '${apiFieldName}', display_on_ui=${fieldConfigItem.display_on_ui})`);
+    return isVisible;
+  }, [useCustomFields, fieldConfig]);
+
   // Group items by itemprompt (type)
   const groupedItems = useMemo(() => {
     const groups: { [key: string]: Item[] } = {};
@@ -899,106 +943,120 @@ export default function PredefinedItemsList({
                         )}
                         
                         <View style={styles.detailRow}>
-                          <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Description:</Text>
-                            <PaperTextInput
-                              value={description}
-                              onChangeText={(value) => handleEdit(itemId, 'description', value)}
-                              onBlur={() => autoSaveItem(itemId)}
-                              style={styles.editInput}
-                              dense
-                              placeholder="Enter description"
-                            />
-                          </View>
-                          <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Model:</Text>
-                            <PaperTextInput
-                              value={model}
-                              onChangeText={(value) => handleEdit(itemId, 'model', value)}
-                              onBlur={() => autoSaveItem(itemId)}
-                              style={styles.editInput}
-                              dense
-                              placeholder="Enter model"
-                            />
-                          </View>
-                        </View>
-
-                        <View style={styles.detailRow}>
-                          <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Quantity:</Text>
-                            <PaperTextInput
-                              value={quantity}
-                              onChangeText={(value) => handleEdit(itemId, 'quantity', value)}
-                              onBlur={() => autoSaveItem(itemId)}
-                              keyboardType="numeric"
-                              style={styles.editInput}
-                              dense
-                              placeholder="1"
-                            />
-                          </View>
-                          <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Price:</Text>
-                            <PaperTextInput
-                              value={price}
-                              onChangeText={(value) => handleEdit(itemId, 'price', value)}
-                              onBlur={() => autoSaveItem(itemId)}
-                              keyboardType="numeric"
-                              style={styles.editInput}
-                              dense
-                              placeholder="0.00"
-                              left={<PaperTextInput.Affix text="R" />}
-                            />
-                          </View>
-                        </View>
-
-                        <View style={styles.detailRow}>
-                          <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Room:</Text>
-                            <PaperTextInput
-                              value={room}
-                              onChangeText={(value) => handleEdit(itemId, 'room', value)}
-                              onBlur={() => autoSaveItem(itemId)}
-                              style={styles.editInput}
-                              dense
-                              placeholder="Enter room/location"
-                            />
-                          </View>
-                          <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Photos:</Text>
-                            <View style={styles.photoSection}>
-                              <TouchableOpacity
-                                style={styles.photoButton}
-                                onPress={() => handleViewPhotos(itemId)}
-                              >
-                                <MaterialCommunityIcons 
-                                  name={(itemPhotos[itemId]?.length || 0) > 0 ? "image-multiple" : "camera"} 
-                                  size={16} 
-                                  color="#4a90e2" 
-                                />
-                                <Text style={styles.photoButtonText}>
-                                  {(itemPhotos[itemId]?.length || 0) > 0 
-                                    ? `${itemPhotos[itemId]?.length || 0} photo${(itemPhotos[itemId]?.length || 0) !== 1 ? 's' : ''}`
-                                    : 'Take Photo'
-                                  }
-                                </Text>
-                              </TouchableOpacity>
+                          {isFieldVisible('description') && (
+                            <View style={styles.detailItem}>
+                              <Text style={styles.detailLabel}>Description:</Text>
+                              <PaperTextInput
+                                value={description}
+                                onChangeText={(value) => handleEdit(itemId, 'description', value)}
+                                onBlur={() => autoSaveItem(itemId)}
+                                style={styles.editInput}
+                                dense
+                                placeholder="Enter description"
+                              />
                             </View>
-                          </View>
+                          )}
+                          {isFieldVisible('model') && (
+                            <View style={styles.detailItem}>
+                              <Text style={styles.detailLabel}>Model:</Text>
+                              <PaperTextInput
+                                value={model}
+                                onChangeText={(value) => handleEdit(itemId, 'model', value)}
+                                onBlur={() => autoSaveItem(itemId)}
+                                style={styles.editInput}
+                                dense
+                                placeholder="Enter model"
+                              />
+                            </View>
+                          )}
                         </View>
 
-                        <View style={styles.notesSection}>
-                          <Text style={styles.detailLabel}>Notes:</Text>
-                          <PaperTextInput
-                            value={notes}
-                            onChangeText={(value) => handleEdit(itemId, 'notes', value)}
-                            onBlur={() => autoSaveItem(itemId)}
-                            style={styles.editInputMultiline}
-                            multiline
-                            numberOfLines={2}
-                            dense
-                            placeholder="Add notes..."
-                          />
+                        <View style={styles.detailRow}>
+                          {isFieldVisible('quantity') && (
+                            <View style={styles.detailItem}>
+                              <Text style={styles.detailLabel}>Quantity:</Text>
+                              <PaperTextInput
+                                value={quantity}
+                                onChangeText={(value) => handleEdit(itemId, 'quantity', value)}
+                                onBlur={() => autoSaveItem(itemId)}
+                                keyboardType="numeric"
+                                style={styles.editInput}
+                                dense
+                                placeholder="1"
+                              />
+                            </View>
+                          )}
+                          {isFieldVisible('price') && (
+                            <View style={styles.detailItem}>
+                              <Text style={styles.detailLabel}>Price:</Text>
+                              <PaperTextInput
+                                value={price}
+                                onChangeText={(value) => handleEdit(itemId, 'price', value)}
+                                onBlur={() => autoSaveItem(itemId)}
+                                keyboardType="numeric"
+                                style={styles.editInput}
+                                dense
+                                placeholder="0.00"
+                                left={<PaperTextInput.Affix text="R" />}
+                              />
+                            </View>
+                          )}
                         </View>
+
+                        <View style={styles.detailRow}>
+                          {isFieldVisible('room') && (
+                            <View style={styles.detailItem}>
+                              <Text style={styles.detailLabel}>Room:</Text>
+                              <PaperTextInput
+                                value={room}
+                                onChangeText={(value) => handleEdit(itemId, 'room', value)}
+                                onBlur={() => autoSaveItem(itemId)}
+                                style={styles.editInput}
+                                dense
+                                placeholder="Enter room/location"
+                              />
+                            </View>
+                          )}
+                          {isFieldVisible('photos') && (
+                            <View style={styles.detailItem}>
+                              <Text style={styles.detailLabel}>Photos:</Text>
+                              <View style={styles.photoSection}>
+                                <TouchableOpacity
+                                  style={styles.photoButton}
+                                  onPress={() => handleViewPhotos(itemId)}
+                                >
+                                  <MaterialCommunityIcons 
+                                    name={(itemPhotos[itemId]?.length || 0) > 0 ? "image-multiple" : "camera"} 
+                                    size={16} 
+                                    color="#4a90e2" 
+                                  />
+                                  <Text style={styles.photoButtonText}>
+                                    {(itemPhotos[itemId]?.length || 0) > 0 
+                                      ? `${itemPhotos[itemId]?.length || 0} photo${(itemPhotos[itemId]?.length || 0) !== 1 ? 's' : ''}`
+                                      : 'Take Photo'
+                                    }
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          )}
+                        </View>
+
+                        {isFieldVisible('notes') && (
+                          <View style={styles.notesSection}>
+                            <Text style={styles.detailLabel}>Notes:</Text>
+                            <PaperTextInput
+                              value={notes}
+                              onChangeText={(value) => handleEdit(itemId, 'notes', value)}
+                              onBlur={() => autoSaveItem(itemId)}
+                              style={styles.editInputMultiline}
+                              multiline
+                              numberOfLines={2}
+                              dense
+                              placeholder="Add notes..."
+                            />
+                          </View>
+                        )}
                       </View>
 
                       {/* Action buttons */}
