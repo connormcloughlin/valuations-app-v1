@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Card, Divider, Button, TextInput as PaperTextInput, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -34,9 +34,26 @@ export default function PredefinedItemsList({
   onTotalsChange
 }: PredefinedItemsListProps) {
   
+  // Handle loading and error states BEFORE any hooks
+  if (loading) {
+    return <ItemStates loading={true} />;
+  }
+
+  if (error) {
+    return (
+      <ItemStates 
+        error={error}
+        onRetry={onRefresh}
+        isOffline={isOffline}
+        fromCache={fromCache}
+      />
+    );
+  }
+  
   // Manage local items state like ItemsTable does
   const [items, setItems] = useState<Item[]>([]);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   // Editing state management
   const [editItems, setEditItems] = useState<{ [key: string]: any }>({});
   const [autoSavedItems, setAutoSavedItems] = useState<{ [key: string]: boolean }>({});
@@ -164,6 +181,81 @@ export default function PredefinedItemsList({
     return quantity > 0 && price > 0;
   }, [editItems]);
 
+  // Handle sync
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncStatus('idle');
+    setSyncMessage('');
+    
+    try {
+      console.log('=== PREDEFINED ITEMS: STARTING SYNC PROCESS ===');
+      console.log('Current predefined items state:', items.length, 'items');
+      console.log('Current edit state:', Object.keys(editItems).length, 'items being edited');
+      console.log('Auto-saved items:', Object.keys(autoSavedItems).length, 'items auto-saved');
+      
+      // Debug: Log all current predefined items
+      console.log('=== ALL PREDEFINED ITEMS IN STATE ===');
+      items.forEach((item, index) => {
+        console.log(`Predefined Item ${index + 1}:`, {
+          id: item.id,
+          type: item.type,
+          description: item.description,
+          quantity: item.quantity,
+          price: item.price,
+          categoryId: item.categoryId
+        });
+      });
+      
+      const result = await riskAssessmentSyncService.syncPendingChanges();
+      
+      if (result.success) {
+        setSyncStatus('success');
+        if (result.synced && (result.synced.riskAssessmentItems > 0 || result.synced.appointments > 0 || result.synced.riskAssessmentMasters > 0)) {
+          setSyncMessage(`Successfully synced ${result.synced.riskAssessmentItems} risk assessment items, ${result.synced.riskAssessmentMasters} assessments, and ${result.synced.appointments} appointments.`);
+        } else {
+          setSyncMessage(result.message || 'No pending changes to sync.');
+        }
+        
+        // Clear auto-saved state and edit state after successful sync
+        setAutoSavedItems({});
+        setEditItems({});
+        
+        // Update pending count
+        const count = await riskAssessmentSyncService.getPendingChangesCount();
+        setPendingChangesCount(count.total);
+        
+        // Show success alert
+        Alert.alert(
+          'Sync Complete',
+          result.message || `Successfully synced ${(result.synced?.riskAssessmentItems || 0) + (result.synced?.riskAssessmentMasters || 0) + (result.synced?.appointments || 0)} items to server.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        setSyncStatus('error');
+        setSyncMessage(result.error || 'Sync failed');
+        
+        // Show error alert
+        Alert.alert(
+          'Sync Failed',
+          result.error || 'Failed to sync changes to server. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      setSyncStatus('error');
+      setSyncMessage('Unexpected error during sync');
+      console.error('Sync error:', error);
+      
+      Alert.alert(
+        'Sync Error',
+        'An unexpected error occurred during sync. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // Expose totals to parent component
   useEffect(() => {
     if (onTotalsChange) {
@@ -243,7 +335,7 @@ export default function PredefinedItemsList({
       console.log('Item ID:', id);
       console.log('Changes:', changes);
 
-      const isNewItem = id.startsWith('custom-new-');
+      const isNewItem = id.startsWith('custom-new-') || id.startsWith('duplicate-');
       
       if (isNewItem) {
         // Handle new custom items - insert them into SQLite
@@ -375,81 +467,6 @@ export default function PredefinedItemsList({
       console.log('Changes applied:', JSON.stringify(changes, null, 2));
     } catch (error) {
       console.error('Auto-save failed for predefined item:', id, error);
-    }
-  };
-
-  // Handle sync
-  const handleSync = async () => {
-    setSyncing(true);
-    setSyncStatus('idle');
-    setSyncMessage('');
-    
-    try {
-      console.log('=== PREDEFINED ITEMS: STARTING SYNC PROCESS ===');
-      console.log('Current predefined items state:', items.length, 'items');
-      console.log('Current edit state:', Object.keys(editItems).length, 'items being edited');
-      console.log('Auto-saved items:', Object.keys(autoSavedItems).length, 'items auto-saved');
-      
-      // Debug: Log all current predefined items
-      console.log('=== ALL PREDEFINED ITEMS IN STATE ===');
-      items.forEach((item, index) => {
-        console.log(`Predefined Item ${index + 1}:`, {
-          id: item.id,
-          type: item.type,
-          description: item.description,
-          quantity: item.quantity,
-          price: item.price,
-          categoryId: item.categoryId
-        });
-      });
-      
-      const result = await riskAssessmentSyncService.syncPendingChanges();
-      
-      if (result.success) {
-        setSyncStatus('success');
-        if (result.synced && (result.synced.riskAssessmentItems > 0 || result.synced.appointments > 0 || result.synced.riskAssessmentMasters > 0)) {
-          setSyncMessage(`Successfully synced ${result.synced.riskAssessmentItems} risk assessment items, ${result.synced.riskAssessmentMasters} assessments, and ${result.synced.appointments} appointments.`);
-        } else {
-          setSyncMessage(result.message || 'No pending changes to sync.');
-        }
-        
-        // Clear auto-saved state and edit state after successful sync
-        setAutoSavedItems({});
-        setEditItems({});
-        
-        // Update pending count
-        const count = await riskAssessmentSyncService.getPendingChangesCount();
-        setPendingChangesCount(count.total);
-        
-        // Show success alert
-        Alert.alert(
-          'Sync Complete',
-          result.message || `Successfully synced ${(result.synced?.riskAssessmentItems || 0) + (result.synced?.riskAssessmentMasters || 0) + (result.synced?.appointments || 0)} items to server.`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        setSyncStatus('error');
-        setSyncMessage(result.error || 'Sync failed');
-        
-        // Show error alert
-        Alert.alert(
-          'Sync Failed',
-          result.error || 'Failed to sync changes to server. Please try again.',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      setSyncStatus('error');
-      setSyncMessage('Unexpected error during sync');
-      console.error('Sync error:', error);
-      
-      Alert.alert(
-        'Sync Error',
-        'An unexpected error occurred during sync. Please try again.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -635,25 +652,90 @@ export default function PredefinedItemsList({
       Alert.alert('Error', 'Failed to delete photo. Please try again.');
     }
   };
-  
-  if (loading) {
-    return <ItemStates loading={true} />;
-  }
-
-  if (error) {
-    return (
-      <ItemStates 
-        error={error}
-        onRetry={onRefresh}
-        isOffline={isOffline}
-        fromCache={fromCache}
-      />
-    );
-  }
 
   const toggleExpansion = (itemId: string) => {
     setExpandedItem(expandedItem === itemId ? null : itemId);
   };
+
+  const toggleGroupExpansion = (groupKey: string) => {
+    const isCurrentlyExpanded = expandedGroup === groupKey;
+    setExpandedGroup(isCurrentlyExpanded ? null : groupKey);
+    
+    // When expanding a group, also expand all items in that group
+    // When collapsing a group, collapse all items in that group
+    if (!isCurrentlyExpanded) {
+      // Expanding: auto-expand all items in this group
+      const groupItems = groupedItems[groupKey] || [];
+      if (groupItems.length === 1) {
+        // If only one item, expand it immediately
+        setExpandedItem(groupItems[0].id);
+      }
+      // For multiple items, let user choose which one to expand
+    } else {
+      // Collapsing: collapse any expanded item
+      setExpandedItem(null);
+    }
+  };
+
+  // Function to duplicate an item with the same itemprompt
+  const duplicateItem = useCallback((originalItem: Item) => {
+    console.log('Duplicating item with itemprompt:', originalItem.type);
+    
+    const duplicatedItem: Item = {
+      id: `duplicate-${Date.now()}`,
+      type: originalItem.type, // Keep the same itemprompt
+      description: '',
+      model: '',
+      quantity: '1',
+      price: '0',
+      room: '',
+      notes: '',
+      categoryId: categoryId
+    };
+    
+    // Add to local items state
+    setItems(prevItems => [...prevItems, duplicatedItem]);
+    
+    // Auto-expand the group containing this item
+    setExpandedGroup(originalItem.type);
+    
+    // Immediately expand the new item for editing
+    setExpandedItem(duplicatedItem.id);
+    
+    // Set it as being edited
+    setEditItems(prev => ({
+      ...prev,
+      [duplicatedItem.id]: {
+        type: duplicatedItem.type,
+        description: '',
+        model: '',
+        quantity: '1',
+        price: '0',
+        room: '',
+        notes: ''
+      }
+    }));
+    
+    console.log('Duplicated item created:', duplicatedItem);
+  }, [categoryId]);
+
+  // Group items by itemprompt (type)
+  const groupedItems = useMemo(() => {
+    const groups: { [key: string]: Item[] } = {};
+    
+    items.forEach(item => {
+      const itemId = String(item.id);
+      const type = editItems[itemId]?.type ?? (item.type || '');
+      const groupKey = type || 'Unknown Items';
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(item);
+    });
+    
+    return groups;
+  }, [items, editItems]);
 
   return (
     <>
@@ -673,7 +755,46 @@ export default function PredefinedItemsList({
           showsVerticalScrollIndicator={true}
           persistentScrollbar={true}
         >
-          {items.map((item: Item, index: number) => {
+          {Object.entries(groupedItems).map(([groupKey, groupItems], groupIndex) => {
+            const isGroupExpanded = expandedGroup === groupKey;
+            const groupItemCount = groupItems.length;
+            
+            return (
+              <View key={groupKey} style={styles.groupContainer}>
+                {/* Group Header */}
+                <TouchableOpacity 
+                  style={[
+                    styles.groupHeader,
+                    groupIndex % 2 === 1 ? styles.groupHeaderAlt : null,
+                    isGroupExpanded ? styles.groupHeaderExpanded : null
+                  ]}
+                  onPress={() => toggleGroupExpansion(groupKey)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.groupTitle} numberOfLines={1} ellipsizeMode="tail">
+                    {groupKey}
+                  </Text>
+                  
+                  {/* Group indicators */}
+                  <View style={styles.groupIndicators}>
+                    {groupItemCount > 1 && (
+                      <View style={styles.countBadge}>
+                        <Text style={styles.countBadgeText}>{groupItemCount}</Text>
+                      </View>
+                    )}
+                    
+                    <MaterialCommunityIcons 
+                      name={isGroupExpanded ? "chevron-down" : "chevron-right"} 
+                      size={20} 
+                      color="#6c757d" 
+                    />
+                  </View>
+                </TouchableOpacity>
+
+                {/* Group Items */}
+                {isGroupExpanded && (
+                  <View style={styles.groupItems}>
+                    {groupItems.map((item: Item, index: number) => {
             const isExpanded = expandedItem === item.id;
             const itemId = String(item.id);
             const isAutoSaved = autoSavedItems[itemId];
@@ -687,18 +808,24 @@ export default function PredefinedItemsList({
             const room = editItems[itemId]?.room ?? (item.room || 'Not specified');
             const notes = editItems[itemId]?.notes ?? (item.notes || '');
             
-            // Check if this is a new custom item (starts with 'custom-new-')
-            const isNewItem = item.id.startsWith('custom-new-');
+            // Check if this is a new custom item (starts with 'custom-new-' or 'duplicate-')
+            const isNewItem = item.id.startsWith('custom-new-') || item.id.startsWith('duplicate-');
             
             // Check if item has meaningful data captured
             const hasData = hasDataCaptured(item);
             
+            // Create a summary for the item (description, model, or "Item #X")
+            const itemSummary = description !== 'Not specified' ? description 
+                              : model !== 'Not specified' ? model
+                              : `Item #${index + 1}`;
+            
             return (
               <View key={item.id} style={styles.accordionContainer}>
-                {/* Main item row */}
+                {/* Main item row - show summary instead of repeating the group name */}
                 <TouchableOpacity 
                   style={[
                     styles.predefinedItem,
+                    styles.groupItemRow, // Different styling for items within groups
                     index % 2 === 1 ? styles.predefinedItemAlt : null,
                     isExpanded ? styles.predefinedItemExpanded : null,
                     isAutoSaved ? styles.predefinedItemAutoSaved : null
@@ -706,9 +833,16 @@ export default function PredefinedItemsList({
                   onPress={() => toggleExpansion(item.id)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.predefinedItemType} numberOfLines={1} ellipsizeMode="tail">
-                    {type || item.type || (isNewItem ? 'New Item - Enter Type' : 'Unknown Item')}
-                  </Text>
+                  <View style={styles.itemSummaryContainer}>
+                    <Text style={styles.itemSummaryText} numberOfLines={1} ellipsizeMode="tail">
+                      {itemSummary}
+                    </Text>
+                    {hasData && (
+                      <Text style={styles.itemValueText}>
+                        {quantity}x @ R{price}
+                      </Text>
+                    )}
+                  </View>
                   
                   {/* Indicators container */}
                   <View style={styles.indicatorsContainer}>
@@ -746,8 +880,8 @@ export default function PredefinedItemsList({
                     <View style={styles.detailsContainer}>
                       {/* Editable Item Details Grid */}
                       <View style={styles.detailsGrid}>
-                        {/* Show type field for new custom items */}
-                        {isNewItem && (
+                        {/* Show type field for new custom items (not duplicates) */}
+                        {item.id.startsWith('custom-new-') && (
                           <View style={styles.detailRow}>
                             <View style={[styles.detailItem, { flex: 2 }]}>
                               <Text style={styles.detailLabel}>Item Type (Required):</Text>
@@ -868,8 +1002,8 @@ export default function PredefinedItemsList({
                       </View>
 
                       {/* Action buttons */}
-                      {isNewItem && (
-                        <View style={styles.actionButtonsContainer}>
+                      <View style={styles.actionButtonsContainer}>
+                        {isNewItem && (
                           <TouchableOpacity
                             style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
                             onPress={() => autoSaveItem(itemId)}
@@ -878,16 +1012,32 @@ export default function PredefinedItemsList({
                             <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
                             <Text style={styles.saveButtonText}>Save New Item</Text>
                           </TouchableOpacity>
-                        </View>
-                      )}
+                        )}
+                        
+                        {/* Add Another button - only show for saved items */}
+                        {!isNewItem && hasData && (
+                          <TouchableOpacity
+                            style={styles.duplicateButton}
+                            onPress={() => duplicateItem(item)}
+                          >
+                            <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
+                            <Text style={styles.duplicateButtonText}>Add Another {type || item.type}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   </View>
                 )}
               </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
             );
           })}
           
-          {items.length === 0 && (
+          {Object.keys(groupedItems).length === 0 && (
             <View style={styles.emptyState}>
               <MaterialCommunityIcons name="clipboard-text-outline" size={48} color="#bdc3c7" />
               <Text style={styles.emptyStateText}>No predefined items found</Text>
@@ -895,7 +1045,7 @@ export default function PredefinedItemsList({
             </View>
           )}
         </ScrollView>
-        {items.length > 6 && (
+        {Object.keys(groupedItems).length > 3 && (
           <View style={styles.scrollIndicator}>
             <MaterialCommunityIcons name="gesture-swipe-up" size={16} color="#7f8c8d" />
           </View>
@@ -1146,5 +1296,91 @@ const styles = StyleSheet.create({
   indicatorsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  // Group styles
+  groupContainer: {
+    marginBottom: 4,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#e8f4f8',
+    borderBottomWidth: 1,
+    borderBottomColor: '#d0e8f0',
+  },
+  groupHeaderAlt: {
+    backgroundColor: '#f0f8f0',
+  },
+  groupHeaderExpanded: {
+    borderBottomColor: '#4a90e2',
+    borderBottomWidth: 2,
+  },
+  groupTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c3e50',
+    flex: 1,
+  },
+  groupIndicators: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  countBadge: {
+    backgroundColor: '#4a90e2',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginRight: 8,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  countBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  groupItems: {
+    backgroundColor: '#f8f9fa',
+  },
+  duplicateButton: {
+    backgroundColor: '#f0f4f7',
+    borderColor: '#4a90e2',
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    flex: 1,
+  },
+  duplicateButtonText: {
+    color: '#4a90e2',
+    fontWeight: '600',
+    marginLeft: 8,
+    fontSize: 14,
+  },
+  // Item summary styles
+  groupItemRow: {
+    paddingLeft: 24, // Indent items within groups
+    backgroundColor: '#fafafa',
+  },
+  itemSummaryContainer: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  itemSummaryText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#2c3e50',
+    marginBottom: 2,
+  },
+  itemValueText: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    fontWeight: '400',
   },
 }); 
