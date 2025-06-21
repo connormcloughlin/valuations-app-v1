@@ -19,12 +19,6 @@ const tabs: TabConfig[] = [
     path: '/(tabs)/survey'
   },
   {
-    name: 'new-survey',
-    title: 'New Survey',
-    icon: 'plus-circle',
-    path: '/(tabs)/new-survey'
-  },
-  {
     name: 'profile',
     title: 'Profile',
     icon: 'account',

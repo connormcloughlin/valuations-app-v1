@@ -141,30 +141,14 @@ export default function InProgressAppointmentsScreen() {
   }, [searchQuery, appointments]);
 
   const navigateToSurvey = (appointment: Appointment) => {
-    // 🔍 DEBUG: Log all available appointment fields
-    console.log('🔍 AVAILABLE APPOINTMENT FIELDS FOR NAVIGATION:');
-    console.log('Full appointment object:', JSON.stringify(appointment, null, 2));
-    console.log('appointmentID:', appointment.appointmentID);
-    console.log('appointmentId:', appointment.appointmentId);
-    console.log('id:', appointment.id);
-    console.log('status:', appointment.status);
-    console.log('inviteStatus:', appointment.inviteStatus);
-    console.log('Invite_Status:', appointment.Invite_Status);
-    console.log('orderNumber:', appointment.orderNumber);
-    console.log('orderID:', appointment.orderID);
+    // Get the appointment ID for navigation
+    const appointmentId = appointment.appointmentID?.toString() || appointment.appointmentId?.toString() || appointment.id?.toString();
+    
+    console.log('🔍 Navigating to survey detail for appointment:', appointmentId);
     
     router.push({
-      pathname: '/(tabs)/new-survey',
-      params: { 
-        appointmentId: appointment.appointmentID?.toString() || appointment.appointmentId?.toString() || appointment.id?.toString(),
-        status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
-        orderNumber: appointment.orderNumber || appointment.orderID?.toString(),
-        clientName: appointment.client,
-        address: appointment.address,
-        policyNo: appointment.policyNo,
-        sumInsured: appointment.sumInsured,
-        broker: appointment.broker
-      }
+      pathname: '/survey/[id]',
+      params: { id: appointmentId }
     });
   };
 
