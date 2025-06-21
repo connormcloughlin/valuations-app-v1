@@ -26,10 +26,10 @@ export const useSurveyNavigation = ({ survey, surveyId }: NavigationHandlersProp
   };
 
   const continueSurvey = () => {
-    // Navigate to new-survey with appointment data for proper template selection
+    // Navigate to survey items for survey completion
     if (survey?.appointmentId) {
       router.push({
-        pathname: '/(tabs)/new-survey',
+        pathname: '/survey/items',
         params: {
           appointmentId: survey.appointmentId,
           status: survey.status || 'in-progress',
@@ -38,14 +38,22 @@ export const useSurveyNavigation = ({ survey, surveyId }: NavigationHandlersProp
           address: survey.address,
           policyNo: survey.policyNo,
           sumInsured: survey.sumInsured,
-          broker: survey.broker
+          broker: survey.broker,
+          surveyId: surveyId,
+          // Default to first category if no specific category is selected
+          categoryId: 'default',
+          categoryTitle: 'Survey Items'
         }
       });
     } else {
-      // Fallback to old categories screen
+      // Fallback to survey items
       router.push({
-        pathname: '/survey/categories_old',
-        params: { surveyId }
+        pathname: '/survey/items',
+        params: { 
+          surveyId,
+          categoryId: 'default',
+          categoryTitle: 'Survey Items'
+        }
       });
     }
   };

@@ -166,6 +166,30 @@ apiClient.interceptors.response.use(
     };
   },
   async (error) => {
+    // Handle 404s more gracefully for "no content" scenarios
+    if (error.response?.status === 404) {
+      const errorMessage = error.response?.data?.message || error.message || '';
+      const isNoContentScenario = errorMessage.toLowerCase().includes('no items found') || 
+                                  errorMessage.toLowerCase().includes('no data found') ||
+                                  errorMessage.toLowerCase().includes('not found for this category');
+      
+      if (isNoContentScenario) {
+        // Treat as successful empty result (like 204 No Content)
+        console.log('📦 === API RESPONSE: NO CONTENT ===');
+        console.log(`📦 Status: 404 (treating as empty result)`);
+        console.log(`📦 URL: ${error.config?.url || 'No URL'}`);
+        console.log(`📦 Message: ${errorMessage}`);
+        console.log('📦 === END NO CONTENT ===');
+        
+        return {
+          success: true,
+          data: [], // Return empty array for no items found
+          status: 204, // Treat as No Content
+          message: errorMessage
+        };
+      }
+    }
+    
     console.log('❌ === API RESPONSE ERROR ===');
     console.log(`❌ Status: ${error.response?.status || 'No status'}`);
     console.log(`❌ URL: ${error.config?.url || 'No URL'}`);

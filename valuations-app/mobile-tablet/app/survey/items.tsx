@@ -356,7 +356,8 @@ export default function ItemsScreen() {
         } else {
           console.log(`No items found in API for category: ${currentCategoryId}`);
           setPredefinedItems([]);
-          setError('No items found for this category');
+          // Don't set error for empty categories - this is a normal state
+          setError(null);
         }
       } else {
         // Use existing SQLite items

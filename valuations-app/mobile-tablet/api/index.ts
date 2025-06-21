@@ -79,6 +79,23 @@ const handleApiError = (error: any): ApiResponse => {
   console.error('API Error:', error);
   
   if (error.response) {
+    // Handle 404s more gracefully for "no content" scenarios
+    if (error.response.status === 404) {
+      const errorMessage = error.response.data?.message || error.message || '';
+      const isNoContentScenario = errorMessage.toLowerCase().includes('no items found') || 
+                                  errorMessage.toLowerCase().includes('no data found') ||
+                                  errorMessage.toLowerCase().includes('not found for this category');
+      
+      if (isNoContentScenario) {
+        return {
+          success: true,
+          data: [], // Return empty array for no items found
+          status: 204, // Treat as No Content
+          message: errorMessage
+        };
+      }
+    }
+    
     // Server responded with a status code outside the 2xx range
     return {
       success: false,

@@ -70,17 +70,6 @@ export default function Dashboard() {
       />
 
       <DevelopmentTools />
-
-      <Button 
-        mode="contained" 
-        onPress={() => {
-          console.log('NAVIGATION: Button pressed, navigating to test-page');
-          router.push('/test-page');
-        }}
-        style={{ backgroundColor: '#4a90e2', margin: 20 }}
-      >
-        Combined View
-      </Button>
     </ScrollView>
   );
 }
