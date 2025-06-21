@@ -20,7 +20,7 @@ export default function UserItemsTable({ items, totalValue, onDeleteItem }: User
           <DataTable.Title>{' '}</DataTable.Title>
         </DataTable.Header>
         
-        {items.filter(item => parseFloat(item.quantity) > 0 && parseFloat(item.price) > 0).map((item: Item) => {
+        {items.filter(item => (parseFloat(item.quantity) > 0 && parseFloat(item.price) > 0) || (item.description && item.description.trim() !== '')).map((item: Item) => {
           const total = parseFloat(item.price) * parseInt(item.quantity || '1', 10);
           return (
             <DataTable.Row key={item.id}>

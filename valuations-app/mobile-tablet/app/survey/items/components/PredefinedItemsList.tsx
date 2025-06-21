@@ -178,9 +178,10 @@ export default function PredefinedItemsList({
     // Get current values (edited or original)
     const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '0', 10);
     const price = editedItem?.price ? parseFloat(editedItem.price) : parseFloat(item.price || '0');
+    const description = editedItem?.description || item.description || '';
     
-    // Has data if quantity > 0 and price > 0
-    return quantity > 0 && price > 0;
+    // Has data if (quantity > 0 and price > 0) OR description is not empty
+    return (quantity > 0 && price > 0) || (description && description.trim() !== '');
   }, [editItems]);
 
   // Handle sync

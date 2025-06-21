@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, View, ScrollView, Text, Share } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View, ScrollView, Text, Share, Alert } from 'react-native';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -52,6 +52,9 @@ export default function SurveySummaryScreen() {
   // Use custom hook for data fetching
   const { loading, survey, error } = useSurveySummaryData(surveyId, orderNumberFromParams as string);
   
+  // State for completion action
+  const [completing, setCompleting] = useState(false);
+  
   const shareSummary = async () => {
     if (!survey) return;
     
@@ -77,6 +80,75 @@ Completed on ${survey.completionDate}
   const downloadPdf = () => {
     // In a real app, this would generate and download a PDF
     console.log('Downloading PDF for survey:', surveyId);
+  };
+  
+  const completeSurvey = async () => {
+    if (!survey) return;
+    
+    Alert.alert(
+      'Complete Survey',
+      'Are you sure you want to complete this survey? This action will finalize the survey and cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Complete',
+          style: 'default',
+          onPress: async () => {
+            try {
+              setCompleting(true);
+              
+              console.log('🔄 Completing survey for appointment ID:', surveyId);
+              
+              // Import the API
+              const api = await import('../../../api');
+              
+              // Update the appointment status to "Finalise"
+              // @ts-ignore - this method exists in the API
+              const response = await api.default.updateAppointment(surveyId, {
+                inviteStatus: 'Finalise'
+              });
+              
+              if (response && response.success) {
+                console.log('✅ Survey completed successfully');
+                
+                Alert.alert(
+                  'Survey Completed',
+                  'The survey has been successfully completed and finalized.',
+                  [
+                    {
+                      text: 'OK',
+                      onPress: () => {
+                        // Navigate back to dashboard or surveys list
+                        router.push('/(tabs)');
+                      },
+                    },
+                  ]
+                );
+              } else {
+                console.error('❌ Failed to complete survey:', response);
+                Alert.alert(
+                  'Error',
+                  'Failed to complete the survey. Please try again.',
+                  [{ text: 'OK' }]
+                );
+              }
+            } catch (error) {
+              console.error('❌ Error completing survey:', error);
+              Alert.alert(
+                'Error',
+                'An error occurred while completing the survey. Please try again.',
+                [{ text: 'OK' }]
+              );
+            } finally {
+              setCompleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
   
   if (loading) {
@@ -165,6 +237,8 @@ Completed on ${survey.completionDate}
         <SurveySummaryActions
           onShare={shareSummary}
           onDownloadPdf={downloadPdf}
+          onComplete={completeSurvey}
+          completing={completing}
         />
       </View>
     </AppLayout>
