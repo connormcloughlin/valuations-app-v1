@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../constants/apiConfig';
 import {
   insertRiskAssessmentItem,
+  batchInsertRiskAssessmentItems,
   getAllRiskAssessmentItems,
   RiskAssessmentItem,
   waitForDatabase,
@@ -448,10 +449,9 @@ class PrefetchService {
       const itemsToProcess = response.data;
       console.log(`📦 PREFETCH - Processing ${itemsToProcess.length} items for category ${categoryId}`);
       
-      // Store each item in SQLite
-      for (let i = 0; i < itemsToProcess.length; i++) {
-        const item = itemsToProcess[i];
-        console.log(`📝 PREFETCH - Processing item ${i + 1}/${itemsToProcess.length}:`, {
+      // Prepare all items for batch insert (Step 1.2 Performance Optimization)
+      const sqliteItems: RiskAssessmentItem[] = itemsToProcess.map((item, index) => {
+        console.log(`📝 PREFETCH - Preparing item ${index + 1}/${itemsToProcess.length}:`, {
           riskassessmentitemid: item.riskassessmentitemid,
           riskassessmentcategoryid: item.riskassessmentcategoryid,
           itemprompt: item.itemprompt,
@@ -459,7 +459,7 @@ class PrefetchService {
           rank: item.rank
         });
         
-        const sqliteItem: RiskAssessmentItem = {
+        return {
           riskassessmentitemid: Number(item.riskassessmentitemid),
           riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
           itemprompt: item.itemprompt || '',
@@ -489,9 +489,10 @@ class PrefetchService {
           notes: item.notes || '',
           appointmentid: this.currentStats?.appointmentId || ''
         };
-        
-        await insertRiskAssessmentItem(sqliteItem);
-      }
+      });
+      
+      // Batch insert all items at once (10-50x faster than individual inserts)
+      await batchInsertRiskAssessmentItems(sqliteItems);
     } catch (error: any) {
       // Handle API errors gracefully
       if (error?.response?.status === 404) {

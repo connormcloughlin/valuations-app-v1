@@ -209,45 +209,43 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
                           return sum + (price * qty);
                         }, 0);
                         
-                        // Store in SQLite for future use (same as detail screen)
-                        const { insertRiskAssessmentItem } = await import('../../../../utils/db');
-                        for (const item of apiResponse.data) {
-                          const sqliteItem = {
-                            riskassessmentitemid: Number(item.riskassessmentitemid),
-                            riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
-                            itemprompt: item.itemprompt || '',
-                            itemtype: Number(item.itemtype) || 0,
-                            rank: Number(item.rank) || 0,
-                            commaseparatedlist: item.commaseparatedlist || '',
-                            selectedanswer: item.selectedanswer || '',
-                            qty: Number(item.qty) || 0,
-                            price: Number(item.price) || 0,
-                            description: item.description || '',
-                            model: item.model || '',
-                            location: item.location || '',
-                            assessmentregisterid: Number(item.assessmentregisterid) || 0,
-                            assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
-                            datecreated: item.datecreated || new Date().toISOString(),
-                            createdbyid: item.createdbyid || '',
-                            dateupdated: item.dateupdated || new Date().toISOString(),
-                            updatedbyid: item.updatedbyid || '',
-                            issynced: Number(item.issynced) || 0,
-                            syncversion: Number(item.syncversion) || 0,
-                            deviceid: item.deviceid || '',
-                            syncstatus: item.syncstatus || '',
-                            synctimestamp: item.synctimestamp || new Date().toISOString(),
-                            hasphoto: Number(item.hasphoto) || 0,
-                            latitude: Number(item.latitude) || 0,
-                            longitude: Number(item.longitude) || 0,
-                            notes: item.notes || '',
-                            pending_sync: 0
-                          };
-                          
-                          try {
-                            await insertRiskAssessmentItem(sqliteItem);
-                          } catch (insertError) {
-                            console.warn('Failed to insert item to SQLite:', insertError);
-                          }
+                        // Store in SQLite for future use (Step 1.2 - Batch Insert Optimization)
+                        const { batchInsertRiskAssessmentItems } = await import('../../../../utils/db');
+                        const sqliteItems = apiResponse.data.map((item: any) => ({
+                          riskassessmentitemid: Number(item.riskassessmentitemid),
+                          riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
+                          itemprompt: item.itemprompt || '',
+                          itemtype: Number(item.itemtype) || 0,
+                          rank: Number(item.rank) || 0,
+                          commaseparatedlist: item.commaseparatedlist || '',
+                          selectedanswer: item.selectedanswer || '',
+                          qty: Number(item.qty) || 0,
+                          price: Number(item.price) || 0,
+                          description: item.description || '',
+                          model: item.model || '',
+                          location: item.location || '',
+                          assessmentregisterid: Number(item.assessmentregisterid) || 0,
+                          assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
+                          datecreated: item.datecreated || new Date().toISOString(),
+                          createdbyid: item.createdbyid || '',
+                          dateupdated: item.dateupdated || new Date().toISOString(),
+                          updatedbyid: item.updatedbyid || '',
+                          issynced: Number(item.issynced) || 0,
+                          syncversion: Number(item.syncversion) || 0,
+                          deviceid: item.deviceid || '',
+                          syncstatus: item.syncstatus || '',
+                          synctimestamp: item.synctimestamp || new Date().toISOString(),
+                          hasphoto: Number(item.hasphoto) || 0,
+                          latitude: Number(item.latitude) || 0,
+                          longitude: Number(item.longitude) || 0,
+                          notes: item.notes || '',
+                          pending_sync: 0
+                        }));
+                        
+                        try {
+                          await batchInsertRiskAssessmentItems(sqliteItems);
+                        } catch (insertError) {
+                          console.warn('Failed to batch insert items to SQLite:', insertError);
                         }
                       }
                     } else {

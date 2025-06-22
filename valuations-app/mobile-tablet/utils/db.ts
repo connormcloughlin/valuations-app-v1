@@ -1001,6 +1001,167 @@ export async function forceReloadFromAPI(): Promise<void> {
   }
 }
 
+// Batch insert risk assessment items (Step 1.2 - Performance Optimization)
+export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]): Promise<void> {
+  if (items.length === 0) return;
+  
+  console.log(`🔄 Batch inserting ${items.length} risk assessment items...`);
+  const start = performance.now();
+  
+  try {
+    const database = await ensureDbReady();
+    
+    await database.withTransactionAsync(async () => {
+      const stmt = await database.prepareAsync(`
+        INSERT OR REPLACE INTO risk_assessment_items (
+          riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
+          commaseparatedlist, selectedanswer, qty, price, description, model, location,
+          assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
+          dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
+          synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      try {
+        for (const item of items) {
+          const pendingSync = item.issynced ? 0 : (item.pending_sync ?? 1);
+          
+          await stmt.executeAsync([
+            item.riskassessmentitemid,
+            item.riskassessmentcategoryid,
+            item.itemprompt || '',
+            item.itemtype || 0,
+            item.rank || 0,
+            item.commaseparatedlist || '',
+            item.selectedanswer || '',
+            item.qty || 0,
+            item.price || 0,
+            item.description || '',
+            item.model || '',
+            item.location || '',
+            item.assessmentregisterid || 0,
+            item.assessmentregistertypeid || 0,
+            item.datecreated || new Date().toISOString(),
+            item.createdbyid || '',
+            item.dateupdated || new Date().toISOString(),
+            item.updatedbyid || '',
+            item.issynced ? 1 : 0,
+            item.syncversion || 0,
+            item.deviceid || '',
+            item.syncstatus || '',
+            item.synctimestamp || new Date().toISOString(),
+            item.hasphoto ? 1 : 0,
+            item.latitude || 0,
+            item.longitude || 0,
+            item.notes || '',
+            pendingSync,
+            item.appointmentid || null
+          ]);
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
+    });
+    
+    const duration = performance.now() - start;
+    console.log(`✅ Batch insert completed in ${duration.toFixed(2)}ms (${items.length} items)`);
+    console.log(`📊 Performance: ${(duration / items.length).toFixed(2)}ms per item`);
+    
+  } catch (error) {
+    console.error('❌ Error in batch insert:', error);
+    throw error;
+  }
+}
+
+// Batch update risk assessment items (Step 1.2 - Performance Optimization)
+export async function batchUpdateRiskAssessmentItems(items: RiskAssessmentItem[]): Promise<void> {
+  if (items.length === 0) return;
+  
+  console.log(`🔄 Batch updating ${items.length} risk assessment items...`);
+  
+  // Mark all items as needing sync
+  const itemsWithSync = items.map(item => ({
+    ...item,
+    pending_sync: 1,
+    dateupdated: new Date().toISOString()
+  }));
+  
+  await batchInsertRiskAssessmentItems(itemsWithSync);
+}
+
+// Test batch insert performance (Step 1.2 validation)
+export async function testBatchInsertPerformance(): Promise<void> {
+  console.log('🧪 Testing batch insert performance...');
+  
+  // Create test data
+  const testItems: RiskAssessmentItem[] = [];
+  for (let i = 1; i <= 100; i++) {
+    testItems.push({
+      riskassessmentitemid: 90000 + i, // Use high IDs to avoid conflicts
+      riskassessmentcategoryid: 1,
+      itemprompt: `Test Item ${i}`,
+      itemtype: 1,
+      rank: i,
+      commaseparatedlist: '',
+      selectedanswer: '',
+      qty: 1,
+      price: 100,
+      description: `Test description ${i}`,
+      model: `Model ${i}`,
+      location: `Location ${i}`,
+      assessmentregisterid: 1,
+      assessmentregistertypeid: 1,
+      datecreated: new Date().toISOString(),
+      createdbyid: 'test-user',
+      dateupdated: new Date().toISOString(),
+      updatedbyid: 'test-user',
+      issynced: 0,
+      syncversion: 1,
+      deviceid: 'test-device',
+      syncstatus: 'pending',
+      synctimestamp: new Date().toISOString(),
+      hasphoto: 0,
+      latitude: 0,
+      longitude: 0,
+      notes: `Test notes ${i}`,
+      pending_sync: 1,
+      appointmentid: 'test-appointment'
+    });
+  }
+  
+  // Test individual inserts
+  console.log('⏱️ Testing individual inserts...');
+  const individualStart = performance.now();
+  for (const item of testItems.slice(0, 50)) { // Test with 50 items
+    await insertRiskAssessmentItem(item);
+  }
+  const individualDuration = performance.now() - individualStart;
+  
+  // Test batch insert
+  console.log('⏱️ Testing batch insert...');
+  const batchStart = performance.now();
+  await batchInsertRiskAssessmentItems(testItems.slice(50, 100)); // Test with 50 items
+  const batchDuration = performance.now() - batchStart;
+  
+  // Calculate performance improvement
+  const improvement = ((individualDuration - batchDuration) / individualDuration * 100);
+  
+  console.log('📊 Batch Insert Performance Results:');
+  console.log(`   Individual inserts (50 items): ${individualDuration.toFixed(2)}ms`);
+  console.log(`   Batch insert (50 items): ${batchDuration.toFixed(2)}ms`);
+  console.log(`   Performance improvement: ${improvement.toFixed(1)}%`);
+  console.log(`   Speed multiplier: ${(individualDuration / batchDuration).toFixed(1)}x faster`);
+  
+  // Cleanup test data
+  try {
+    const database = await ensureDbReady();
+    await database.runAsync('DELETE FROM risk_assessment_items WHERE riskassessmentitemid >= 90000');
+    console.log('🧹 Cleaned up test data');
+  } catch (error) {
+    console.warn('⚠️ Could not cleanup test data:', error);
+  }
+}
+
 // Test index performance (for Step 1.1 validation)
 export async function testIndexPerformance(): Promise<void> {
   try {
