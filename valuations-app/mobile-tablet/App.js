@@ -17,7 +17,7 @@ export default function App() {
   // Update offline status
   useEffect(() => {
     const checkIsOffline = async () => {
-      const online = await connectionUtils.updateConnectionStatus();
+      const online = await connectionUtils.getStatus();
       setIsOffline(!online);
     };
     

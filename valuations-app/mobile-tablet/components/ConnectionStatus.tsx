@@ -34,9 +34,9 @@ const ConnectionStatus: React.FC<ConnectionStatusProps> = ({
         lastStatusRef.current = currentStatus;
       }
       
-      // Only call updateConnectionStatus if truly needed
+      // Only call getStatus if truly needed
       if (!currentStatus || !onlineShownRef.current) {
-        const status = await connectionUtils.updateConnectionStatus();
+        const status = await connectionUtils.getStatus();
         if (status !== currentStatus) {
           setIsConnected(status);
           lastStatusRef.current = status;

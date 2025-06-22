@@ -63,11 +63,11 @@ export default function RootLayout() {
   // Initialize connection monitoring
   useEffect(() => {
     // Check connection status initially
-    connectionUtils.updateConnectionStatus();
+    connectionUtils.getStatus();
     
     // Set up periodic connection checks
     const intervalId = setInterval(() => {
-      connectionUtils.updateConnectionStatus();
+      connectionUtils.getStatus();
     }, 30000); // Check every 30 seconds
     
     return () => {

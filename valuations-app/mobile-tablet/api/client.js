@@ -86,10 +86,38 @@ const apiClient = axios.create({
   headers: API_CONFIG.HEADERS
 });
 
+// Add retry configuration for network errors
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
+// Helper function to wait/delay
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper function to determine if error is retryable
+const isRetryableError = (error) => {
+  if (!error.response) {
+    // Network errors (no response received)
+    return error.code === 'ERR_NETWORK' || 
+           error.code === 'ECONNABORTED' || 
+           error.code === 'ENOTFOUND' || 
+           error.code === 'ECONNREFUSED';
+  }
+  
+  // Server errors that might be temporary
+  return error.response.status >= 500 && error.response.status < 600;
+};
+
 // Add request interceptor to include bearer token
 apiClient.interceptors.request.use(
   async (config) => {
     try {
+      // Increase timeout for specific endpoints that are known to be slow
+      if (config.url?.includes('/appointments/list-view') || 
+          config.url?.includes('/appointments/stats')) {
+        config.timeout = 45000; // 45 seconds for appointment endpoints
+        console.log(`🕐 Extended timeout to 45s for ${config.url}`);
+      }
+      
       // Only log detailed info for non-GET requests or in development
       const shouldLogDetails = config.method !== 'get' || __DEV__;
       
@@ -270,11 +298,35 @@ apiClient.interceptors.response.use(
       console.log(`❌ Network error:`, error.code);
     }
     
+    // Add retry logic for network errors
+    const config = error.config;
+    if (config && isRetryableError(error)) {
+      // Initialize retry count if not present
+      config.__retryCount = config.__retryCount || 0;
+      
+      if (config.__retryCount < MAX_RETRIES) {
+        config.__retryCount++;
+        const retryDelay = RETRY_DELAY * config.__retryCount;
+        
+        console.log(`🔄 Retrying request (${config.__retryCount}/${MAX_RETRIES}) after ${retryDelay}ms: ${config.url}`);
+        
+        // Wait before retrying
+        await delay(retryDelay);
+        
+        // Retry the request
+        return apiClient(config);
+      } else {
+        console.log(`❌ Max retries (${MAX_RETRIES}) exceeded for: ${config.url}`);
+      }
+    }
+    
     // For error responses, format error information
     const errorResponse = {
       success: false,
       status: error.response?.status || 500,
-      message: error.response?.data?.message || error.message || 'Unknown error occurred'
+      message: error.response?.data?.message || error.message || 'Unknown error occurred',
+      code: error.code,
+      retries: config?.__retryCount || 0
     };
     
     return Promise.reject(errorResponse);

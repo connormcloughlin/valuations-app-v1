@@ -2,107 +2,112 @@
  * Simple connection status utility that doesn't rely on external packages
  */
 
-import { API_BASE_URL } from '../constants/apiConfig';
+// Remove unused NetInfo import - we'll use direct fetch for connection testing
 
-// Attempt to fetch a small resource to test connectivity
-export const checkConnection = async (): Promise<boolean> => {
+let isConnected = true;
+let lastConnectionCheck = 0;
+const CONNECTION_CHECK_INTERVAL = 10000; // 10 seconds
+
+// Enhanced connection check with multiple fallbacks
+const checkConnection = async (): Promise<boolean> => {
+  const now = Date.now();
+  
+  // Skip frequent checks
+  if (now - lastConnectionCheck < CONNECTION_CHECK_INTERVAL) {
+    return isConnected;
+  }
+  
   try {
-    // Try multiple endpoints to be more resilient
-    // First try our own API server using the same endpoint that shows success elsewhere
+    // Method 1: Try a simple HEAD request to a reliable endpoint
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout for connection check
+    
     try {
-      // Use the known API URL directly but only make a HEAD request to minimize traffic
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout for API check
-      
-      const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/health`, { 
+      const response = await fetch('https://www.google.com/favicon.ico', {
         method: 'HEAD',
-        cache: 'no-store',
-        signal: controller.signal
+        signal: controller.signal,
+        cache: 'no-cache'
       });
-      
       clearTimeout(timeoutId);
       
       if (response.ok) {
+        isConnected = true;
+        lastConnectionCheck = now;
         return true;
       }
-    } catch (apiError) {
-      console.log('API connection check failed, trying fallback:', apiError);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      console.log('Primary connection check failed, trying backup...');
     }
     
-    // Fallback to a public service if our API fails
-    const timeoutPromise = new Promise<Response>((_, reject) => {
-      setTimeout(() => reject(new Error('Connection timeout')), 5000); // Extended timeout
-    });
-
-    // Use a reliable public service as fallback
-    const fetchPromise = fetch('https://www.google.com', { 
-      method: 'HEAD',
-      cache: 'no-store',
-    });
+    // Method 2: Try backup connection check
+    const backupController = new AbortController();
+    const backupTimeoutId = setTimeout(() => backupController.abort(), 3000); // 3s timeout for backup
     
-    // Race the fetch against the timeout
-    const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
-    return response.ok;
+    try {
+      const backupResponse = await fetch('https://httpbin.org/status/200', {
+        method: 'HEAD',
+        signal: backupController.signal,
+        cache: 'no-cache'
+      });
+      clearTimeout(backupTimeoutId);
+      
+      if (backupResponse.ok) {
+        isConnected = true;
+        lastConnectionCheck = now;
+        return true;
+      }
+    } catch (backupError) {
+      clearTimeout(backupTimeoutId);
+      console.log('Backup connection check failed');
+    }
+    
+    // Method 3: Try a DNS lookup as final fallback
+    try {
+      const dnsCheck = await Promise.race([
+        fetch('https://1.1.1.1', { method: 'HEAD', cache: 'no-cache' }),
+        new Promise<Response>((_, reject) => {
+          setTimeout(() => reject(new Error('DNS timeout')), 2000); // 2s timeout for DNS
+        })
+      ]);
+      
+      if (dnsCheck.ok) {
+        isConnected = true;
+        lastConnectionCheck = now;
+        return true;
+      }
+    } catch (dnsError) {
+      console.log('DNS connection check failed');
+    }
+    
+    // All methods failed
+    isConnected = false;
+    lastConnectionCheck = now;
+    return false;
+    
   } catch (error) {
-    console.log('All connection checks failed:', error);
+    console.error('Connection check error:', error);
+    isConnected = false;
+    lastConnectionCheck = now;
     return false;
   }
 };
 
-// Global connection status and timing variables
-let _isConnected = true;
-let _lastCheckTime = 0;
-let _checkInProgress = false;
-let _lastCheckResult = true;
-const CHECK_INTERVAL_MIN = 60000; // Increase to 60 seconds minimum between checks
-
-// Update the global connection status with debouncing
-export const updateConnectionStatus = async (): Promise<boolean> => {
-  const now = Date.now();
+const connectionUtils = {
+  isConnected: () => isConnected,
   
-  // If a check is already in progress, return the last known result
-  if (_checkInProgress) {
-    console.log('Connection check already in progress, returning cached status');
-    return _lastCheckResult;
-  }
-  
-  // If we've checked recently, don't check again
-  if (now - _lastCheckTime < CHECK_INTERVAL_MIN) {
-    console.log(`Skipping connection check - last check was ${(now - _lastCheckTime) / 1000}s ago`);
-    return _isConnected;
-  }
-  
-  try {
-    _checkInProgress = true;
-    _lastCheckTime = now;
-    
-    const status = await checkConnection();
-    _lastCheckResult = status;
-    
-    // Only log if status changed
-    if (_isConnected !== status) {
-      console.log('Connection status changed to:', status ? 'Online' : 'Offline');
-      _isConnected = status;
-    }
-    
-    return status;
-  } catch (e) {
-    console.error('Connection update error:', e);
-    _lastCheckResult = false;
-    _isConnected = false;
-    return false;
-  } finally {
-    _checkInProgress = false;
-  }
-};
-
-// Get the last known connection status without making a network request
-export const isConnected = (): boolean => {
-  return _isConnected;
-};
-
-export default {
   checkConnection,
-  updateConnectionStatus,
-  isConnected,
-}; 
+  
+  // Force a fresh connection check
+  forceCheck: async (): Promise<boolean> => {
+    lastConnectionCheck = 0; // Reset cache
+    return await checkConnection();
+  },
+  
+  // Get connection status with automatic check if needed
+  getStatus: async (): Promise<boolean> => {
+    return await checkConnection();
+  }
+};
+
+export default connectionUtils; 

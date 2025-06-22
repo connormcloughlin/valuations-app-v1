@@ -993,7 +993,7 @@ const appointmentsApi = {
         console.log(`Making authenticated API call to: /appointments/list-view`);
         const response = await apiClient.get('/appointments/list-view', { 
           params,
-          timeout: 30000 // 30 second timeout
+          timeout: 45000 // 45 second timeout for list-view endpoint
         });
         console.log('API call successful');
         

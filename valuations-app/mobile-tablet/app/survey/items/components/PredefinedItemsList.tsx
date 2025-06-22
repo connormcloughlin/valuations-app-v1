@@ -122,29 +122,6 @@ export default function PredefinedItemsList({
     console.log('PredefinedItemsList: Edit state set for new item');
   }, [categoryId]);
 
-  // Expose the addNewCustomItem function to parent component
-  useEffect(() => {
-    console.log('PredefinedItemsList: onAddNewItem prop:', onAddNewItem);
-    if (onAddNewItem) {
-      console.log('PredefinedItemsList: Passing addNewCustomItem function to parent');
-      onAddNewItem(addNewCustomItem);
-    }
-  }, [onAddNewItem, addNewCustomItem]);
-
-  // Expose sync status to parent component
-  useEffect(() => {
-    if (onSyncStatusChange) {
-      onSyncStatusChange(pendingChangesCount, syncing);
-    }
-  }, [pendingChangesCount, syncing, onSyncStatusChange]);
-
-  // Expose sync function to parent component
-  useEffect(() => {
-    if (onSyncRequest) {
-      onSyncRequest(handleSync);
-    }
-  }, [onSyncRequest]);
-
   // Calculate and expose totals to parent component
   const calculateTotals = useCallback(() => {
     let itemCount = 0;
@@ -169,6 +146,96 @@ export default function PredefinedItemsList({
 
     return { itemCount, totalValue };
   }, [items, editItems]);
+
+  // CONSOLIDATED USEEFFECT 1: Data Loading and Initialization
+  // Handles: items-dependent operations, photos loading, pending count, camera permissions
+  useEffect(() => {
+    let isMounted = true;
+    
+    const initializeData = async () => {
+      if (!items.length) return;
+      
+      try {
+        // Load pending changes count
+        const count = await riskAssessmentSyncService.getPendingChangesCount();
+        if (isMounted) setPendingChangesCount(count.total);
+        
+        // Load photos for items
+        console.log('PredefinedItemsList: Loading photos for items...');
+        const photoMap: { [key: string]: MediaFile[] } = {};
+        
+        for (const item of items) {
+          const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', Number(item.id));
+          photoMap[String(item.id)] = photos;
+          console.log(`PredefinedItemsList: Item ${item.id} has ${photos.length} photos`);
+        }
+        
+        if (isMounted) {
+          setItemPhotos(photoMap);
+          console.log('PredefinedItemsList: Photos loaded, total items with photos:', Object.keys(photoMap).filter(key => photoMap[key].length > 0).length);
+        }
+        
+      } catch (error) {
+        console.error('Error in data initialization:', error);
+      }
+    };
+    
+    // Request camera permissions (only once)
+    const requestCameraPermissions = async () => {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Camera Permission', 
+          'Please grant camera permissions to take photos of items.',
+          [{ text: 'OK' }]
+        );
+      }
+    };
+    
+    // Run initialization
+    initializeData();
+    requestCameraPermissions();
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
+  }, [items]);
+
+  // CONSOLIDATED USEEFFECT 2: Parent Communication and Calculations
+  // Handles: parent callbacks, totals calculation, sync status updates
+  useEffect(() => {
+    // Expose addNewCustomItem function to parent
+    if (onAddNewItem) {
+      console.log('PredefinedItemsList: Passing addNewCustomItem function to parent');
+      onAddNewItem(addNewCustomItem);
+    }
+    
+    // Expose sync status to parent
+    if (onSyncStatusChange) {
+      onSyncStatusChange(pendingChangesCount, syncing);
+    }
+    
+    // Expose sync function to parent
+    if (onSyncRequest) {
+      onSyncRequest(handleSync);
+    }
+    
+    // Calculate and expose totals to parent
+    if (onTotalsChange) {
+      const { itemCount, totalValue } = calculateTotals();
+      onTotalsChange(itemCount, totalValue);
+    }
+  }, [
+    onAddNewItem, 
+    addNewCustomItem, 
+    onSyncStatusChange, 
+    pendingChangesCount, 
+    syncing, 
+    onSyncRequest, 
+    onTotalsChange, 
+    calculateTotals
+  ]);
 
   // Check if an item has meaningful data captured
   const hasDataCaptured = useCallback((item: Item) => {
@@ -258,47 +325,6 @@ export default function PredefinedItemsList({
       setSyncing(false);
     }
   };
-
-  // Expose totals to parent component
-  useEffect(() => {
-    if (onTotalsChange) {
-      const { itemCount, totalValue } = calculateTotals();
-      onTotalsChange(itemCount, totalValue);
-    }
-  }, [onTotalsChange, calculateTotals]);
-
-  // Load pending changes count on mount and when items change
-  useEffect(() => {
-    const loadPendingChangesCount = async () => {
-      try {
-        const count = await riskAssessmentSyncService.getPendingChangesCount();
-        setPendingChangesCount(count.total);
-      } catch (error) {
-        console.error('Error loading pending changes count:', error);
-      }
-    };
-    
-    loadPendingChangesCount();
-  }, [items]);
-
-  // Load photos for items
-  useEffect(() => {
-    loadPhotosForItems();
-  }, [items]);
-
-  // Request camera permissions
-  useEffect(() => {
-    (async () => {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Camera Permission', 
-          'Please grant camera permissions to take photos of items.',
-          [{ text: 'OK' }]
-        );
-      }
-    })();
-  }, []);
 
   const loadPhotosForItems = async () => {
     console.log('PredefinedItemsList: Loading photos for items...');

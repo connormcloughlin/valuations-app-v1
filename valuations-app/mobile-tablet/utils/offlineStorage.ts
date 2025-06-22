@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import asyncStorageManager from './asyncStorageManager';
 
 // Keys for storing different types of data
 const STORAGE_KEYS = {
@@ -11,26 +12,40 @@ const STORAGE_KEYS = {
   FIELD_CONFIG: 'field_config_',
 };
 
-// Store API data in AsyncStorage
-export const storeApiData = async (key: string, data: any): Promise<void> => {
+// Store API data in AsyncStorage with managed caching
+export const storeApiData = async (key: string, data: any, ttl?: number): Promise<void> => {
   try {
-    const jsonValue = JSON.stringify({
-      data,
-      timestamp: Date.now(),
-    });
-    await AsyncStorage.setItem(key, jsonValue);
-    console.log(`Stored data for key: ${key}`);
+    // Use the managed storage for better memory management
+    await asyncStorageManager.setItem(key, data, ttl);
   } catch (e) {
     console.error('Error storing offline data:', e);
+    // Fallback to direct AsyncStorage if managed storage fails
+    try {
+      const jsonValue = JSON.stringify({
+        data,
+        timestamp: Date.now(),
+      });
+      await AsyncStorage.setItem(key, jsonValue);
+      console.log(`Stored data for key: ${key} (fallback)`);
+    } catch (fallbackError) {
+      console.error('Fallback storage also failed:', fallbackError);
+    }
   }
 };
 
-// Retrieve API data from AsyncStorage
+// Retrieve API data from AsyncStorage with TTL checking
 export const getApiData = async (key: string): Promise<any | null> => {
   try {
+    // Try managed storage first (with TTL checking)
+    const managedData = await asyncStorageManager.getItem(key);
+    if (managedData !== null) {
+      return { data: managedData, timestamp: Date.now() };
+    }
+    
+    // Fallback to direct AsyncStorage for backward compatibility
     const jsonValue = await AsyncStorage.getItem(key);
     if (jsonValue != null) {
-      console.log(`Retrieved data for key: ${key}`);
+      console.log(`Retrieved data for key: ${key} (fallback)`);
       return JSON.parse(jsonValue);
     }
     return null;
