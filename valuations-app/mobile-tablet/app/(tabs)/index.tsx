@@ -38,7 +38,7 @@ export default function Dashboard() {
     });
   };
 
-  const handleCardPress = (cardType: 'scheduled' | 'inProgress' | 'completed' | 'sync') => {
+  const handleCardPress = (cardType: 'scheduled' | 'inProgress' | 'completed' | 'finalise' | 'sync') => {
     switch (cardType) {
       case 'scheduled':
         router.push('/(tabs)/appointments/scheduled');
@@ -48,6 +48,9 @@ export default function Dashboard() {
         break;
       case 'completed':
         router.push('/appointments/completed');
+        break;
+      case 'finalise':
+        router.push('/(tabs)/appointments/finalise');
         break;
       case 'sync':
         router.push('/sync');

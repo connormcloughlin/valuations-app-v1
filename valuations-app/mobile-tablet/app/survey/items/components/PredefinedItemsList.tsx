@@ -722,6 +722,94 @@ export default function PredefinedItemsList({
     console.log('Duplicated item created:', duplicatedItem);
   }, [categoryId]);
 
+  // Function to delete an item
+  const deleteItem = useCallback(async (itemToDelete: Item) => {
+    const itemId = String(itemToDelete.id);
+    
+    Alert.alert(
+      'Delete Item',
+      `Are you sure you want to delete this item?${itemToDelete.type ? `\n\nItem: ${itemToDelete.type}` : ''}`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Deleting item:', itemId);
+              
+              // If it's not a new item, mark it as deleted in the database
+              if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
+                // Get existing SQLite record
+                const existingItems = await getAllRiskAssessmentItems();
+                const existingItem = existingItems.find(dbItem => 
+                  String(dbItem.riskassessmentitemid) === String(itemToDelete.id)
+                );
+
+                if (existingItem) {
+                  // Mark as deleted and pending sync
+                  const updated: RiskAssessmentItem = {
+                    ...existingItem,
+                    qty: 0, // Set quantity to 0 to effectively "delete"
+                    price: 0, // Clear price
+                    description: '', // Clear description
+                    model: '', // Clear model
+                    location: '', // Clear location
+                    notes: '', // Clear notes
+                    pending_sync: 1,
+                    issynced: 0,
+                    dateupdated: new Date().toISOString(),
+                  };
+                  
+                  await updateRiskAssessmentItem(updated);
+                  
+                  // Update pending changes count
+                  const count = await riskAssessmentSyncService.getPendingChangesCount();
+                  setPendingChangesCount(count.total);
+                }
+              }
+              
+              // Remove from local state
+              setItems(prevItems => prevItems.filter(item => item.id !== itemToDelete.id));
+              
+              // Clear any edit state for this item
+              setEditItems(prev => {
+                const newEditItems = { ...prev };
+                delete newEditItems[itemId];
+                return newEditItems;
+              });
+              
+              // Clear auto-saved state
+              setAutoSavedItems(prev => {
+                const newAutoSaved = { ...prev };
+                delete newAutoSaved[itemId];
+                return newAutoSaved;
+              });
+              
+              // If this item was expanded, collapse it
+              if (expandedItem === itemId) {
+                setExpandedItem(null);
+              }
+              
+              console.log('Item deleted successfully:', itemId);
+              
+            } catch (error) {
+              console.error('Error deleting item:', error);
+              Alert.alert(
+                'Delete Failed',
+                'Failed to delete the item. Please try again.',
+                [{ text: 'OK' }]
+              );
+            }
+          },
+        },
+      ]
+    );
+  }, [expandedItem]);
+
   // Helper function to check if a field should be visible
   const isFieldVisible = useCallback((fieldName: string) => {
     console.log(`🔍 Checking field '${fieldName}' - useCustomFields: ${useCustomFields}, fieldConfig:`, fieldConfig);
@@ -909,6 +997,24 @@ export default function PredefinedItemsList({
                         color="#4CAF50" 
                         style={{ marginRight: 4 }} 
                       />
+                    )}
+                    
+                    {/* Delete button - show for items with data or new items */}
+                    {(hasData || isNewItem) && (
+                      <TouchableOpacity
+                        style={styles.deleteIconButton}
+                        onPress={(e) => {
+                          e.stopPropagation(); // Prevent row expansion
+                          deleteItem(item);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <MaterialCommunityIcons 
+                          name="delete-outline" 
+                          size={16} 
+                          color="#e74c3c" 
+                        />
+                      </TouchableOpacity>
                     )}
                   </View>
                   
@@ -1355,6 +1461,10 @@ const styles = StyleSheet.create({
   indicatorsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  deleteIconButton: {
+    marginRight: 4,
+    padding: 2,
   },
   // Group styles
   groupContainer: {

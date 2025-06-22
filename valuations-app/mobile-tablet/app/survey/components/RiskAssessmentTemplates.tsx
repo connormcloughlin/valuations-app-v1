@@ -223,7 +223,7 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
   return (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Risk Assessment Templates</Text>
+        <Text style={styles.sectionTitle}>Risk Assessment Templates 333333</Text>
         <Text style={styles.templateCount}>{templates.length} available</Text>
       </View>
       

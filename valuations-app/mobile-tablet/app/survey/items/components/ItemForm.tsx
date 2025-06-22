@@ -13,6 +13,7 @@ export default function ItemForm({
   photo,
   onCancel,
   onSave,
+  onDelete,
   onOpenCamera,
   onOpenHandwriting
 }: ItemFormProps) {
@@ -24,14 +25,24 @@ export default function ItemForm({
   return (
     <Card style={styles.card}>
       <Card.Title 
-        title="Add New Item" 
+        title={currentItem.id ? "Edit Item" : "Add New Item"} 
         right={(props) => (
-          <IconButton
-            {...props}
-            icon="camera"
-            onPress={onOpenCamera}
-            iconColor="#4a90e2"
-          />
+          <View style={styles.headerButtons}>
+            <IconButton
+              {...props}
+              icon="camera"
+              onPress={onOpenCamera}
+              iconColor="#4a90e2"
+            />
+            {onDelete && currentItem.id && (
+              <IconButton
+                {...props}
+                icon="delete"
+                onPress={onDelete}
+                iconColor="#e74c3c"
+              />
+            )}
+          </View>
         )}
       />
       <Card.Content>
@@ -143,21 +154,34 @@ export default function ItemForm({
         </View>
 
         <View style={styles.formButtons}>
-          <Button
-            mode="outlined"
-            onPress={onCancel}
-            style={styles.cancelButton}
-          >
-            Cancel
-          </Button>
-          <Button
-            mode="contained"
-            onPress={onSave}
-            style={styles.saveButton}
-            disabled={!currentItem.description || !currentItem.price}
-          >
-            Add Item
-          </Button>
+          {onDelete && currentItem.id && (
+            <Button
+              mode="outlined"
+              onPress={onDelete}
+              style={styles.deleteButton}
+              icon="delete"
+              textColor="#e74c3c"
+            >
+              Delete
+            </Button>
+          )}
+          <View style={styles.rightButtons}>
+            <Button
+              mode="outlined"
+              onPress={onCancel}
+              style={styles.cancelButton}
+            >
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={onSave}
+              style={styles.saveButton}
+              disabled={!currentItem.description || !currentItem.price}
+            >
+              {currentItem.id ? "Save Changes" : "Add Item"}
+            </Button>
+          </View>
         </View>
       </Card.Content>
     </Card>
@@ -169,6 +193,10 @@ const styles = StyleSheet.create({
     margin: 16,
     borderRadius: 8,
     overflow: 'hidden',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   photoPreview: {
     width: '100%',
@@ -252,8 +280,16 @@ const styles = StyleSheet.create({
   },
   formButtons: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 8,
+  },
+  rightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    borderColor: '#e74c3c',
   },
   cancelButton: {
     marginRight: 12,

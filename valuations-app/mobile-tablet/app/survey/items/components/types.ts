@@ -73,6 +73,7 @@ export interface ItemFormProps {
   photo: string | null;
   onCancel: () => void;
   onSave: () => void;
+  onDelete?: () => void; // Optional delete callback
   onOpenCamera: () => void;
   onOpenHandwriting: (field: keyof Item) => void;
 }

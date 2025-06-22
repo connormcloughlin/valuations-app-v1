@@ -10,6 +10,7 @@ interface StatsData {
   scheduled: number;
   inProgress: number;
   completed: number;
+  finalise: number;
   pendingSync: number;
   lastSync: string;
 }
@@ -21,7 +22,7 @@ interface ApiStatsResponse {
 }
 
 interface StatsCardsProps {
-  onCardPress: (cardType: 'scheduled' | 'inProgress' | 'completed' | 'sync') => void;
+  onCardPress: (cardType: 'scheduled' | 'inProgress' | 'completed' | 'finalise' | 'sync') => void;
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
@@ -29,6 +30,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     scheduled: 0,
     inProgress: 0,
     completed: 0,
+    finalise: 0,
     pendingSync: 0,
     lastSync: 'Never'
   });
@@ -74,13 +76,15 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         const scheduled = inviteStats['Booked'] || 0;
         const inProgress = (inviteStats['In-progress'] || 0) + (inviteStats['In Progress'] || 0);
         const completed = inviteStats['Completed'] || 0;
+        const finalise = inviteStats['Finalise'] || 0;
         
-        console.log('Appointment stats loaded:', { scheduled, inProgress, completed, pendingSync });
+        console.log('Appointment stats loaded:', { scheduled, inProgress, completed, finalise, pendingSync });
         
         setStats({
           scheduled,
           inProgress,
           completed,
+          finalise,
           pendingSync,
           lastSync: new Date().toLocaleString('en-US', {
             month: 'short',
@@ -98,6 +102,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
           scheduled: 0,
           inProgress: 0,
           completed: 0,
+          finalise: 0,
           pendingSync,
           lastSync: response?.success === false ? 'API Error' : 'Invalid Data'
         });
@@ -110,6 +115,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         scheduled: 0,
         inProgress: 0,
         completed: 0,
+        finalise: 0,
         pendingSync: 0,
         lastSync: 'Connection Error'
       });
@@ -118,10 +124,16 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     }
   };
 
-  const handleCardPress = (cardType: 'scheduled' | 'inProgress' | 'completed' | 'sync') => {
+  const handleCardPress = (cardType: 'scheduled' | 'inProgress' | 'completed' | 'finalise' | 'sync') => {
     // If it's a sync card press, navigate to the sync component
     if (cardType === 'sync') {
       router.push('/sync');
+      return;
+    }
+    
+    // If it's a finalise card press, navigate to the finalise appointments page
+    if (cardType === 'finalise') {
+      router.push('/(tabs)/appointments/finalise');
       return;
     }
     
@@ -139,7 +151,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     count: number | string,
     icon: string,
     color: string,
-    cardType: 'scheduled' | 'inProgress' | 'completed' | 'sync'
+    cardType: 'scheduled' | 'inProgress' | 'completed' | 'finalise' | 'sync'
   ) => (
     <Card 
       key={cardType}
@@ -159,6 +171,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
       {renderCard('Booked', loading ? '...' : stats.scheduled, 'calendar-clock', '#4a90e2', 'scheduled')}
       {renderCard('In Progress', loading ? '...' : stats.inProgress, 'clipboard-edit-outline', '#f39c12', 'inProgress')}
       {renderCard('Completed', loading ? '...' : stats.completed, 'clipboard-check', '#2ecc71', 'completed')}
+      {renderCard('Finalise', loading ? '...' : stats.finalise, 'clipboard-check-outline', '#9b59b6', 'finalise')}
       
       <Card style={styles.card} onPress={() => handleCardPress('sync')}>
         <Card.Content>
