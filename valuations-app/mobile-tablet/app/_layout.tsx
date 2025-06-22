@@ -103,10 +103,7 @@ export default function RootLayout() {
               <Stack.Screen name="survey/summary" />
               <Stack.Screen name="survey/[id]" />
               <Stack.Screen name="survey/summary/[id]" />
-              <Stack.Screen name="appointment/[id]" />
-              <Stack.Screen name="appointments/scheduled" options={{ headerShown: true }} />
-              <Stack.Screen name="appointments/in-progress" options={{ headerShown: true }} />
-              <Stack.Screen name="appointments/completed" options={{ headerShown: true }} />
+              {/* Appointment routes removed during cleanup - using tabs navigation instead */}
               <Stack.Screen name="+not-found" options={{ headerShown: true }} />
             </Stack>
             <StatusBar style="auto" />

@@ -32,8 +32,9 @@ export default function Dashboard() {
   };
 
   const navigateToAppointmentDetails = (id: string) => {
+    // Navigate to survey view for appointment details
     router.push({
-      pathname: '/(tabs)/appointments/[id]' as any,
+      pathname: '/survey/[id]',
       params: { id }
     });
   };
@@ -44,10 +45,10 @@ export default function Dashboard() {
         router.push('/(tabs)/appointments/scheduled');
         break;
       case 'inProgress':
-        router.push('/appointments/in-progress');
+        router.push('/(tabs)/appointments/in-progress');
         break;
       case 'completed':
-        router.push('/appointments/completed');
+        router.push('/(tabs)/appointments/completed');
         break;
       case 'finalise':
         router.push('/(tabs)/appointments/finalise');
