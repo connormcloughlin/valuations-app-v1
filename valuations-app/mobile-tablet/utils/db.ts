@@ -228,6 +228,47 @@ export async function createTables() {
       );
     `);
     
+    // Create performance indexes
+    console.log('Creating database indexes for performance...');
+    
+    // Index for risk assessment items by category (most common query)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_risk_items_category 
+      ON risk_assessment_items(riskassessmentcategoryid);
+    `);
+    
+    // Index for risk assessment items by appointment
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_risk_items_appointment 
+      ON risk_assessment_items(appointmentid);
+    `);
+    
+    // Index for pending sync items (sync operations)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_risk_items_pending_sync 
+      ON risk_assessment_items(pending_sync);
+    `);
+    
+    // Index for appointments by status (dashboard queries)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_appointments_status 
+      ON appointments(inviteStatus);
+    `);
+    
+    // Index for appointments by order ID
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_appointments_order 
+      ON appointments(orderID);
+    `);
+    
+    // Index for media files by entity
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_media_entity 
+      ON media_files(EntityName, EntityID);
+    `);
+    
+    console.log('✅ Database indexes created successfully');
+
     // Verify tables were created
     console.log('Verifying tables...');
     const tablesResult = await db.getAllAsync("SELECT name FROM sqlite_master WHERE type='table'");
@@ -956,6 +997,67 @@ export async function forceReloadFromAPI(): Promise<void> {
     
   } catch (error) {
     console.error('❌ Error during force reload:', error);
+    throw error;
+  }
+}
+
+// Test index performance (for Step 1.1 validation)
+export async function testIndexPerformance(): Promise<void> {
+  try {
+    console.log('🧪 Testing database index performance...');
+    
+    // Test category index
+    const categoryStart = performance.now();
+    const categoryResult = await runSql(
+      'SELECT COUNT(*) as count FROM risk_assessment_items WHERE riskassessmentcategoryid = ?',
+      ['123']
+    );
+    const categoryDuration = performance.now() - categoryStart;
+    console.log(`📊 Category index query took: ${categoryDuration.toFixed(2)}ms`);
+    
+    // Test appointment index
+    const appointmentStart = performance.now();
+    const appointmentResult = await runSql(
+      'SELECT COUNT(*) as count FROM risk_assessment_items WHERE appointmentid = ?',
+      ['test-appointment']
+    );
+    const appointmentDuration = performance.now() - appointmentStart;
+    console.log(`📊 Appointment index query took: ${appointmentDuration.toFixed(2)}ms`);
+    
+    // Test pending sync index
+    const syncStart = performance.now();
+    const syncResult = await runSql(
+      'SELECT COUNT(*) as count FROM risk_assessment_items WHERE pending_sync = ?',
+      [1]
+    );
+    const syncDuration = performance.now() - syncStart;
+    console.log(`📊 Sync index query took: ${syncDuration.toFixed(2)}ms`);
+    
+    // Test appointment status index
+    const statusStart = performance.now();
+    const statusResult = await runSql(
+      'SELECT COUNT(*) as count FROM appointments WHERE inviteStatus = ?',
+      ['In-Progress']
+    );
+    const statusDuration = performance.now() - statusStart;
+    console.log(`📊 Status index query took: ${statusDuration.toFixed(2)}ms`);
+    
+    console.log('✅ Index performance test completed');
+    
+    // Performance summary
+    const avgDuration = (categoryDuration + appointmentDuration + syncDuration + statusDuration) / 4;
+    console.log(`📈 Average query time: ${avgDuration.toFixed(2)}ms`);
+    
+    if (avgDuration < 50) {
+      console.log('🎉 Excellent performance! Queries are under 50ms');
+    } else if (avgDuration < 100) {
+      console.log('✅ Good performance! Queries are under 100ms');
+    } else {
+      console.log('⚠️ Slow performance detected. Consider checking indexes');
+    }
+    
+  } catch (error) {
+    console.error('❌ Error testing index performance:', error);
     throw error;
   }
 }
