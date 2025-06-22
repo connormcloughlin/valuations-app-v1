@@ -910,11 +910,15 @@ export default function PredefinedItemsList({
                   
                   {/* Group indicators */}
                   <View style={styles.groupIndicators}>
-                    {groupItemCount > 1 && (
-                      <View style={styles.countBadge}>
-                        <Text style={styles.countBadgeText}>{groupItemCount}</Text>
-                      </View>
-                    )}
+                    {(() => {
+                      // Show count badge if more than 1 item OR if any item in group has data
+                      const hasAnyDataInGroup = groupItems.some(item => hasDataCaptured(item));
+                      return (groupItemCount > 1 || hasAnyDataInGroup) && (
+                        <View style={styles.countBadge}>
+                          <Text style={styles.countBadgeText}>{groupItemCount}</Text>
+                        </View>
+                      );
+                    })()}
                     
                     <MaterialCommunityIcons 
                       name={isGroupExpanded ? "chevron-down" : "chevron-right"} 
@@ -936,9 +940,9 @@ export default function PredefinedItemsList({
             const type = editItems[itemId]?.type ?? (item.type || '');
             const quantity = editItems[itemId]?.quantity ?? String(item.quantity || '1');
             const price = editItems[itemId]?.price ?? String(item.price || '0');
-            const description = editItems[itemId]?.description ?? (item.description || 'Not specified');
-            const model = editItems[itemId]?.model ?? (item.model || 'Not specified');
-            const room = editItems[itemId]?.room ?? (item.room || 'Not specified');
+            const description = editItems[itemId]?.description ?? (item.description || '');
+            const model = editItems[itemId]?.model ?? (item.model || '');
+            const room = editItems[itemId]?.room ?? (item.room || '');
             const notes = editItems[itemId]?.notes ?? (item.notes || '');
             
             // Check if this is a new custom item (starts with 'custom-new-' or 'duplicate-')
@@ -948,8 +952,8 @@ export default function PredefinedItemsList({
             const hasData = hasDataCaptured(item);
             
             // Create a summary for the item (description, model, or "Item #X")
-            const itemSummary = description !== 'Not specified' ? description 
-                              : model !== 'Not specified' ? model
+            const itemSummary = description ? description 
+                              : model ? model
                               : `Item #${index + 1}`;
             
             return (
