@@ -355,8 +355,6 @@ class EnhancedApiClient {
 // Export singleton instance
 export const enhancedApiClient = new EnhancedApiClient();
 
-// Export individual functions for compatibility
-export const clearTokenCache = enhancedApiClient.clearTokenCache;
-export const updateTokenCache = enhancedApiClient.updateTokenCache;
+// Note: clearTokenCache and updateTokenCache are already exported above as standalone functions
 
 export default enhancedApiClient; 

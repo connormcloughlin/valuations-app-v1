@@ -1162,6 +1162,42 @@ const appointmentsApi = {
   },
 
   /**
+   * Get optimized mobile dashboard statistics
+   * @returns {Promise<Object>} Response with optimized dashboard stats
+   */
+  getMobileDashboardStats: async () => {
+    try {
+      console.log('🚀 Fetching optimized mobile dashboard statistics');
+      
+      const response = await apiClient.get('/mobile/appointment/dashboard/status-counts');
+      
+      return {
+        success: true,
+        data: response.data,
+        status: response.status,
+        performance: response.performance
+      };
+    } catch (error) {
+      console.error('❌ Error fetching mobile dashboard stats:', error);
+      
+      // Fallback to regular stats API if mobile endpoint fails
+      console.log('📦 Falling back to regular appointment stats API');
+      try {
+        const fallbackResponse = await apiClient.get('/appointments/stats');
+        return {
+          success: true,
+          data: fallbackResponse.data,
+          status: fallbackResponse.status,
+          fallback: true
+        };
+      } catch (fallbackError) {
+        console.error('❌ Fallback stats API also failed:', fallbackError);
+        return error.success === false ? error : { success: false, message: error.message };
+      }
+    }
+  },
+
+  /**
    * Get appointment by order number
    * @param {string} orderNumber - Order number to search for
    * @returns {Promise<Object>} Response with appointment data

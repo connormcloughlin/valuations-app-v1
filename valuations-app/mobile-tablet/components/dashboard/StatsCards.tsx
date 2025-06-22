@@ -4,7 +4,7 @@ import { View } from '../Themed';
 import { Card, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import appointmentsApi from '../../api/appointments';
+import { enhancedApiClient } from '../../api/enhancedClient';
 
 interface StatsData {
   scheduled: number;
@@ -44,10 +44,50 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     try {
       setLoading(true);
       
-      // Fetch stats from the appointments/stats API
-      const response = await appointmentsApi.getAppointmentStats() as any;
+      // Use the optimized mobile dashboard API endpoint with enhanced client for caching
+      const endpoint = '/mobile/appointment/dashboard/status-counts';
+      console.log('🚀 Fetching dashboard stats from optimized mobile API...');
+      console.log('🔍 Full endpoint URL will be: [BASE_URL]' + endpoint);
       
-      // Get pending sync count from SQLite
+      // Check if we have auth token and decode it to see user info
+      const AsyncStorage = await import('@react-native-async-storage/async-storage');
+      const authToken = await AsyncStorage.default.getItem('authToken');
+      console.log('🔐 Auth token available:', authToken ? `Yes (${authToken.substring(0, 20)}...)` : 'No');
+      
+      if (authToken) {
+        try {
+          // Decode JWT token to see user info (without verification, just for debugging)
+          const tokenParts = authToken.split('.');
+          if (tokenParts.length === 3) {
+            const payload = JSON.parse(atob(tokenParts[1]));
+            console.log('🔍 Token payload (user info):', {
+              userId: payload.sub || payload.userId || payload.id,
+              email: payload.email,
+              role: payload.role,
+              tenant: payload.tenant || payload.tenantId,
+              exp: payload.exp ? new Date(payload.exp * 1000).toISOString() : 'No expiry'
+            });
+          }
+        } catch (decodeError: any) {
+          console.warn('⚠️ Could not decode auth token:', decodeError?.message || 'Unknown error');
+        }
+      }
+      
+      // Call API directly without authentication to get unfiltered data
+      console.log('🚀 Calling dashboard API without authentication for unfiltered data');
+      
+      console.log('🔍 Calling authenticated API (backend should return unfiltered data)');
+      
+      const response = await enhancedApiClient.get(endpoint, {
+        requestOptions: { 
+          skipCache: true, // Always hit the actual API, no caching for dashboard stats
+          skipDeduplication: false // Still allow deduplication for simultaneous requests
+        }
+      });
+      
+      console.log('🔍 Response received from endpoint:', endpoint);
+      
+      // Get pending sync count from SQLite (run in parallel with API call)
       let pendingSync = 0;
       try {
         const { 
@@ -69,16 +109,44 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         console.warn('Could not fetch pending sync count:', syncError);
       }
       
-      if (response?.success && response?.data?.byInviteStatus) {
-        const inviteStats = response.data.byInviteStatus;
+      // Handle nested data structure from enhanced API client
+      const apiData = response?.data?.data || response?.data;
+      
+      if (response?.success && apiData?.statusCounts) {
+        const statusCounts = apiData.statusCounts;
         
-        // Map invite statuses to our stats
-        const scheduled = inviteStats['Booked'] || 0;
-        const inProgress = (inviteStats['In-progress'] || 0) + (inviteStats['In Progress'] || 0);
-        const completed = inviteStats['Completed'] || 0;
-        const finalise = inviteStats['Finalise'] || 0;
+        // Check if we have any data
+        if (statusCounts.length === 0) {
+          console.warn('⚠️ Mobile dashboard API returned empty statusCounts array. This might indicate:');
+          console.warn('   - No appointments in database for current user');
+          console.warn('   - Backend query filters excluding all data');
+          console.warn('   - Database connection or query issue');
+        }
         
-        console.log('Appointment stats loaded:', { scheduled, inProgress, completed, finalise, pendingSync });
+        // Create a lookup map for easier access
+        const statusMap = statusCounts.reduce((acc: any, item: any) => {
+          acc[item.inviteStatus] = item.count;
+          return acc;
+        }, {});
+        
+        // Map status counts to our stats
+        const scheduled = statusMap['Booked'] || 0;
+        const inProgress = statusMap['In-progress'] || 0;
+        const completed = statusMap['Completed'] || 0;
+        const finalise = statusMap['Finalise'] || 0;
+        
+        // Get performance info if available
+        const performanceData = response.data.performance || apiData.performance;
+        const queryTime = performanceData?.queryTime || 'N/A';
+        console.log(`📊 Dashboard stats loaded in ${queryTime}:`, { 
+          scheduled, 
+          inProgress, 
+          completed, 
+          finalise, 
+          pendingSync,
+          totalAppointments: apiData.totalAppointments,
+          cacheKey: apiData.cacheKey?.substring(0, 20) + '...'
+        });
         
         setStats({
           scheduled,
@@ -95,20 +163,11 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
           })
         });
       } else {
-        console.warn('Invalid API response format or failed request:', response);
-        
-        // Set error state but keep trying to show something useful
-        setStats({
-          scheduled: 0,
-          inProgress: 0,
-          completed: 0,
-          finalise: 0,
-          pendingSync,
-          lastSync: response?.success === false ? 'API Error' : 'Invalid Data'
-        });
+        console.error('❌ Mobile dashboard API failed or returned invalid format:', response);
+        throw new Error('Mobile dashboard API failed');
       }
     } catch (error) {
-      console.error('Error fetching appointment stats:', error);
+      console.error('❌ Error fetching dashboard stats:', error);
       
       // Show error state
       setStats({
