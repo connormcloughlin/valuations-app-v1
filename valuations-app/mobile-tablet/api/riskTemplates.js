@@ -467,8 +467,7 @@ const riskTemplatesApi = {
       console.log(`Trying CONNOR endpoint: ${endpoint}`);
       response = await apiClient.get(endpoint);
        if (response.success) {
-        console.log(`Successful response from endpoint: ${endpoint}`);
-        console.log(`Response from endpoint: ${response.data}`);
+        console.log(`✅ ${endpoint} - ${Array.isArray(response.data) ? response.data.length : 'N/A'} items`);
      
         if (response.data) {
           try {
@@ -544,8 +543,7 @@ const riskTemplatesApi = {
     console.log(`Trying CONNOR endpoint: ${endpoint}`);
     response = await apiClient.get(endpoint);
      if (response.success) {
-      console.log(`Successful response from endpoint: ${endpoint}`);
-      console.log(`Response from endpoint: ${response.data}`);
+      console.log(`✅ ${endpoint} - ${Array.isArray(response.data) ? response.data.length : 'N/A'} items`);
    
       if (response.data) {
         try {
@@ -622,8 +620,7 @@ try {
   console.log(`Trying CONNOR endpoint: ${endpoint}`);
   response = await apiClient.get(endpoint);
    if (response.success) {
-    console.log(`Successful response from endpoint: ${endpoint}`);
-    console.log(`Response from endpoint: ${response.data}`);
+    console.log(`✅ ${endpoint} - ${Array.isArray(response.data) ? response.data.length : 'N/A'} items`);
  
     if (response.data) {
       try {

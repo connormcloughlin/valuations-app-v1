@@ -1001,6 +1001,22 @@ export async function forceReloadFromAPI(): Promise<void> {
   }
 }
 
+// Global transaction semaphore to prevent concurrent transactions
+let transactionInProgress = false;
+const transactionQueue: (() => Promise<void>)[] = [];
+
+// Process transaction queue sequentially
+async function processTransactionQueue() {
+  if (transactionInProgress || transactionQueue.length === 0) return;
+  
+  const nextTransaction = transactionQueue.shift();
+  if (nextTransaction) {
+    await nextTransaction();
+    // Process next transaction if any
+    setTimeout(processTransactionQueue, 10);
+  }
+}
+
 // Batch insert risk assessment items (Step 1.2 - Performance Optimization)
 export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]): Promise<void> {
   if (items.length === 0) return;
@@ -1008,69 +1024,112 @@ export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]
   console.log(`🔄 Batch inserting ${items.length} risk assessment items...`);
   const start = performance.now();
   
-  try {
-    const database = await ensureDbReady();
-    
-    await database.withTransactionAsync(async () => {
-      const stmt = await database.prepareAsync(`
-        INSERT OR REPLACE INTO risk_assessment_items (
-          riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
-          commaseparatedlist, selectedanswer, qty, price, description, model, location,
-          assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
-          dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
-          synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
+  // Use promise-based queue to prevent concurrent transactions
+  return new Promise((resolve, reject) => {
+    const executeTransaction = async () => {
+      if (transactionInProgress) {
+        // If transaction in progress, queue this one
+        transactionQueue.push(executeTransaction);
+        processTransactionQueue();
+        return;
+      }
+      
+      transactionInProgress = true;
       
       try {
-        for (const item of items) {
-          const pendingSync = item.issynced ? 0 : (item.pending_sync ?? 1);
+        const database = await ensureDbReady();
+        
+        await database.withTransactionAsync(async () => {
+          const stmt = await database.prepareAsync(`
+            INSERT OR REPLACE INTO risk_assessment_items (
+              riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
+              commaseparatedlist, selectedanswer, qty, price, description, model, location,
+              assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
+              dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
+              synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
           
-          await stmt.executeAsync([
-            item.riskassessmentitemid,
-            item.riskassessmentcategoryid,
-            item.itemprompt || '',
-            item.itemtype || 0,
-            item.rank || 0,
-            item.commaseparatedlist || '',
-            item.selectedanswer || '',
-            item.qty || 0,
-            item.price || 0,
-            item.description || '',
-            item.model || '',
-            item.location || '',
-            item.assessmentregisterid || 0,
-            item.assessmentregistertypeid || 0,
-            item.datecreated || new Date().toISOString(),
-            item.createdbyid || '',
-            item.dateupdated || new Date().toISOString(),
-            item.updatedbyid || '',
-            item.issynced ? 1 : 0,
-            item.syncversion || 0,
-            item.deviceid || '',
-            item.syncstatus || '',
-            item.synctimestamp || new Date().toISOString(),
-            item.hasphoto ? 1 : 0,
-            item.latitude || 0,
-            item.longitude || 0,
-            item.notes || '',
-            pendingSync,
-            item.appointmentid || null
-          ]);
+          try {
+            for (const item of items) {
+              const pendingSync = item.issynced ? 0 : (item.pending_sync ?? 1);
+              
+              await stmt.executeAsync([
+                item.riskassessmentitemid,
+                item.riskassessmentcategoryid,
+                item.itemprompt || '',
+                item.itemtype || 0,
+                item.rank || 0,
+                item.commaseparatedlist || '',
+                item.selectedanswer || '',
+                item.qty || 0,
+                item.price || 0,
+                item.description || '',
+                item.model || '',
+                item.location || '',
+                item.assessmentregisterid || 0,
+                item.assessmentregistertypeid || 0,
+                item.datecreated || new Date().toISOString(),
+                item.createdbyid || '',
+                item.dateupdated || new Date().toISOString(),
+                item.updatedbyid || '',
+                item.issynced ? 1 : 0,
+                item.syncversion || 0,
+                item.deviceid || '',
+                item.syncstatus || '',
+                item.synctimestamp || new Date().toISOString(),
+                item.hasphoto ? 1 : 0,
+                item.latitude || 0,
+                item.longitude || 0,
+                item.notes || '',
+                pendingSync,
+                item.appointmentid || null
+              ]);
+            }
+          } finally {
+            await stmt.finalizeAsync();
+          }
+        });
+        
+        const duration = performance.now() - start;
+        console.log(`✅ Batch insert completed in ${duration.toFixed(2)}ms (${items.length} items)`);
+        console.log(`📊 Performance: ${(duration / items.length).toFixed(2)}ms per item`);
+        
+        transactionInProgress = false;
+        processTransactionQueue(); // Process any queued transactions
+        resolve();
+        
+      } catch (error) {
+        console.error('❌ Error in batch insert:', error);
+        console.log('🔄 Falling back to individual inserts...');
+        
+        // Fallback to individual inserts if batch fails
+        let successCount = 0;
+        for (const item of items) {
+          try {
+            await insertRiskAssessmentItem(item);
+            successCount++;
+          } catch (individualError) {
+            console.warn(`⚠️ Failed to insert item ${item.riskassessmentitemid}:`, individualError);
+          }
         }
-      } finally {
-        await stmt.finalizeAsync();
+        
+        console.log(`🔄 Fallback completed: ${successCount}/${items.length} items inserted`);
+        
+        transactionInProgress = false;
+        processTransactionQueue(); // Process any queued transactions
+        
+        // Only reject if we couldn't insert any items
+        if (successCount === 0) {
+          reject(error);
+        } else {
+          resolve();
+        }
       }
-    });
+    };
     
-    const duration = performance.now() - start;
-    console.log(`✅ Batch insert completed in ${duration.toFixed(2)}ms (${items.length} items)`);
-    console.log(`📊 Performance: ${(duration / items.length).toFixed(2)}ms per item`);
-    
-  } catch (error) {
-    console.error('❌ Error in batch insert:', error);
-    throw error;
-  }
+    executeTransaction();
+  });
 }
 
 // Batch update risk assessment items (Step 1.2 - Performance Optimization)

@@ -145,17 +145,14 @@ apiClient.interceptors.response.use(
     const shouldLogDetails = response.config.method !== 'get' || __DEV__;
     
     if (shouldLogDetails) {
-      console.log('✅ === API RESPONSE SUCCESS ===');
-      console.log(`✅ ${response.status}: ${response.config.url}`);
+      const dataSize = Array.isArray(response.data) ? response.data.length : 
+                      response.data ? Object.keys(response.data).length : 0;
+      console.log(`✅ ${response.status}: ${response.config.url} (${dataSize} items)`);
       
       // For sync responses, show detailed data
       if (response.config.url?.includes('/sync/')) {
         console.log('✅ Sync Response Data:', JSON.stringify(response.data, null, 2));
-      } else {
-        console.log(`✅ Data:`, response.data);
       }
-      
-      console.log('✅ === END RESPONSE ===');
     }
     
     // For successful responses, wrap in standard format
@@ -175,11 +172,7 @@ apiClient.interceptors.response.use(
       
       if (isNoContentScenario) {
         // Treat as successful empty result (like 204 No Content)
-        console.log('📦 === API RESPONSE: NO CONTENT ===');
-        console.log(`📦 Status: 404 (treating as empty result)`);
-        console.log(`📦 URL: ${error.config?.url || 'No URL'}`);
-        console.log(`📦 Message: ${errorMessage}`);
-        console.log('📦 === END NO CONTENT ===');
+        console.log(`📦 404: ${error.config?.url || 'No URL'} (empty result)`);
         
         return {
           success: true,
@@ -190,10 +183,7 @@ apiClient.interceptors.response.use(
       }
     }
     
-    console.log('❌ === API RESPONSE ERROR ===');
-    console.log(`❌ Status: ${error.response?.status || 'No status'}`);
-    console.log(`❌ URL: ${error.config?.url || 'No URL'}`);
-    console.log(`❌ Message: ${error.message}`);
+    console.log(`❌ ${error.response?.status || 'No status'}: ${error.config?.url || 'No URL'} - ${error.message}`);
     
     // Handle rate limiting
     if (error.response?.status === 429) {
@@ -279,7 +269,6 @@ apiClient.interceptors.response.use(
       console.log(`❌ Response data:`, error.response?.data);
       console.log(`❌ Network error:`, error.code);
     }
-    console.log('❌ === END ERROR ===');
     
     // For error responses, format error information
     const errorResponse = {
