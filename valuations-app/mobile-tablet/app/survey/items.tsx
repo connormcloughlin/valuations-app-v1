@@ -267,14 +267,17 @@ export default function ItemsScreen() {
     setError(null);
     
     try {
-      console.log(`Fetching items for category ID: ${currentCategoryId}`);
+      console.log(`🔄 FETCH: Starting fetchCategoryItems for category: ${currentCategoryId}`);
       
       // Check SQLite first, then API (same pattern as ItemComponents.tsx)
       const { getAllRiskAssessmentItems } = await import('../../utils/db');
       const localItems = await getAllRiskAssessmentItems();
+      
       const categoryItems = localItems.filter(item => 
         String(item.riskassessmentcategoryid) === String(currentCategoryId)
       );
+      
+      console.log(`📂 FETCH: Found ${categoryItems.length} items for category ${currentCategoryId}`);
       
       if (categoryItems.length === 0) {
         // No items in SQLite, fetch from API
@@ -300,7 +303,7 @@ export default function ItemsScreen() {
               rank: Number(item.rank) || 0,
               commaseparatedlist: item.commaseparatedlist || '',
               selectedanswer: item.selectedanswer || '',
-              qty: Number(item.qty) || 0,
+              qty: Number(item.qty) || 1,
               price: Number(item.price) || 0,
               description: item.description || '',
               model: item.model || '',
@@ -364,21 +367,32 @@ export default function ItemsScreen() {
         console.log('Using existing SQLite items for category:', categoryItems.length);
         setFromCache(true);
         
-        // Transform SQLite items to match interface
-        const formattedItems = categoryItems.map((item: any) => ({
-          id: String(item.riskassessmentitemid) || '',
-          categoryId: String(currentCategoryId), // Set the categoryId for existing items
-          type: item.itemprompt || '',
-          description: item.description || '',
-          model: item.model || '',
-          selection: '',
-          quantity: String(item.qty) || '1',
-          price: String(item.price) || '0',
-          room: item.location || '',
-          notes: item.notes || '',
-          photo: undefined,
-        }));
+        // Transform SQLite items to match interface with data validation
+        const formattedItems = categoryItems.map((item: any) => {
+          // 🔧 FIX: Ensure consistent data mapping
+          const mappedItem = {
+            id: String(item.riskassessmentitemid) || '',
+            categoryId: String(currentCategoryId),
+            type: item.itemprompt || '', // This is the critical mapping
+            description: item.description || '',
+            model: item.model || '',
+            selection: '',
+            quantity: String(item.qty) || '1',
+            price: String(item.price) || '0',
+            room: item.location || '',
+            notes: item.notes || '',
+            photo: undefined,
+          };
+          
+          // Log any items with empty types for debugging
+          if (!mappedItem.type && item.riskassessmentitemid > 1000000000000) {
+            console.warn(`⚠️ Item ${mappedItem.id} has empty type - itemprompt was: "${item.itemprompt}"`);
+          }
+          
+          return mappedItem;
+        });
         
+        console.log(`✅ FETCH: Mapped ${formattedItems.length} items for UI`);
         setPredefinedItems(formattedItems);
       }
     } catch (err) {

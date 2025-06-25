@@ -7,6 +7,10 @@ let initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let lastConnectionCheck = 0;
 const CONNECTION_CHECK_INTERVAL = 30000; // 30 seconds
 
+// Track initialization attempts to prevent excessive retries
+let initializationAttempts = 0;
+const MAX_INIT_ATTEMPTS = 3;
+
 interface SQLiteResult {
   rows: {
     _array: any[];
@@ -24,12 +28,28 @@ async function ensureDbReady(): Promise<SQLite.SQLiteDatabase> {
   
   if (initPromise) {
     // If initialization is in progress, wait for it
+    console.log('📋 Database initialization already in progress, waiting...');
     return await initPromise;
   }
   
+  // Prevent excessive initialization attempts
+  if (initializationAttempts >= MAX_INIT_ATTEMPTS) {
+    throw new Error(`Database initialization failed after ${MAX_INIT_ATTEMPTS} attempts`);
+  }
+  
   // Start initialization
+  initializationAttempts++;
+  console.log(`📋 Starting database initialization (attempt ${initializationAttempts}/${MAX_INIT_ATTEMPTS})`);
   initPromise = initializeDatabase();
-  return await initPromise;
+  
+  try {
+    const result = await initPromise;
+    initializationAttempts = 0; // Reset counter on success
+    return result;
+  } catch (error) {
+    initPromise = null; // Clear promise on failure so it can be retried
+    throw error;
+  }
 }
 
 // Export function to check if database is ready
@@ -45,25 +65,33 @@ export async function waitForDatabase(): Promise<SQLite.SQLiteDatabase> {
 // Initialize the database
 export async function initializeDatabase() {
   try {
-    console.log('Initializing database...');
+    console.log('🗄️ Initializing database...');
     
     // Close existing connection if any
     if (db) {
-      console.log('Closing existing database connection...');
+      console.log('🔄 Closing existing database connection...');
       await db.closeAsync();
       db = null;
+      isDbReady = false;
     }
     
     // Open new connection
     db = await SQLite.openDatabaseAsync('valuations.db');
-    console.log('Database opened successfully');
+    console.log('✅ Database opened successfully');
     
     // Create tables
     await createTables();
     
+    // Mark database as ready
+    isDbReady = true;
+    console.log('✅ Database initialization completed successfully');
+    
     return db;
   } catch (error) {
-    console.error('Error initializing database:', error);
+    console.error('❌ Error initializing database:', error);
+    db = null;
+    isDbReady = false;
+    initPromise = null;
     throw error;
   }
 }
@@ -129,7 +157,7 @@ export async function runSql(sql: string, params: any[] = []): Promise<SQLiteRes
 // Create all tables
 export async function createTables() {
   try {
-    console.log('Starting database table creation...');
+    console.log('🔧 Starting database table creation...');
     
     // Use the db variable that should be set by initializeDatabase
     if (!db) {
@@ -296,7 +324,7 @@ export async function createTables() {
     console.log('Running database migrations...');
     await migrateDatabase();
     
-    console.log('Database initialization completed successfully');
+    console.log('✅ Database initialization completed successfully');
     
   } catch (error) {
     console.error('Error creating database tables:', error);
@@ -516,7 +544,7 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
       i.rank || 0,
       i.commaseparatedlist || '',
       i.selectedanswer || '',
-      i.qty || 0,
+      i.qty || 1,
       i.price || 0,
       i.description || '',
       i.model || '',
@@ -1062,7 +1090,7 @@ export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]
                 item.rank || 0,
                 item.commaseparatedlist || '',
                 item.selectedanswer || '',
-                item.qty || 0,
+                item.qty || 1,
                 item.price || 0,
                 item.description || '',
                 item.model || '',

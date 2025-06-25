@@ -219,7 +219,7 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
                           rank: Number(item.rank) || 0,
                           commaseparatedlist: item.commaseparatedlist || '',
                           selectedanswer: item.selectedanswer || '',
-                          qty: Number(item.qty) || 0,
+                          qty: Number(item.qty) || 1,
                           price: Number(item.price) || 0,
                           description: item.description || '',
                           model: item.model || '',

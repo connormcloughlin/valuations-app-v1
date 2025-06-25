@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Card, Divider, Button, TextInput as PaperTextInput, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -70,12 +70,6 @@ export default function PredefinedItemsList({
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [currentPhotoItemId, setCurrentPhotoItemId] = useState<string | null>(null);
   const [addingAnotherPhoto, setAddingAnotherPhoto] = useState(false);
-  
-  // ScrollView ref for auto-scrolling to new items
-  const scrollViewRef = useRef<ScrollView>(null);
-  
-  // State to track item we want to navigate back to after refresh
-  const [pendingNavigationItemId, setPendingNavigationItemId] = useState<string | null>(null);
 
   // Initialize local items state with props items (same pattern as ItemsTable)
   useEffect(() => {
@@ -84,20 +78,6 @@ export default function PredefinedItemsList({
       setItems(propsItems);
     }
   }, [propsItems]);
-
-  // Navigation effect - waits for items to be refreshed then navigates to the new item
-  useEffect(() => {
-    if (pendingNavigationItemId && items.length > 0) {
-      console.log('✅ Pending navigation ID confirmed set to:', pendingNavigationItemId);
-      
-      // Wait a bit longer to ensure all data loading is complete
-      const timer = setTimeout(() => {
-        scrollToItem(pendingNavigationItemId);
-      }, 200); // Increased from immediate to 200ms
-      
-      return () => clearTimeout(timer);
-    }
-  }, [items, pendingNavigationItemId]);
 
   // Function to add a new custom item to the list
   const addNewCustomItem = useCallback(() => {
@@ -116,14 +96,11 @@ export default function PredefinedItemsList({
     
     console.log('PredefinedItemsList: Creating new item:', newItem);
     
-    // Add to local items state (at the bottom of the list)
+    // Add to local items state
     setItems(prevItems => {
       console.log('PredefinedItemsList: Adding new item to list, current items:', prevItems.length);
-      return [...prevItems, newItem];
+      return [newItem, ...prevItems];
     });
-    
-    // Ensure "New Items" group is expanded for new items
-    setExpandedGroup('New Items');
     
     // Immediately expand the new item for editing
     setExpandedItem(newItem.id);
@@ -143,12 +120,7 @@ export default function PredefinedItemsList({
       }
     }));
     console.log('PredefinedItemsList: Edit state set for new item');
-    
-    // Scroll to bottom to show the new item (with a small delay to allow rendering)
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  }, []); // Remove categoryId dependency since it's stable from props
+  }, [categoryId]);
 
   // Calculate and expose totals to parent component
   const calculateTotals = useCallback(() => {
@@ -160,7 +132,7 @@ export default function PredefinedItemsList({
       const editedItem = editItems[itemId];
       
       // Count item if it has been edited and has a quantity > 0, or if it's an original item with values
-      const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '1', 10);
+      const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '0', 10);
       const price = editedItem?.price ? parseFloat(editedItem.price) : parseFloat(item.price || '0');
       
       // Include items that have been edited or have existing values
@@ -188,7 +160,20 @@ export default function PredefinedItemsList({
         const count = await riskAssessmentSyncService.getPendingChangesCount();
         if (isMounted) setPendingChangesCount(count.total);
         
-
+        // Load photos for items
+        console.log('PredefinedItemsList: Loading photos for items...');
+        const photoMap: { [key: string]: MediaFile[] } = {};
+        
+        for (const item of items) {
+          const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', Number(item.id));
+          photoMap[String(item.id)] = photos;
+          console.log(`PredefinedItemsList: Item ${item.id} has ${photos.length} photos`);
+        }
+        
+        if (isMounted) {
+          setItemPhotos(photoMap);
+          console.log('PredefinedItemsList: Photos loaded, total items with photos:', Object.keys(photoMap).filter(key => photoMap[key].length > 0).length);
+        }
         
       } catch (error) {
         console.error('Error in data initialization:', error);
@@ -217,13 +202,48 @@ export default function PredefinedItemsList({
     };
   }, [items]);
 
+  // CONSOLIDATED USEEFFECT 2: Parent Communication and Calculations
+  // Handles: parent callbacks, totals calculation, sync status updates
+  useEffect(() => {
+    // Expose addNewCustomItem function to parent
+    if (onAddNewItem) {
+      console.log('PredefinedItemsList: Passing addNewCustomItem function to parent');
+      onAddNewItem(addNewCustomItem);
+    }
+    
+    // Expose sync status to parent
+    if (onSyncStatusChange) {
+      onSyncStatusChange(pendingChangesCount, syncing);
+    }
+    
+    // Expose sync function to parent
+    if (onSyncRequest) {
+      onSyncRequest(handleSync);
+    }
+    
+    // Calculate and expose totals to parent
+    if (onTotalsChange) {
+      const { itemCount, totalValue } = calculateTotals();
+      onTotalsChange(itemCount, totalValue);
+    }
+  }, [
+    onAddNewItem, 
+    addNewCustomItem, 
+    onSyncStatusChange, 
+    pendingChangesCount, 
+    syncing, 
+    onSyncRequest, 
+    onTotalsChange, 
+    calculateTotals
+  ]);
+
   // Check if an item has meaningful data captured
   const hasDataCaptured = useCallback((item: Item) => {
     const itemId = String(item.id);
     const editedItem = editItems[itemId];
     
     // Get current values (edited or original)
-    const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '1', 10);
+    const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '0', 10);
     const price = editedItem?.price ? parseFloat(editedItem.price) : parseFloat(item.price || '0');
     const description = editedItem?.description || item.description || '';
     
@@ -232,7 +252,7 @@ export default function PredefinedItemsList({
   }, [editItems]);
 
   // Handle sync
-  const handleSync = useCallback(async () => {
+  const handleSync = async () => {
     setSyncing(true);
     setSyncStatus('idle');
     setSyncMessage('');
@@ -304,46 +324,21 @@ export default function PredefinedItemsList({
     } finally {
       setSyncing(false);
     }
-  }, []);
+  };
 
-  // CONSOLIDATED USEEFFECT 2: Parent Communication (Non-calculated values)
-  // Handles: parent callbacks that don't depend on changing state
-  useEffect(() => {
-    // Expose addNewCustomItem function to parent (only when function changes)
-    if (onAddNewItem) {
-      console.log('PredefinedItemsList: Passing addNewCustomItem function to parent');
-      onAddNewItem(addNewCustomItem);
+  const loadPhotosForItems = async () => {
+    console.log('PredefinedItemsList: Loading photos for items...');
+    const photoMap: { [key: string]: MediaFile[] } = {};
+    
+    for (const item of items) {
+      const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', Number(item.id));
+      photoMap[String(item.id)] = photos;
+      console.log(`PredefinedItemsList: Item ${item.id} has ${photos.length} photos`);
     }
     
-    // Expose sync function to parent (only when function changes)
-    if (onSyncRequest) {
-      onSyncRequest(handleSync);
-    }
-  }, [onAddNewItem, addNewCustomItem, onSyncRequest, handleSync]);
-
-  // SEPARATE USEEFFECT 3: Sync Status Updates
-  // Handles: sync status changes (less frequent)
-  useEffect(() => {
-    if (onSyncStatusChange) {
-      onSyncStatusChange(pendingChangesCount, syncing);
-    }
-  }, [onSyncStatusChange, pendingChangesCount, syncing]);
-
-  // SEPARATE USEEFFECT 4: Totals Calculation
-  // Handles: totals calculation (debounced to prevent excessive calls)
-  useEffect(() => {
-    if (onTotalsChange) {
-      // Debounce the totals calculation to prevent excessive parent updates
-      const timeoutId = setTimeout(() => {
-        const { itemCount, totalValue } = calculateTotals();
-        onTotalsChange(itemCount, totalValue);
-      }, 300); // 300ms debounce
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [onTotalsChange, items, editItems]); // Only depend on the actual data, not the function
-
-
+    setItemPhotos(photoMap);
+    console.log('PredefinedItemsList: Photos loaded, total items with photos:', Object.keys(photoMap).filter(key => photoMap[key].length > 0).length);
+  };
 
   // Handle editing a field
   const handleEdit = (id: string, field: 'type' | 'quantity' | 'price' | 'description' | 'model' | 'room' | 'notes', value: string) => {
@@ -359,23 +354,15 @@ export default function PredefinedItemsList({
   // Auto-save function that saves changes to SQLite
   const autoSaveItem = async (id: string) => {
     const changes = editItems[id];
-    if (!changes) {
-      console.log('❌ No changes to save for item:', id);
-      return; // No changes to save
-    }
+    if (!changes) return; // No changes to save
 
     try {
       const item = items.find(i => String(i.id) === id);
-      if (!item) {
-        console.log('❌ No item found for ID:', id);
-        return;
-      }
+      if (!item) return;
 
-      console.log('🔥 === PREDEFINED ITEMS: Auto-saving item ===');
-      console.log('🆔 Item ID:', id);
-      console.log('📝 Changes being saved:', JSON.stringify(changes, null, 2));
-      console.log('🏷️ Type being saved:', changes.type);
-      console.log('📋 Original item:', JSON.stringify(item, null, 2));
+      console.log('=== PREDEFINED ITEMS: Auto-saving item ===');
+      console.log('Item ID:', id);
+      console.log('Changes:', changes);
 
       const isNewItem = id.startsWith('custom-new-') || id.startsWith('duplicate-');
       
@@ -388,9 +375,6 @@ export default function PredefinedItemsList({
           console.log('New item requires type field - skipping save');
           return;
         }
-        
-        // Check if this is the first time the type is being saved (i.e., item creation)
-        const isFirstTypeSave = !item.type || item.type.trim() === '';
         
         const { insertRiskAssessmentItem } = await import('../../../../utils/db');
         
@@ -426,25 +410,13 @@ export default function PredefinedItemsList({
           pending_sync: 1 // Mark for sync
         };
         
-        console.log('🗄️ SQLite record being created:');
-        console.log('🆔 riskassessmentitemid:', newSqliteItem.riskassessmentitemid);
-        console.log('🏷️ itemprompt (type):', `"${newSqliteItem.itemprompt}"`);
-        console.log('📋 Full record:', JSON.stringify(newSqliteItem, null, 2));
-        
         await insertRiskAssessmentItem(newSqliteItem);
         
-        // Use the SQLite ID we already set
-        const sqliteId = String(newSqliteItem.riskassessmentitemid);
-        console.log('Item saved to SQLite with ID:', sqliteId);
-        console.log('Item details:', { 
-          id: sqliteId, 
-          type: newSqliteItem.itemprompt, 
-          categoryId: newSqliteItem.riskassessmentcategoryid 
-        });
-        
+        // Update the item ID to match the SQLite ID for future updates
+        const newId = String(newSqliteItem.riskassessmentitemid);
         setItems(prevItems => 
           prevItems.map(prevItem => 
-            prevItem.id === id ? { ...prevItem, id: sqliteId } : prevItem
+            prevItem.id === id ? { ...prevItem, id: newId } : prevItem
           )
         );
         
@@ -452,7 +424,7 @@ export default function PredefinedItemsList({
         setEditItems(prev => {
           const newEditItems = { ...prev };
           if (newEditItems[id]) {
-            newEditItems[sqliteId] = newEditItems[id];
+            newEditItems[newId] = newEditItems[id];
             delete newEditItems[id];
           }
           return newEditItems;
@@ -460,46 +432,10 @@ export default function PredefinedItemsList({
         
         // Update expanded item if needed
         if (expandedItem === id) {
-          setExpandedItem(sqliteId);
+          setExpandedItem(newId);
         }
         
-        console.log('New custom item inserted successfully with ID:', sqliteId);
-        
-        // Clear edit state for this item since it's now saved
-        setEditItems(prev => {
-          const newEditItems = { ...prev };
-          delete newEditItems[sqliteId];
-          return newEditItems;
-        });
-        
-        // Only trigger refresh for FIRST-TIME type creation, not subsequent edits
-        if (onRefresh && isFirstTypeSave) {
-          console.log('🔥 TRIGGERING REFRESH FOR NEW ITEM TYPE!');
-          console.log('🆔 Original temp ID:', id);
-          console.log('🆔 New SQLite ID:', sqliteId);
-          console.log('📝 Item type saved:', changes.type);
-          console.log('🔄 Setting pendingNavigationItemId to:', sqliteId);
-          
-          // Set the pending navigation item ID so we can navigate back after refresh
-          setPendingNavigationItemId(sqliteId);
-          
-          // Double-check it was set
-          setTimeout(() => {
-            console.log('✅ Pending navigation ID confirmed set to:', sqliteId);
-          }, 50);
-          
-          // Trigger the refresh
-          setTimeout(() => {
-            console.log('🚀 Starting refresh...');
-            onRefresh();
-          }, 100);
-        } else {
-          console.log('❌ Not triggering refresh because:');
-          console.log('  onRefresh available:', !!onRefresh);
-          console.log('  isFirstTypeSave:', isFirstTypeSave);
-          console.log('  item.type before:', item.type);
-          console.log('  changes.type:', changes.type);
-        }
+        console.log('New custom item inserted successfully with ID:', newId);
         
       } else {
         // Handle existing items - update them in SQLite
@@ -517,7 +453,7 @@ export default function PredefinedItemsList({
         const updated: RiskAssessmentItem = {
           ...existingItem,  // Preserve all existing database fields
           itemprompt: changes.type ?? existingItem.itemprompt ?? '',
-          qty: Number(changes.quantity ?? existingItem.qty) || 1,
+          qty: Number(changes.quantity ?? existingItem.qty) || 0,
           price: Number(changes.price ?? existingItem.price) || 0,
           description: changes.description ?? existingItem.description ?? '',
           model: changes.model ?? existingItem.model ?? '',
@@ -530,22 +466,22 @@ export default function PredefinedItemsList({
         
         await updateRiskAssessmentItem(updated);
         
-                    // Update local items state immediately after database update (following ItemsTable pattern)
-            // This ensures UI shows the saved changes even after sync completes
-            setItems(prevItems => 
-              prevItems.map(prevItem => 
-                String(prevItem.id) === id ? {
-                  ...prevItem,
-                  type: updated.itemprompt || '',
-                  quantity: String(updated.qty || 1),
-                  price: String(updated.price),
-                  description: updated.description || '',
-                  model: updated.model || '',
-                  room: updated.location || '',
-                  notes: updated.notes || ''
-                } : prevItem
-              )
-            );
+        // Update local items state immediately after database update (following ItemsTable pattern)
+        // This ensures UI shows the saved changes even after sync completes
+        setItems(prevItems => 
+          prevItems.map(prevItem => 
+            String(prevItem.id) === id ? {
+              ...prevItem,
+              type: updated.itemprompt || '',
+              quantity: String(updated.qty),
+              price: String(updated.price),
+              description: updated.description || '',
+              model: updated.model || '',
+              room: updated.location || '',
+              notes: updated.notes || ''
+            } : prevItem
+          )
+        );
       }
 
       // Mark as auto-saved but keep the changes visible
@@ -615,7 +551,10 @@ export default function PredefinedItemsList({
           }
         }
 
-
+        // Reload photos for this item
+        console.log('PredefinedItemsList: Reloading photos after taking photo...');
+        await loadPhotosForItems();
+        console.log('PredefinedItemsList: Photos reloaded after taking photo');
         
         Alert.alert('Success', 'Photo saved successfully!');
       }
@@ -685,9 +624,10 @@ export default function PredefinedItemsList({
           }
         }
 
-        // Reload photos for this item (silent)
-        const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', Number(currentPhotoItemId));
-        setItemPhotos(prev => ({ ...prev, [currentPhotoItemId]: photos }));
+        // Reload photos for this item
+        console.log('PredefinedItemsList: Reloading photos after selecting from gallery...');
+        await loadPhotosForItems();
+        console.log('PredefinedItemsList: Photos reloaded after selecting from gallery');
         
         Alert.alert('Success', 'Photo saved successfully!');
       }
@@ -728,11 +668,8 @@ export default function PredefinedItemsList({
     try {
       await mediaService.deletePhoto(photoId);
       
-      // Reload photos for the affected item (silent)
-      if (currentPhotoItemId) {
-        const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', Number(currentPhotoItemId));
-        setItemPhotos(prev => ({ ...prev, [currentPhotoItemId]: photos }));
-      }
+      // Reload photos for all items
+      await loadPhotosForItems();
       
       // Update pending changes count
       const count = await riskAssessmentSyncService.getPendingChangesCount();
@@ -899,60 +836,6 @@ export default function PredefinedItemsList({
     );
   }, [expandedItem]);
 
-  // Helper function to scroll to a specific item by finding its group
-  const scrollToItem = (itemId: string) => {
-    console.log(`🎯 Navigating to item: ${itemId}`);
-    
-    // Group items by type
-    const grouped = items.reduce((acc, item) => {
-      const type = item.type || 'Unknown Items';
-      if (!acc[type]) acc[type] = [];
-      acc[type].push(item);
-      return acc;
-    }, {} as Record<string, Item[]>);
-
-    // Find the target item and its group
-    let targetGroup = '';
-    let foundItem: Item | null = null;
-
-    for (const [groupName, groupItems] of Object.entries(grouped)) {
-      const item = groupItems.find(i => String(i.id) === itemId);
-      if (item) {
-        targetGroup = groupName;
-        foundItem = item;
-        break;
-      }
-    }
-
-    if (!foundItem) {
-      console.warn(`❌ Item ${itemId} not found in any group`);
-      setPendingNavigationItemId(null);
-      return;
-    }
-
-    console.log(`✅ Found item in group: ${targetGroup}`);
-    
-    // Expand the group and highlight the item
-    setExpandedGroup(targetGroup);
-    setExpandedItem(itemId);
-    
-    // Clear the pending navigation after successful setup
-    setPendingNavigationItemId(null);
-
-    // Scroll to the appropriate position
-    setTimeout(() => {
-      if (scrollViewRef.current) {
-        // For items at the end of the list, scroll to the bottom
-        if (targetGroup === 'Unknown Items' || Object.keys(grouped).indexOf(targetGroup) >= Object.keys(grouped).length - 2) {
-          scrollViewRef.current.scrollToEnd({ animated: true });
-        } else {
-          // For items at the top, scroll to the top
-          scrollViewRef.current.scrollTo({ y: 0, animated: true });
-        }
-      }
-    }, 100);
-  };
-
   // Helper function to check if a field should be visible
   const isFieldVisible = useCallback((fieldName: string) => {
     console.log(`🔍 Checking field '${fieldName}' - useCustomFields: ${useCustomFields}, fieldConfig:`, fieldConfig);
@@ -995,25 +878,14 @@ export default function PredefinedItemsList({
     return isVisible;
   }, [useCustomFields, fieldConfig]);
 
-  // Group items by itemprompt (type) - stable grouping to prevent re-render during typing
-  // CRITICAL: We only depend on 'items', NOT 'editItems' to prevent re-grouping while user types
-  // New items always go to "New Items" group, existing items use original type
+  // Group items by itemprompt (type)
   const groupedItems = useMemo(() => {
     const groups: { [key: string]: Item[] } = {};
     
     items.forEach(item => {
       const itemId = String(item.id);
-      const isNewItem = item.id.startsWith('custom-new-') || item.id.startsWith('duplicate-');
-      
-      let groupKey: string;
-      
-      if (isNewItem) {
-        // For new items being edited, always use "New Items" group to prevent re-grouping during typing
-        groupKey = 'New Items';
-      } else {
-        // For existing items, use the original type (not edited type) to maintain stable grouping
-        groupKey = item.type || 'Unknown Items';
-      }
+      const type = editItems[itemId]?.type ?? (item.type || '');
+      const groupKey = type || 'Unknown Items';
       
       if (!groups[groupKey]) {
         groups[groupKey] = [];
@@ -1022,37 +894,7 @@ export default function PredefinedItemsList({
     });
     
     return groups;
-  }, [items]); // Only depend on items, not editItems
-
-  // Load photos for all items
-  useEffect(() => {
-    if (items.length > 0) {
-      const loadPhotos = async () => {
-        const photoPromises = items.map(async (item) => {
-          try {
-            const { getMediaFilesByEntity } = await import('../../../../utils/db');
-            const mediaFiles = await getMediaFilesByEntity('riskAssessmentItem', Number(item.id), false);
-            return { itemId: item.id, photos: mediaFiles };
-          } catch (error) {
-            return { itemId: item.id, photos: [] };
-          }
-        });
-
-        const results = await Promise.all(photoPromises);
-        const newItemPhotos: { [key: string]: MediaFile[] } = {};
-        let totalWithPhotos = 0;
-
-        results.forEach(({ itemId, photos }) => {
-          newItemPhotos[itemId] = photos;
-          if (photos.length > 0) totalWithPhotos++;
-        });
-
-        setItemPhotos(newItemPhotos);
-      };
-
-      loadPhotos();
-    }
-  }, [items]);
+  }, [items, editItems]);
 
   return (
     <>
@@ -1066,7 +908,6 @@ export default function PredefinedItemsList({
           <Text style={styles.scrollHint}>Tap items to view and edit details</Text>
         </View>
         <ScrollView 
-          ref={scrollViewRef}
           style={styles.predefinedList}
           contentContainerStyle={styles.predefinedListContent}
           nestedScrollEnabled={true}
