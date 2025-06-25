@@ -78,14 +78,22 @@ export default function AppointmentDetails() {
       setLoading(true);
       const response = await typedApi.getAppointmentById(id.toString());
       if (response.success && response.data) {
+        // Debug: Log the raw API response to see available fields
+        console.log('🔍 Raw appointment API response:', JSON.stringify(response.data, null, 2));
+        
         // Map API response to our Appointment interface
         const appointmentData: Appointment = {
           id: String(response.data.id || id),
           appointmentId: response.data.appointmentId ? String(response.data.appointmentId) : undefined,
           address: response.data.address || response.data.location || response.data.property_address || 'No address provided',
           client: response.data.client || response.data.clientName || 'Unknown client',
-          phone: response.data.phone || response.data.phoneNumber || 'N/A',
-          email: response.data.email || response.data.emailAddress || 'N/A',
+          phone: response.data.cell || response.data.phone || response.data.phoneNumber || 
+                 response.data.Phone || response.data.PhoneNo || response.data.PhoneNumber ||
+                 response.data.clientPhone || response.data.client_phone || 
+                 response.data.ordersList?.clientPhone || response.data.ordersList?.Phone || 'N/A',
+          email: response.data.email || response.data.emailAddress || response.data.Email || 
+                 response.data.EmailAddress || response.data.clientEmail || response.data.client_email ||
+                 response.data.ordersList?.clientEmail || response.data.ordersList?.Email || 'N/A',
           date: response.data.date || response.data.appointmentDate || response.data.startTime || new Date().toISOString(),
           policyNo: response.data.policyNo || response.data.policyNumber || 'N/A',
           sumInsured: String(response.data.sumInsured || 'N/A'),
@@ -337,7 +345,7 @@ export default function AppointmentDetails() {
               icon="calendar-clock"
               onPress={() => router.back()}
             >
-              Reschedule 111111
+              Reschedule
             </Button>
             <Button
               mode="contained"
