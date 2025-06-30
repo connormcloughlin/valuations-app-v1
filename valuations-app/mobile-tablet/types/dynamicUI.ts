@@ -1,13 +1,16 @@
 // Dynamic UI Configuration Types
 export interface DropdownOption {
+  dropdown_option_id?: string;
   option_value: string;
   option_label: string;
   display_order: number;
   is_active?: boolean; // Optional - defaults to true if not provided
   parent_option_id?: number;
-  option_icon?: string;
+  option_icon?: string | null;
   option_group?: string | null;
   option_color?: string | null;
+  option_description?: string | null;
+  children?: DropdownOption[];
 }
 
 export interface FieldConfiguration {

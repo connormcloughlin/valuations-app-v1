@@ -45,7 +45,7 @@ class ConfigurationService {
    */
   async getCategoryConfiguration(categoryId: number, riskTemplateCategoryId?: number): Promise<CategoryConfiguration | null> {
     try {
-      console.log(`🔄 ConfigurationService: Fetching configuration for category ${categoryId}`);
+      console.log(`🔄 ConfigurationService: Fetching complete configuration for category ${categoryId}`);
       
       // Check cache first
       const cachedConfig = await this.getCachedConfiguration(categoryId);
@@ -67,7 +67,6 @@ class ConfigurationService {
       }
 
       let finalRiskTemplateCategoryId = riskTemplateCategoryId;
-      let categoryData: any = { riskassessmentcategoryid: categoryId, categoryname: 'Unknown Category' };
 
       if (!finalRiskTemplateCategoryId) {
         // Step 1: Only fetch category details if riskTemplateCategoryId wasn't provided
@@ -79,7 +78,7 @@ class ConfigurationService {
           return cachedConfig; // Return cached if available
         }
 
-        categoryData = categoryResponse.data.data;
+        const categoryData = categoryResponse.data.data;
         console.log('📝 Category data received:', JSON.stringify(categoryData, null, 2));
         
         // Try different possible field name variations
@@ -91,7 +90,6 @@ class ConfigurationService {
         if (!finalRiskTemplateCategoryId) {
           console.error('❌ No RiskTemplateCategoryID found in category data');
           console.error('Available fields:', Object.keys(categoryData));
-          console.log('Full category data:', JSON.stringify(categoryData, null, 2));
           return cachedConfig; // Return cached if available
         }
 
@@ -101,30 +99,29 @@ class ConfigurationService {
         console.log('⚡ Skipping duplicate API call - RiskTemplateCategoryID already available');
       }
 
-      // Step 2: Use RiskTemplateCategoryID to fetch dynamic field configuration
-      console.log('🔄 Step 2: Fetching dynamic field configuration using RiskTemplateCategoryID');
+      // Step 2: Use new composite endpoint to fetch complete configuration
+      console.log('🔄 Step 2: Fetching complete configuration using composite endpoint');
       
-      const endpoint = `/mobile/config/category/${finalRiskTemplateCategoryId}/fields`;
+      const endpoint = `/mobile/config/category/${finalRiskTemplateCategoryId}/complete`;
       const fullUrl = `${API_BASE_URL}${endpoint}`;
       
-      console.log('🌐 === CONFIGURATION API REQUEST DEBUG ===');
+      console.log('🌐 === COMPOSITE API REQUEST DEBUG ===');
       console.log('🌐 Base URL:', API_BASE_URL);
       console.log('🌐 Endpoint:', endpoint);
       console.log('🌐 Full URL:', fullUrl);
       console.log('🌐 Method: GET');
       console.log('🌐 RiskTemplateCategoryID:', finalRiskTemplateCategoryId);
       console.log('🌐 Original CategoryID:', categoryId);
-      console.log('🌐 Headers:', this.axiosInstance.defaults.headers);
       
       const configResponse = await this.axiosInstance.get(endpoint);
 
       if (!configResponse.data.success || !configResponse.data.data) {
-        console.error('❌ Failed to fetch dynamic field configuration:', configResponse.data.message);
+        console.error('❌ Failed to fetch complete configuration:', configResponse.data.message);
         return cachedConfig; // Return cached if available
       }
 
-      const rawConfigData = configResponse.data.data;
-      console.log('📝 Raw config data from backend:', JSON.stringify(rawConfigData, null, 2));
+      const completeConfig = configResponse.data.data;
+      console.log('📝 Complete config data from backend:', JSON.stringify(completeConfig, null, 2));
 
       // Map backend field names to UI field names
       const fieldNameMapping: { [key: string]: string } = {
@@ -134,11 +131,12 @@ class ConfigurationService {
         'Price': 'price',
         'Location': 'room',
         'Notes': 'notes',
-        'HasPhoto': 'photos'
+        'HasPhoto': 'photos',
+        'ItemPrompt': 'type'
       };
 
       // Map backend data structure to our expected format
-      const mappedFields: FieldConfiguration[] = rawConfigData.fields.map((field: any) => {
+      const mappedFields: FieldConfiguration[] = completeConfig.fields.map((field: any) => {
         const backendFieldName = field.fieldName || field.fieldLabel || '';
         const uiFieldName = fieldNameMapping[backendFieldName] || backendFieldName.toLowerCase();
         
@@ -165,11 +163,11 @@ class ConfigurationService {
           riskTemplateCategoryID: finalRiskTemplateCategoryId,
           item_fields: uiFieldName,
           field_label: field.fieldLabel || field.fieldName || '',
-          display_on_ui: 1, // Assume all fields are visible since backend doesn't provide this
+          display_on_ui: field.isVisible ? 1 : 0, // Use isVisible from new API
           field_type: fieldType,
           is_required: field.isRequired || false,
           placeholder: field.placeholder || '',
-          validation_rules: null,
+          validation_rules: field.validationRules || null,
           display_order: field.displayOrder || 0,
           dropdownOptions: field.dropdownOptions || []
         };
@@ -183,29 +181,33 @@ class ConfigurationService {
         console.log(`  - Field "${field.item_fields}": ${field.display_on_ui === 1 ? 'VISIBLE' : 'HIDDEN'}`);
       });
 
-      const configData = {
-        categoryId: rawConfigData.categoryId,
-        categoryName: rawConfigData.categoryName,
-        fields: mappedFields,
-        groupingStrategy: undefined, // Backend doesn't provide this yet
-        locationTemplate: undefined   // Backend doesn't provide this yet
-      };
+      // Process grouping strategy from the new API response
+      const groupingStrategy = completeConfig.groupingStrategy ? {
+        grouping_strategy_id: completeConfig.groupingStrategy.grouping_strategy_id,
+        RiskTemplateCategoryID: finalRiskTemplateCategoryId,
+        strategy_type: completeConfig.groupingStrategy.strategy_type,
+        strategy_name: completeConfig.groupingStrategy.strategy_name,
+        strategy_config: JSON.stringify(completeConfig.groupingStrategy.strategy_config), // Convert back to string for compatibility
+        is_active: completeConfig.groupingStrategy.is_active,
+        display_order: completeConfig.groupingStrategy.display_order
+      } : undefined;
       
       // Process and enhance the configuration
       const categoryConfig: CategoryConfiguration = {
         categoryId: finalRiskTemplateCategoryId, // Use the RiskTemplateCategoryID as the categoryId
-        categoryName: configData.categoryName,
-        fields: await this.processFields(configData.fields),
-        groupingStrategy: configData.groupingStrategy,
-        locationTemplate: configData.locationTemplate,
-        // Note: Backend doesn't provide complex locationTemplate/groupingStrategy yet
-        // parsedLocations and parsedStrategyConfig will be undefined for now
+        categoryName: completeConfig.category.categoryName,
+        fields: await this.processFields(mappedFields),
+        groupingStrategy: groupingStrategy,
+        locationTemplate: undefined, // TODO: Process locationTemplates when needed
+        // Parse the strategy config for easier use
+        parsedStrategyConfig: completeConfig.groupingStrategy?.strategy_config
       };
 
       // Cache the result (use original categoryId for cache key)
       await this.cacheConfiguration(categoryId, categoryConfig);
       
-      console.log('✅ Step 2 Complete: Dynamic field configuration fetched and cached successfully');
+      console.log('✅ Step 2 Complete: Complete configuration fetched and cached successfully');
+      console.log('📊 Configuration summary:', completeConfig.summary);
       return categoryConfig;
 
     } catch (error: any) {
