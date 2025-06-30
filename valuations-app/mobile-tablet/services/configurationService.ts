@@ -233,27 +233,12 @@ class ConfigurationService {
   }
 
   /**
-   * Process fields and fetch dropdown options where needed
+   * Process fields and enhance field configuration
    */
   private async processFields(fields: FieldConfiguration[]): Promise<FieldConfiguration[]> {
-    const processedFields = await Promise.all(
-      fields.map(async (field) => {
-        // If field has dropdown options, fetch them
-        if (field.field_type === 'dropdown' || field.item_fields === 'room') {
-          try {
-            const options = await this.getDropdownOptions(field.riskfieldid);
-            return { ...field, dropdownOptions: options };
-          } catch (error) {
-            console.error(`Error fetching dropdown options for field ${field.riskfieldid}:`, error);
-            return field;
-          }
-        }
-        return field;
-      })
-    );
-
-    // Sort fields by display order
-    return processedFields.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+    // No need to fetch dropdown options separately - they're already included in the main API response
+    // Just sort fields by display order and return them
+    return fields.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
   }
 
   /**

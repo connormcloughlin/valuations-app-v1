@@ -3,9 +3,11 @@ export interface DropdownOption {
   option_value: string;
   option_label: string;
   display_order: number;
-  is_active: boolean;
+  is_active?: boolean; // Optional - defaults to true if not provided
   parent_option_id?: number;
   option_icon?: string;
+  option_group?: string | null;
+  option_color?: string | null;
 }
 
 export interface FieldConfiguration {

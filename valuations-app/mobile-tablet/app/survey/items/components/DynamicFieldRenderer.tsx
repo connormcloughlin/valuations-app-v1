@@ -155,12 +155,7 @@ export default function DynamicFieldRenderer({
       return renderTextField();
     }
 
-    // For room field or location-based dropdowns, render as buttons
-    if (fieldName === 'room' || field.field_type === 'location_group') {
-      return renderLocationButtons();
-    }
-
-    // Render as picker for other dropdowns
+    // Render all dropdowns as picker/select lists
     return (
       <View style={[styles.pickerContainer, hasError && styles.inputError]}>
         <Picker
@@ -174,7 +169,7 @@ export default function DynamicFieldRenderer({
             color="#95a5a6"
           />
           {field.dropdownOptions
-            .filter(option => option.is_active)
+            .filter(option => option.is_active !== false) // Include undefined values
             .map((option) => (
               <Picker.Item
                 key={option.option_value}
@@ -190,7 +185,7 @@ export default function DynamicFieldRenderer({
   const renderLocationButtons = () => (
     <View style={styles.locationButtonsContainer}>
       {field.dropdownOptions
-        ?.filter(option => option.is_active)
+        ?.filter(option => option.is_active !== false) // Include undefined values
         .map((option) => (
           <TouchableOpacity
             key={option.option_value}
