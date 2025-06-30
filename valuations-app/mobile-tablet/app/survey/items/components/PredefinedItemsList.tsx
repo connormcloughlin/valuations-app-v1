@@ -1021,7 +1021,7 @@ export default function PredefinedItemsList({
         // Fallback to original item values
         switch (fieldName) {
           case 'quantity': return String(item.quantity || '1');
-          case 'price': return String(item.price || '');
+          case 'price': return (item.price && String(item.price) !== '0') ? String(item.price) : '';
           case 'description': return item.description || '';
           case 'model': return item.model || '';
           case 'room': return item.room || '';
@@ -1200,7 +1200,7 @@ export default function PredefinedItemsList({
     const isNewItem = item.id.startsWith('custom-new-');
     const type = editData.type ?? (item.type || '');
     const quantity = editData.quantity ?? String(item.quantity || '1');
-    const price = editData.price ?? String(item.price || '');
+    const price = editData.price ?? ((item.price && String(item.price) !== '0') ? String(item.price) : '');
     const description = editData.description ?? (item.description || '');
     const model = editData.model ?? (item.model || '');
     const room = editData.room ?? (item.room || '');
