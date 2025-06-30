@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, View, ScrollView, Alert } from 'react-native';
 import { Button } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -9,6 +9,7 @@ import { logNavigation } from '../../utils/logger';
 import ConnectionStatus from '../../components/ConnectionStatus';
 import connectionUtils from '../../utils/connectionUtils';
 import { AppLayout, TabConfig } from '../../components/layout';
+import { FieldConfiguration, GroupingStrategy } from '../../types/dynamicUI';
 
 // Import components
 import {
@@ -29,9 +30,9 @@ export default function ItemsScreen() {
   const router = useRouter();
   
   const params = useLocalSearchParams();
-  const { categoryId, categoryTitle, sectionId, assessmentId, useHandwriting } = params;
+  const { categoryId, categoryTitle, sectionId, assessmentId, useHandwriting, riskTemplateCategoryId } = params;
   
-  console.log('Route params:', { categoryId, categoryTitle, sectionId, assessmentId });
+  console.log('Route params:', { categoryId, categoryTitle, sectionId, assessmentId, riskTemplateCategoryId });
   
   const handwritingEnabled = useHandwriting === '1';
   
@@ -56,17 +57,7 @@ export default function ItemsScreen() {
     };
   }, []);
 
-  // Fetch predefined items and field configuration when component loads or categoryId changes
-  useEffect(() => {
-    console.log('🔄 useEffect triggered with categoryId:', categoryId);
-    if (categoryId) {
-      console.log('🔄 CategoryId exists, calling fetchCategoryItems and fetchFieldConfiguration');
-      fetchCategoryItems();
-      fetchFieldConfiguration(categoryId as string);
-    } else {
-      console.log('🔄 No categoryId, skipping API calls');
-    }
-  }, [categoryId]);
+  // This useEffect will be moved after fetchCategoryItems is declared
 
 
   const [predefinedItems, setPredefinedItems] = useState<Item[]>([]); // For storing category items from API
@@ -75,7 +66,9 @@ export default function ItemsScreen() {
   
   // Field visibility configuration
   const [fieldConfig, setFieldConfig] = useState<any[]>([]);
+  const [dynamicFieldConfig, setDynamicFieldConfig] = useState<FieldConfiguration[]>([]);
   const [useCustomFields, setUseCustomFields] = useState(false);
+  const [groupingStrategy, setGroupingStrategy] = useState<GroupingStrategy | undefined>(undefined);
   
   // Category totals (calculated from predefined items)
   const [categoryItemCount, setCategoryItemCount] = useState(0);
@@ -101,6 +94,14 @@ export default function ItemsScreen() {
   const [pendingChangesCount, setPendingChangesCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const syncFunctionRef = useRef<(() => void) | null>(null);
+  
+  // Ref to access current predefined items without causing re-renders
+  const predefinedItemsRef = useRef<Item[]>([]);
+  
+  // Keep ref in sync with predefined items
+  useEffect(() => {
+    predefinedItemsRef.current = predefinedItems;
+  }, [predefinedItems]);
 
   // Define navigation tabs - using standard app navigation
   const surveyTabs: TabConfig[] = [
@@ -130,127 +131,92 @@ export default function ItemsScreen() {
     }
   ];
 
-  // Fetch field configuration for the category
+  // Fetch field configuration for the category using new Configuration Service
   const fetchFieldConfiguration = async (categoryId: string) => {
     console.log('🚀 fetchFieldConfiguration called with categoryId:', categoryId);
-    console.log('🏷️  CATEGORY ID BEING PASSED TO API:', categoryId);
-    console.log('🏷️  CATEGORY ID TYPE:', typeof categoryId);
     
     try {
-      // Check cache first
-      const { getFieldConfiguration, storeFieldConfiguration } = await import('../../utils/offlineStorage');
-      console.log('📦 Checking cache for field configuration...');
+      // Import the new configuration service
+      const configurationService = await import('../../services/configurationService');
       
-      const cachedData = await getFieldConfiguration(categoryId);
-      if (cachedData && cachedData.data) {
-        console.log('✅ Using cached field configuration data');
-        console.log('📦 Cached data:', JSON.stringify(cachedData.data, null, 2));
-        
-        // Handle both direct array and nested data structure
-        const fieldsArray = Array.isArray(cachedData.data) ? cachedData.data : 
-                           cachedData.data?.data && Array.isArray(cachedData.data.data) ? cachedData.data.data : null;
-        
-        if (fieldsArray && fieldsArray.length > 0) {
-          console.log('🔧 Setting fieldConfig state with cached data:', fieldsArray);
-          console.log('🔧 Setting useCustomFields to: true');
-          setFieldConfig(fieldsArray);
-          setUseCustomFields(true);
-          return; // Use cached data and return early
-        }
+      console.log('🔄 Using new ConfigurationService to fetch configuration...');
+      
+      // Get complete category configuration
+      const riskTemplateId = riskTemplateCategoryId ? Number(riskTemplateCategoryId) : undefined;
+      console.log('🔧 Calling getCategoryConfiguration with:', { categoryId: Number(categoryId), riskTemplateId });
+      const categoryConfig = await configurationService.default.getCategoryConfiguration(Number(categoryId), riskTemplateId);
+      
+      if (categoryConfig && categoryConfig.fields.length > 0) {
+              console.log('✅ Category configuration found:', {
+        categoryId: categoryConfig.categoryId,
+        categoryName: categoryConfig.categoryName,
+        fieldsCount: categoryConfig.fields.length,
+        hasGroupingStrategy: !!categoryConfig.groupingStrategy,
+        hasLocationTemplate: !!categoryConfig.locationTemplate
+      });
+      
+      // Filter visible fields and set configuration
+      const visibleFields = categoryConfig.fields.filter(field => field.display_on_ui === 1);
+      
+      console.log('🔧 Setting fieldConfig state with visible fields:', visibleFields.length);
+      setFieldConfig(visibleFields); // Legacy support
+      setDynamicFieldConfig(visibleFields); // New dynamic field configuration
+      setUseCustomFields(true); // Use dynamic fields with legacy UI layout
+      
+      // Store grouping strategy
+      if (categoryConfig.groupingStrategy) {
+        console.log('📊 Grouping strategy available:', categoryConfig.groupingStrategy.strategy_type);
+        setGroupingStrategy(categoryConfig.groupingStrategy);
+      } else {
+        console.log('📊 No grouping strategy configured, defaulting to by_type (itemprompt)');
+        setGroupingStrategy(undefined);
       }
       
-      console.log('=== STARTING FIELD CONFIGURATION FETCH FROM API ===');
-      console.log(`📋 Category ID: ${categoryId}`);
-      console.log(`🌐 Endpoint: /risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
-      
-      // Use the same pattern as other API calls in this file
-      const { API_BASE_URL } = await import('../../constants/apiConfig');
-      const AsyncStorage = await import('@react-native-async-storage/async-storage');
-      const axios = await import('axios');
-      
-      console.log(`API Base URL: ${API_BASE_URL}`);
-      
-      const token = await AsyncStorage.default.getItem('authToken');
-      console.log(`Auth Token: ${token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN'}`);
-      
-      const axiosInstance = axios.default.create({
-        baseURL: API_BASE_URL,
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { 'Authorization': `Bearer ${token}` })
-        }
-      });
-      
-      const fullUrl = `${API_BASE_URL}/risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`;
-      console.log(`Making API request to: ${fullUrl}`);
-      
-      const response = await axiosInstance.get(`/risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
-      
-      console.log('=== FIELD CONFIGURATION API RESPONSE ===');
-      console.log('📋 Category ID requested:', categoryId);
-      console.log('📊 Status:', response.status);
-      console.log('📊 Headers:', response.headers);
-      console.log('📊 Response structure:', {
-        hasData: !!response.data,
-        dataType: typeof response.data,
-        isArray: Array.isArray(response.data),
-        dataLength: Array.isArray(response.data) ? response.data.length : 'N/A'
-      });
-      console.log('🎯 ===== FULL API PAYLOAD RETURNED =====');
-      console.log('🎯 RAW PAYLOAD:', JSON.stringify(response.data, null, 2));
-      console.log('🎯 ===== END OF API PAYLOAD =====');
-      
-      // Handle both direct array and nested data structure
-      const fieldsArray = Array.isArray(response.data) ? response.data : 
-                         response.data?.data && Array.isArray(response.data.data) ? response.data.data : null;
-      
-      if (fieldsArray && fieldsArray.length > 0) {
-        console.log('✅ Field configuration found:', fieldsArray.length, 'fields');
-        console.log('✅ Individual field configurations:');
-        fieldsArray.forEach((field: any, index: number) => {
-          console.log(`  Field ${index + 1}:`, {
-            item_fields: field.item_fields,
-            display_on_ui: field.display_on_ui,
-            field_label: field.field_label,
-            all_properties: Object.keys(field)
-          });
-        });
-        console.log('🔧 Setting fieldConfig state with:', fieldsArray);
-        console.log('🔧 Setting useCustomFields to: true');
-        setFieldConfig(fieldsArray);
-        setUseCustomFields(true);
+      if (categoryConfig.parsedLocations) {
+        console.log('📍 Location template available with', categoryConfig.parsedLocations.length, 'locations');
+      }
         
-        // Cache the response data for offline use
-        console.log('💾 Caching field configuration data...');
-        await storeFieldConfiguration(categoryId, response.data);
       } else {
-        console.log('❌ No field configuration found, using default fields');
-        console.log('Reason:', !response.data ? 'No data' : 
-                   !response.data.data ? 'No data.data property' : 
-                   !Array.isArray(response.data.data) ? 'data.data is not array' : 'Array is empty');
+        console.log('❌ No field configuration found, using default configuration');
+        
+        // Get default configuration as fallback
+        const defaultConfig = configurationService.default.getDefaultConfiguration(
+          Number(categoryId), 
+          `Category ${categoryId}`
+        );
+        
+        setFieldConfig(defaultConfig.fields); // Legacy support
+        setDynamicFieldConfig(defaultConfig.fields); // New dynamic field configuration
+        setUseCustomFields(false); // Force legacy interface
+      }
+      
+    } catch (error: any) {
+      console.log('=== CONFIGURATION SERVICE ERROR ===');
+      console.log('Error message:', error?.message || 'No message');
+      console.log('Will use default fields');
+      
+      // Import and use default configuration as fallback
+      try {
+        const configurationService = await import('../../services/configurationService');
+        const defaultConfig = configurationService.default.getDefaultConfiguration(
+          Number(categoryId), 
+          `Category ${categoryId}`
+        );
+        
+        setFieldConfig(defaultConfig.fields); // Legacy support
+        setDynamicFieldConfig(defaultConfig.fields); // New dynamic field configuration
+        setUseCustomFields(false);
+      } catch (fallbackError) {
+        console.error('Error loading default configuration:', fallbackError);
         setFieldConfig([]);
+        setDynamicFieldConfig([]);
         setUseCustomFields(false);
       }
-    } catch (error: any) {
-      console.log('=== FIELD CONFIGURATION API ERROR ===');
-      console.log('Error type:', typeof error);
-      console.log('Error message:', error?.message || 'No message');
-      console.log('Error response:', error?.response ? {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data,
-        headers: error.response.headers
-      } : 'No response object');
-      console.log('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-      console.log('Will use default fields (show all)');
-      setFieldConfig([]);
-      setUseCustomFields(false);
     }
   };
 
   // Fetch items from SQLite first, then API (following ItemComponents.tsx pattern)
-  const fetchCategoryItems = async () => {
+  const fetchCategoryItems = useCallback(async () => {
     // Make sure we have a category ID
     const currentCategoryId = typeof categoryId === 'string' ? categoryId : Array.isArray(categoryId) ? categoryId[0] : '';
     setFromCache(false);
@@ -266,8 +232,15 @@ export default function ItemsScreen() {
     setLoading(true);
     setError(null);
     
+    // Preserve any new items that haven't been saved to SQLite yet
+    const currentItems = predefinedItemsRef.current;
+    const newItemsInProgress = currentItems.filter(item => 
+      item.id.startsWith('custom-new-') || item.id.startsWith('duplicate-')
+    );
+    
     try {
       console.log(`🔄 FETCH: Starting fetchCategoryItems for category: ${currentCategoryId}`);
+      console.log(`🔄 FETCH: Preserving ${newItemsInProgress.length} items in progress`);
       
       // Check SQLite first, then API (same pattern as ItemComponents.tsx)
       const { getAllRiskAssessmentItems } = await import('../../utils/db');
@@ -348,17 +321,19 @@ export default function ItemsScreen() {
             model: item.model || '',
             selection: '',
             quantity: String(item.qty) || '1',
-            price: String(item.price) || '0',
+            price: String(item.price) || '',
             room: item.location || '',
             notes: item.notes || '',
             photo: undefined,
           }));
           
           console.log(`Using newly stored SQLite items: ${formattedItems.length}`);
-          setPredefinedItems(formattedItems);
+          // Combine with preserved new items
+          setPredefinedItems([...formattedItems, ...newItemsInProgress]);
         } else {
           console.log(`No items found in API for category: ${currentCategoryId}`);
-          setPredefinedItems([]);
+          // Only set new items in progress if no API items found
+          setPredefinedItems(newItemsInProgress);
           // Don't set error for empty categories - this is a normal state
           setError(null);
         }
@@ -378,7 +353,7 @@ export default function ItemsScreen() {
             model: item.model || '',
             selection: '',
             quantity: String(item.qty) || '1',
-            price: String(item.price) || '0',
+            price: String(item.price) || '',
             room: item.location || '',
             notes: item.notes || '',
             photo: undefined,
@@ -393,16 +368,30 @@ export default function ItemsScreen() {
         });
         
         console.log(`✅ FETCH: Mapped ${formattedItems.length} items for UI`);
-        setPredefinedItems(formattedItems);
+        // Combine with preserved new items
+        setPredefinedItems([...formattedItems, ...newItemsInProgress]);
       }
     } catch (err) {
       console.error('Error fetching category items:', err);
       setError('Failed to load items. Please try again later.');
-      setPredefinedItems([]);
+      // Preserve new items even on error
+      setPredefinedItems(newItemsInProgress);
     } finally {
       setLoading(false);
     }
-  };
+  }, [categoryId]); // Dependencies for useCallback
+  
+  // Fetch predefined items and field configuration when component loads or categoryId changes
+  useEffect(() => {
+    console.log('🔄 useEffect triggered with categoryId:', categoryId);
+    if (categoryId) {
+      console.log('🔄 CategoryId exists, calling fetchCategoryItems and fetchFieldConfiguration');
+      fetchCategoryItems();
+      fetchFieldConfiguration(categoryId as string);
+    } else {
+      console.log('🔄 No categoryId, skipping API calls');
+    }
+  }, [categoryId]); // Remove fetchCategoryItems from dependencies to prevent unnecessary refreshes
   
   // Touch handlers for drawing
   const onTouchStart = (event: any) => {
@@ -542,9 +531,10 @@ export default function ItemsScreen() {
             categoryId={categoryId as string}
             isOffline={isOffline}
             fromCache={fromCache}
-            fieldConfig={fieldConfig}
+            fieldConfig={fieldConfig} // Legacy support
+            dynamicFieldConfig={dynamicFieldConfig} // New dynamic field configuration
             useCustomFields={useCustomFields}
-            onRefresh={fetchCategoryItems}
+            groupingStrategy={groupingStrategy} // Pass grouping strategy configuration
             onSelectItem={() => {}} // No longer needed since items are edited inline
             onAddNewItem={(func) => {
               console.log('Setting addNewItemFunction via ref:', func);

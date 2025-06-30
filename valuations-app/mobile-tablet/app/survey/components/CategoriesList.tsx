@@ -8,12 +8,13 @@ interface Category {
   name: string;
   items: number;
   value: number;
+  risktemplatecategoryid?: number;
 }
 
 interface CategoriesListProps {
   categories: Category[];
   totalValue: number;
-  onCategoryPress: (categoryId: string, categoryName: string) => void;
+  onCategoryPress: (categoryId: string, categoryName: string, riskTemplateCategoryId?: number) => void;
 }
 
 export default function CategoriesList({ categories, totalValue, onCategoryPress }: CategoriesListProps) {
@@ -28,7 +29,7 @@ export default function CategoriesList({ categories, totalValue, onCategoryPress
         <Card 
           key={category.id} 
           style={styles.categoryCard}
-          onPress={() => onCategoryPress(category.id, category.name)}
+          onPress={() => onCategoryPress(category.id, category.name, category.risktemplatecategoryid)}
         >
           <Card.Content style={styles.categoryContent}>
             <View style={styles.categoryInfo}>

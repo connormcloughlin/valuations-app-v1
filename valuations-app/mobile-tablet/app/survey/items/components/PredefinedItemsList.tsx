@@ -6,6 +6,9 @@ import { PredefinedItemsListProps, Item } from './types';
 import ItemStates from './ItemStates';
 import CameraModal from './CameraModal';
 import PhotoGalleryModal from './PhotoGalleryModal';
+import DynamicFieldRenderer from './DynamicFieldRenderer';
+import { ValidationService } from '../../../../services/validationService';
+import { FieldConfiguration, FieldValidationError } from '../../../../types/dynamicUI';
 // Import required services and utilities
 import riskAssessmentSyncService from '../../../../services/riskAssessmentSyncService';
 import mediaService from '../../../../services/mediaService';
@@ -27,7 +30,9 @@ export default function PredefinedItemsList({
   isOffline, 
   fromCache, 
   fieldConfig = [],
+  dynamicFieldConfig = [],
   useCustomFields = false,
+  groupingStrategy,
   onRefresh, 
   onSelectItem,
   onAddNewItem,
@@ -59,6 +64,7 @@ export default function PredefinedItemsList({
   // Editing state management
   const [editItems, setEditItems] = useState<{ [key: string]: any }>({});
   const [autoSavedItems, setAutoSavedItems] = useState<{ [key: string]: boolean }>({});
+  const [validationErrors, setValidationErrors] = useState<{ [key: string]: FieldValidationError[] }>({});
   const [pendingChangesCount, setPendingChangesCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -73,31 +79,31 @@ export default function PredefinedItemsList({
   
   // ScrollView ref for auto-scrolling to new items
   const scrollViewRef = useRef<ScrollView>(null);
-  
-  // State to track item we want to navigate back to after refresh
-  const [pendingNavigationItemId, setPendingNavigationItemId] = useState<string | null>(null);
 
-  // Initialize local items state with props items (same pattern as ItemsTable)
+  // Initialize local items state with props items while preserving new/duplicate items
   useEffect(() => {
     if (propsItems && propsItems.length > 0) {
       console.log('PredefinedItemsList: Initializing local state with props items:', propsItems.length);
-      setItems(propsItems);
+      
+      // Preserve any existing new or duplicate items that were added locally
+      setItems(prevItems => {
+        const existingNewItems = prevItems.filter(item => 
+          item.id.startsWith('custom-new-') || item.id.startsWith('duplicate-')
+        );
+        
+        if (existingNewItems.length > 0) {
+          console.log(`PredefinedItemsList: Preserving ${existingNewItems.length} new/duplicate items during re-initialization`);
+          // Merge props items with preserved new items
+          return [...propsItems, ...existingNewItems];
+        } else {
+          // No new items to preserve, just use props items
+          return propsItems;
+        }
+      });
     }
   }, [propsItems]);
 
-  // Navigation effect - waits for items to be refreshed then navigates to the new item
-  useEffect(() => {
-    if (pendingNavigationItemId && items.length > 0) {
-      console.log('✅ Pending navigation ID confirmed set to:', pendingNavigationItemId);
-      
-      // Wait a bit longer to ensure all data loading is complete
-      const timer = setTimeout(() => {
-        scrollToItem(pendingNavigationItemId);
-      }, 200); // Increased from immediate to 200ms
-      
-      return () => clearTimeout(timer);
-    }
-  }, [items, pendingNavigationItemId]);
+  // Removed navigation effect - no longer needed without refresh logic
 
   // Function to add a new custom item to the list
   const addNewCustomItem = useCallback(() => {
@@ -108,7 +114,7 @@ export default function PredefinedItemsList({
       description: '',
       model: '',
       quantity: '1',
-      price: '0',
+      price: '',
       room: '',
       notes: '',
       categoryId: categoryId // Use the categoryId prop
@@ -137,7 +143,7 @@ export default function PredefinedItemsList({
         description: '',
         model: '',
         quantity: '1',
-        price: '0',
+        price: '',
         room: '',
         notes: ''
       }
@@ -226,9 +232,17 @@ export default function PredefinedItemsList({
     const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '1', 10);
     const price = editedItem?.price ? parseFloat(editedItem.price) : parseFloat(item.price || '0');
     const description = editedItem?.description || item.description || '';
+    const model = editedItem?.model || item.model || '';
+    const notes = editedItem?.notes || item.notes || '';
     
-    // Has data if (quantity > 0 and price > 0) OR description is not empty
-    return (quantity > 0 && price > 0) || (description && description.trim() !== '');
+    // Has data if ANY meaningful field has a value:
+    // - quantity different from default (1)
+    // - price different from default (0) 
+    // - description is not empty
+    // - model is not empty
+    // - notes is not empty
+    return (quantity !== 1) || (price > 0) || (description && description.trim() !== '') || 
+           (model && model.trim() !== '') || (notes && notes.trim() !== '');
   }, [editItems]);
 
   // Handle sync
@@ -345,8 +359,10 @@ export default function PredefinedItemsList({
 
 
 
-  // Handle editing a field
-  const handleEdit = (id: string, field: 'type' | 'quantity' | 'price' | 'description' | 'model' | 'room' | 'notes', value: string) => {
+  // Handle editing a field - updated for dynamic fields
+  const handleEdit = (id: string, field: string, value: string) => {
+    console.log(`🔧 Editing field "${field}" for item ${id}:`, value);
+    
     setEditItems(prev => ({
       ...prev,
       [id]: {
@@ -354,6 +370,34 @@ export default function PredefinedItemsList({
         [field]: value,
       },
     }));
+
+    // Validate the field if we have dynamic field configuration
+    if (dynamicFieldConfig && dynamicFieldConfig.length > 0) {
+      const fieldConfig = dynamicFieldConfig.find(f => f.item_fields === field);
+      if (fieldConfig) {
+        const error = ValidationService.validateField(fieldConfig, value);
+        
+        setValidationErrors(prev => {
+          const newErrors = { ...prev };
+          if (!newErrors[id]) newErrors[id] = [];
+          
+          // Remove existing error for this field
+          newErrors[id] = newErrors[id].filter(e => e.fieldName !== field);
+          
+          // Add new error if validation failed
+          if (error) {
+            newErrors[id].push(error);
+          }
+          
+          // Clean up if no errors for this item
+          if (newErrors[id].length === 0) {
+            delete newErrors[id];
+          }
+          
+          return newErrors;
+        });
+      }
+    }
   };
 
   // Auto-save function that saves changes to SQLite
@@ -442,9 +486,20 @@ export default function PredefinedItemsList({
           categoryId: newSqliteItem.riskassessmentcategoryid 
         });
         
+        // Update local items state to reflect the saved changes immediately
         setItems(prevItems => 
           prevItems.map(prevItem => 
-            prevItem.id === id ? { ...prevItem, id: sqliteId } : prevItem
+            prevItem.id === id ? {
+              ...prevItem,
+              id: sqliteId,
+              type: changes.type || '',
+              quantity: String(changes.quantity || 1),
+              price: String(changes.price || 0),
+              description: changes.description || '',
+              model: changes.model || '',
+              room: changes.room || '',
+              notes: changes.notes || ''
+            } : prevItem
           )
         );
         
@@ -465,41 +520,9 @@ export default function PredefinedItemsList({
         
         console.log('New custom item inserted successfully with ID:', sqliteId);
         
-        // Clear edit state for this item since it's now saved
-        setEditItems(prev => {
-          const newEditItems = { ...prev };
-          delete newEditItems[sqliteId];
-          return newEditItems;
-        });
-        
-        // Only trigger refresh for FIRST-TIME type creation, not subsequent edits
-        if (onRefresh && isFirstTypeSave) {
-          console.log('🔥 TRIGGERING REFRESH FOR NEW ITEM TYPE!');
-          console.log('🆔 Original temp ID:', id);
-          console.log('🆔 New SQLite ID:', sqliteId);
-          console.log('📝 Item type saved:', changes.type);
-          console.log('🔄 Setting pendingNavigationItemId to:', sqliteId);
-          
-          // Set the pending navigation item ID so we can navigate back after refresh
-          setPendingNavigationItemId(sqliteId);
-          
-          // Double-check it was set
-          setTimeout(() => {
-            console.log('✅ Pending navigation ID confirmed set to:', sqliteId);
-          }, 50);
-          
-          // Trigger the refresh
-          setTimeout(() => {
-            console.log('🚀 Starting refresh...');
-            onRefresh();
-          }, 100);
-        } else {
-          console.log('❌ Not triggering refresh because:');
-          console.log('  onRefresh available:', !!onRefresh);
-          console.log('  isFirstTypeSave:', isFirstTypeSave);
-          console.log('  item.type before:', item.type);
-          console.log('  changes.type:', changes.type);
-        }
+        // Keep the edit state active so user can continue editing
+        // Don't clear edit state - let user continue editing
+        console.log('New custom item saved successfully - keeping edit state active for continued editing');
         
       } else {
         // Handle existing items - update them in SQLite
@@ -615,7 +638,9 @@ export default function PredefinedItemsList({
           }
         }
 
-
+        // Reload photos for this item to update the UI immediately (same as selectFromGallery)
+        const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', Number(currentPhotoItemId));
+        setItemPhotos(prev => ({ ...prev, [currentPhotoItemId]: photos }));
         
         Alert.alert('Success', 'Photo saved successfully!');
       }
@@ -771,7 +796,10 @@ export default function PredefinedItemsList({
 
   // Function to duplicate an item with the same itemprompt
   const duplicateItem = useCallback((originalItem: Item) => {
-    console.log('Duplicating item with itemprompt:', originalItem.type);
+    console.log('🔄 === DUPLICATE ITEM FUNCTION CALLED ===');
+    console.log('🔄 Original item:', originalItem);
+    console.log('🔄 Original item type:', originalItem.type);
+    console.log('🔄 Current items count before duplication:', items.length);
     
     const duplicatedItem: Item = {
       id: `duplicate-${Date.now()}`,
@@ -779,20 +807,29 @@ export default function PredefinedItemsList({
       description: '',
       model: '',
       quantity: '1',
-      price: '0',
+      price: '',
       room: '',
       notes: '',
       categoryId: categoryId
     };
     
+    console.log('🔄 Duplicated item to be created:', duplicatedItem);
+    
     // Add to local items state
-    setItems(prevItems => [...prevItems, duplicatedItem]);
+    setItems(prevItems => {
+      console.log('🔄 Adding duplicated item to items array, current count:', prevItems.length);
+      const newItems = [...prevItems, duplicatedItem];
+      console.log('🔄 New items array count:', newItems.length);
+      return newItems;
+    });
     
     // Auto-expand the group containing this item
     setExpandedGroup(originalItem.type);
+    console.log('🔄 Expanded group set to:', originalItem.type);
     
     // Immediately expand the new item for editing
     setExpandedItem(duplicatedItem.id);
+    console.log('🔄 Expanded item set to:', duplicatedItem.id);
     
     // Set it as being edited
     setEditItems(prev => ({
@@ -802,14 +839,15 @@ export default function PredefinedItemsList({
         description: '',
         model: '',
         quantity: '1',
-        price: '0',
+        price: '',
         room: '',
         notes: ''
       }
     }));
     
-    console.log('Duplicated item created:', duplicatedItem);
-  }, [categoryId]);
+    console.log('🔄 Edit state set for duplicated item');
+    console.log('🔄 === DUPLICATE ITEM FUNCTION COMPLETED ===');
+  }, [categoryId, items.length]);
 
   // Function to delete an item
   const deleteItem = useCallback(async (itemToDelete: Item) => {
@@ -926,7 +964,6 @@ export default function PredefinedItemsList({
 
     if (!foundItem) {
       console.warn(`❌ Item ${itemId} not found in any group`);
-      setPendingNavigationItemId(null);
       return;
     }
 
@@ -935,9 +972,6 @@ export default function PredefinedItemsList({
     // Expand the group and highlight the item
     setExpandedGroup(targetGroup);
     setExpandedItem(itemId);
-    
-    // Clear the pending navigation after successful setup
-    setPendingNavigationItemId(null);
 
     // Scroll to the appropriate position
     setTimeout(() => {
@@ -953,17 +987,180 @@ export default function PredefinedItemsList({
     }, 100);
   };
 
+  // Helper function to render dynamic fields based on configuration with legacy-style layout
+  const renderDynamicFields = useCallback((itemId: string, editData: any) => {
+    if (!dynamicFieldConfig || dynamicFieldConfig.length === 0) {
+      // Fall back to legacy hardcoded fields
+      return renderLegacyFields(itemId, editData);
+    }
+
+    const item = items.find(i => String(i.id) === itemId);
+    if (!item) return null;
+
+    const itemErrors = validationErrors[itemId] || [];
+    const visibleFields = dynamicFieldConfig.filter(field => field.display_on_ui === 1);
+    
+    // Group fields by their position in the legacy layout
+    const fieldsByPosition = {
+      description: visibleFields.find(f => f.item_fields === 'description'),
+      model: visibleFields.find(f => f.item_fields === 'model'),
+      quantity: visibleFields.find(f => f.item_fields === 'quantity'),
+      price: visibleFields.find(f => f.item_fields === 'price'),
+      room: visibleFields.find(f => f.item_fields === 'room'),
+      photos: visibleFields.find(f => f.item_fields === 'photos'),
+      notes: visibleFields.find(f => f.item_fields === 'notes')
+    };
+
+    const renderFieldInLegacyStyle = (field: any, fieldName: string) => {
+      if (!field) return null;
+      
+      // Get current value with proper fallback to original item values
+      const getFieldValue = (fieldName: string) => {
+        if (editData[fieldName] !== undefined) return editData[fieldName];
+        
+        // Fallback to original item values
+        switch (fieldName) {
+          case 'quantity': return String(item.quantity || '1');
+          case 'price': return String(item.price || '');
+          case 'description': return item.description || '';
+          case 'model': return item.model || '';
+          case 'room': return item.room || '';
+          case 'notes': return item.notes || '';
+          case 'type': return item.type || '';
+          default: return '';
+        }
+      };
+      
+      const currentValue = getFieldValue(fieldName);
+      const fieldError = itemErrors.find(e => e.fieldName === fieldName);
+      
+              return (
+        <View style={styles.legacyFieldWrapper}>
+          <Text style={styles.detailLabel}>{field.field_label}:</Text>
+          <DynamicFieldRenderer
+            field={field}
+            value={currentValue}
+            onChange={(fieldName, value) => handleEdit(itemId, fieldName, value)}
+            validationError={fieldError}
+            handwritingEnabled={false}
+            onOpenHandwriting={() => {}}
+            itemId={itemId}
+            itemPhotos={itemPhotos}
+            onTakePhoto={handleViewPhotos}
+            hideLabel={true}
+            onBlur={() => autoSaveItem(itemId)}
+          />
+        </View>
+      );
+    };
+
+    const isNewItem = item.id.toString().startsWith('custom-new-');
+
+    return (
+      <>
+        {/* Show type field for new custom items */}
+        {isNewItem && (
+          <View style={styles.detailRow}>
+            <View style={[styles.detailItem, { flex: 2 }]}>
+              <Text style={styles.detailLabel}>Item Type (Required):</Text>
+              <PaperTextInput
+                value={editData.type ?? (item.type || '')}
+                onChangeText={(value) => handleEdit(itemId, 'type', value)}
+                onBlur={() => autoSaveItem(itemId)}
+                style={[styles.editInput, { borderColor: editData.type ? '#e0e0e0' : '#f44336' }]}
+                dense
+                placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
+                autoFocus={true}
+              />
+            </View>
+          </View>
+        )}
+        
+        {/* Row 1: Description | Model */}
+        <View style={styles.detailRow}>
+          {fieldsByPosition.description && (
+            <View style={styles.detailItem}>
+              {renderFieldInLegacyStyle(fieldsByPosition.description, 'description')}
+            </View>
+          )}
+          {fieldsByPosition.model && (
+            <View style={styles.detailItem}>
+              {renderFieldInLegacyStyle(fieldsByPosition.model, 'model')}
+            </View>
+          )}
+        </View>
+
+        {/* Row 2: Quantity | Price */}
+        <View style={styles.detailRow}>
+          {fieldsByPosition.quantity && (
+            <View style={styles.detailItem}>
+              {renderFieldInLegacyStyle(fieldsByPosition.quantity, 'quantity')}
+            </View>
+          )}
+          {fieldsByPosition.price && (
+            <View style={styles.detailItem}>
+              {renderFieldInLegacyStyle(fieldsByPosition.price, 'price')}
+            </View>
+          )}
+        </View>
+
+        {/* Row 3: Room | Photos */}
+        <View style={styles.detailRow}>
+          {fieldsByPosition.room && (
+            <View style={styles.detailItem}>
+              {renderFieldInLegacyStyle(fieldsByPosition.room, 'room')}
+            </View>
+          )}
+          {fieldsByPosition.photos && (
+            <View style={styles.detailItem}>
+              {renderFieldInLegacyStyle(fieldsByPosition.photos, 'photos')}
+            </View>
+          )}
+        </View>
+
+        {/* Row 4: Notes (full width) */}
+        {fieldsByPosition.notes && (
+          <View style={styles.notesSection}>
+            {renderFieldInLegacyStyle(fieldsByPosition.notes, 'notes')}
+          </View>
+        )}
+      </>
+    );
+  }, [dynamicFieldConfig, validationErrors, handleEdit, items, itemPhotos, handleViewPhotos, autoSaveItem]);
+
   // Helper function to check if a field should be visible
   const isFieldVisible = useCallback((fieldName: string) => {
-    console.log(`🔍 Checking field '${fieldName}' - useCustomFields: ${useCustomFields}, fieldConfig:`, fieldConfig);
+    console.log(`🔍 === FIELD VISIBILITY CHECK FOR '${fieldName}' ===`);
+    console.log(`🔍 useCustomFields: ${useCustomFields}`);
+    console.log(`🔍 dynamicFieldConfig length: ${dynamicFieldConfig?.length || 0}`);
+    console.log(`🔍 dynamicFieldConfig:`, JSON.stringify(dynamicFieldConfig, null, 2));
     
+    // Try dynamic field configuration first
+    if (dynamicFieldConfig && dynamicFieldConfig.length > 0) {
+      console.log(`🔍 Searching for field '${fieldName}' in dynamic config...`);
+      
+      // Show all available fields
+      dynamicFieldConfig.forEach((field, index) => {
+        console.log(`  [${index}] item_fields: "${field.item_fields}", display_on_ui: ${field.display_on_ui}`);
+      });
+      
+      const fieldConfig = dynamicFieldConfig.find(f => f.item_fields === fieldName);
+      const isVisible = fieldConfig && fieldConfig.display_on_ui === 1;
+      
+      console.log(`🔍 Found field config:`, fieldConfig || 'NOT FOUND');
+      console.log(`🔍 Field '${fieldName}': ${isVisible ? 'VISIBLE' : 'HIDDEN'} (dynamic config)`);
+      console.log(`🔍 === END FIELD VISIBILITY CHECK ===`);
+      return isVisible;
+    }
+    
+    // Fall back to legacy field configuration
     if (!useCustomFields || !fieldConfig || fieldConfig.length === 0) {
       // No custom configuration, show all fields
       console.log(`Field '${fieldName}': visible (no custom config) - useCustomFields: ${useCustomFields}, fieldConfig: ${fieldConfig ? `array[${fieldConfig.length}]` : 'null/undefined'}`);
       return true;
     }
     
-    // Map UI field names to API field names
+    // Map UI field names to API field names (legacy mapping)
     const fieldNameMapping: { [key: string]: string } = {
       'description': 'Description',
       'model': 'Model',
@@ -993,26 +1190,227 @@ export default function PredefinedItemsList({
     const isVisible = fieldConfigItem.display_on_ui === 1;
     console.log(`Field '${fieldName}': ${isVisible ? 'visible' : 'hidden'} (API field: '${apiFieldName}', display_on_ui=${fieldConfigItem.display_on_ui})`);
     return isVisible;
-  }, [useCustomFields, fieldConfig]);
+  }, [useCustomFields, fieldConfig, dynamicFieldConfig]);
+
+  // Legacy hardcoded field renderer (kept for backward compatibility)
+  const renderLegacyFields = useCallback((itemId: string, editData: any) => {
+    const item = items.find(i => String(i.id) === itemId);
+    if (!item) return null;
+
+    const isNewItem = item.id.startsWith('custom-new-');
+    const type = editData.type ?? (item.type || '');
+    const quantity = editData.quantity ?? String(item.quantity || '1');
+    const price = editData.price ?? String(item.price || '');
+    const description = editData.description ?? (item.description || '');
+    const model = editData.model ?? (item.model || '');
+    const room = editData.room ?? (item.room || '');
+    const notes = editData.notes ?? (item.notes || '');
+
+    return (
+      <>
+        {/* Show type field for new custom items (not duplicates) */}
+        {isNewItem && (
+          <View style={styles.detailRow}>
+            <View style={[styles.detailItem, { flex: 2 }]}>
+              <Text style={styles.detailLabel}>Item Type (Required):</Text>
+              <PaperTextInput
+                value={type}
+                onChangeText={(value) => handleEdit(itemId, 'type', value)}
+                onBlur={() => autoSaveItem(itemId)}
+                style={[styles.editInput, { borderColor: type ? '#e0e0e0' : '#f44336' }]}
+                dense
+                placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
+                autoFocus={true}
+              />
+            </View>
+          </View>
+        )}
+        
+        <View style={styles.detailRow}>
+          {isFieldVisible('description') && (
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Description:</Text>
+              <PaperTextInput
+                value={description}
+                onChangeText={(value) => handleEdit(itemId, 'description', value)}
+                onBlur={() => autoSaveItem(itemId)}
+                style={styles.editInput}
+                dense
+                placeholder="Enter description"
+              />
+            </View>
+          )}
+          {isFieldVisible('model') && (
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Model:</Text>
+              <PaperTextInput
+                value={model}
+                onChangeText={(value) => handleEdit(itemId, 'model', value)}
+                onBlur={() => autoSaveItem(itemId)}
+                style={styles.editInput}
+                dense
+                placeholder="Enter model"
+              />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.detailRow}>
+          {isFieldVisible('quantity') && (
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Quantity:</Text>
+              <PaperTextInput
+                value={quantity}
+                onChangeText={(value) => handleEdit(itemId, 'quantity', value)}
+                onBlur={() => autoSaveItem(itemId)}
+                keyboardType="numeric"
+                style={styles.editInput}
+                dense
+                placeholder="1"
+              />
+            </View>
+          )}
+          {isFieldVisible('price') && (
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Price:</Text>
+              <PaperTextInput
+                value={price}
+                onChangeText={(value) => handleEdit(itemId, 'price', value)}
+                onBlur={() => autoSaveItem(itemId)}
+                keyboardType="numeric"
+                style={styles.editInput}
+                dense
+                placeholder="0.00"
+                left={<PaperTextInput.Affix text="R" />}
+              />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.detailRow}>
+          {isFieldVisible('room') && (
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Room:</Text>
+              <PaperTextInput
+                value={room}
+                onChangeText={(value) => handleEdit(itemId, 'room', value)}
+                onBlur={() => autoSaveItem(itemId)}
+                style={styles.editInput}
+                dense
+                placeholder="Enter room/location"
+              />
+            </View>
+          )}
+          {isFieldVisible('photos') && (
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Photos:</Text>
+              <View style={styles.photoSection}>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => handleViewPhotos(itemId)}
+                >
+                  <MaterialCommunityIcons 
+                    name={(itemPhotos[itemId]?.length || 0) > 0 ? "image-multiple" : "camera"} 
+                    size={16} 
+                    color="#4a90e2" 
+                  />
+                  <Text style={styles.photoButtonText}>
+                    {(itemPhotos[itemId]?.length || 0) > 0 
+                      ? `${itemPhotos[itemId]?.length || 0} photo${(itemPhotos[itemId]?.length || 0) !== 1 ? 's' : ''}`
+                      : 'Take Photo'
+                    }
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {isFieldVisible('notes') && (
+          <View style={styles.notesSection}>
+            <Text style={styles.detailLabel}>Notes:</Text>
+            <PaperTextInput
+              value={notes}
+              onChangeText={(value) => handleEdit(itemId, 'notes', value)}
+              onBlur={() => autoSaveItem(itemId)}
+              style={styles.editInputMultiline}
+              multiline
+              numberOfLines={2}
+              dense
+              placeholder="Add notes..."
+            />
+          </View>
+        )}
+      </>
+    );
+  }, [items, isFieldVisible, handleEdit, autoSaveItem, itemPhotos, handleViewPhotos]);
 
   // Group items by itemprompt (type) - stable grouping to prevent re-render during typing
   // CRITICAL: We only depend on 'items', NOT 'editItems' to prevent re-grouping while user types
-  // New items always go to "New Items" group, existing items use original type
+  // Default grouping strategy is by itemprompt unless configured otherwise
   const groupedItems = useMemo(() => {
     const groups: { [key: string]: Item[] } = {};
     
+    // Determine grouping strategy - default to 'by_type' (itemprompt) if none configured
+    const effectiveGroupingStrategy = groupingStrategy?.strategy_type || 'by_type';
+    
+    console.log('🔧 Grouping items using strategy:', effectiveGroupingStrategy);
+    
     items.forEach(item => {
       const itemId = String(item.id);
-      const isNewItem = item.id.startsWith('custom-new-') || item.id.startsWith('duplicate-');
-      
       let groupKey: string;
       
-      if (isNewItem) {
-        // For new items being edited, always use "New Items" group to prevent re-grouping during typing
-        groupKey = 'New Items';
-      } else {
-        // For existing items, use the original type (not edited type) to maintain stable grouping
-        groupKey = item.type || 'Unknown Items';
+      // Apply grouping strategy
+      switch (effectiveGroupingStrategy) {
+        case 'by_type':
+        default:
+          // Group by itemprompt (type) - this is the default behavior the user wants
+          // Use original item.type for stable grouping (not edited type)
+          groupKey = item.type || 'Unknown Items';
+          break;
+        
+        case 'by_location':
+          // Group by room/location
+          groupKey = item.room || 'No Location';
+          break;
+        
+        case 'by_brand':
+          // Group by model (assuming model contains brand info)
+          groupKey = item.model || 'No Brand';
+          break;
+        
+        case 'by_value_range':
+          // Group by price ranges
+          const price = parseFloat(item.price) || 0;
+          if (price === 0) groupKey = 'No Value';
+          else if (price < 1000) groupKey = 'Under R1,000';
+          else if (price < 5000) groupKey = 'R1,000 - R5,000';
+          else if (price < 10000) groupKey = 'R5,000 - R10,000';
+          else groupKey = 'Over R10,000';
+          break;
+        
+        case 'custom':
+          // Use custom grouping if strategy config is provided
+          try {
+            const config = groupingStrategy?.strategy_config;
+            if (config) {
+              // Parse the JSON string if it's a string
+              const parsedConfig = typeof config === 'string' ? JSON.parse(config) : config;
+              if (parsedConfig && parsedConfig.customField) {
+                groupKey = (item as any)[parsedConfig.customField] || 'Other';
+              } else {
+                // Fallback to type grouping
+                groupKey = item.type || 'Unknown Items';
+              }
+            } else {
+              // Fallback to type grouping
+              groupKey = item.type || 'Unknown Items';
+            }
+          } catch (error) {
+            console.warn('Error applying custom grouping strategy:', error);
+            groupKey = item.type || 'Unknown Items';
+          }
+          break;
       }
       
       if (!groups[groupKey]) {
@@ -1021,8 +1419,10 @@ export default function PredefinedItemsList({
       groups[groupKey].push(item);
     });
     
+    console.log('🔧 Items grouped into', Object.keys(groups).length, 'groups:', Object.keys(groups));
+    
     return groups;
-  }, [items]); // Only depend on items, not editItems
+  }, [items, groupingStrategy]);
 
   // Load photos for all items
   useEffect(() => {
@@ -1124,7 +1524,7 @@ export default function PredefinedItemsList({
             // Get current field values (edited or original)
             const type = editItems[itemId]?.type ?? (item.type || '');
             const quantity = editItems[itemId]?.quantity ?? String(item.quantity || '1');
-            const price = editItems[itemId]?.price ?? String(item.price || '0');
+            const price = editItems[itemId]?.price ?? String(item.price || '');
             const description = editItems[itemId]?.description ?? (item.description || '');
             const model = editItems[itemId]?.model ?? (item.model || '');
             const room = editItems[itemId]?.room ?? (item.room || '');
@@ -1218,141 +1618,9 @@ export default function PredefinedItemsList({
                 {isExpanded && (
                   <View style={styles.expandedContent}>
                     <View style={styles.detailsContainer}>
-                      {/* Editable Item Details Grid */}
+                      {/* Dynamic Item Details Grid */}
                       <View style={styles.detailsGrid}>
-                        {/* Show type field for new custom items (not duplicates) */}
-                        {item.id.startsWith('custom-new-') && (
-                          <View style={styles.detailRow}>
-                            <View style={[styles.detailItem, { flex: 2 }]}>
-                              <Text style={styles.detailLabel}>Item Type (Required):</Text>
-                              <PaperTextInput
-                                value={type}
-                                onChangeText={(value) => handleEdit(itemId, 'type', value)}
-                                onBlur={() => autoSaveItem(itemId)}
-                                style={[styles.editInput, { borderColor: type ? '#e0e0e0' : '#f44336' }]}
-                                dense
-                                placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
-                                autoFocus={true}
-                              />
-                            </View>
-                          </View>
-                        )}
-                        
-                        <View style={styles.detailRow}>
-                          {isFieldVisible('description') && (
-                            <View style={styles.detailItem}>
-                              <Text style={styles.detailLabel}>Description:</Text>
-                              <PaperTextInput
-                                value={description}
-                                onChangeText={(value) => handleEdit(itemId, 'description', value)}
-                                onBlur={() => autoSaveItem(itemId)}
-                                style={styles.editInput}
-                                dense
-                                placeholder="Enter description"
-                              />
-                            </View>
-                          )}
-                          {isFieldVisible('model') && (
-                            <View style={styles.detailItem}>
-                              <Text style={styles.detailLabel}>Model:</Text>
-                              <PaperTextInput
-                                value={model}
-                                onChangeText={(value) => handleEdit(itemId, 'model', value)}
-                                onBlur={() => autoSaveItem(itemId)}
-                                style={styles.editInput}
-                                dense
-                                placeholder="Enter model"
-                              />
-                            </View>
-                          )}
-                        </View>
-
-                        <View style={styles.detailRow}>
-                          {isFieldVisible('quantity') && (
-                            <View style={styles.detailItem}>
-                              <Text style={styles.detailLabel}>Quantity:</Text>
-                              <PaperTextInput
-                                value={quantity}
-                                onChangeText={(value) => handleEdit(itemId, 'quantity', value)}
-                                onBlur={() => autoSaveItem(itemId)}
-                                keyboardType="numeric"
-                                style={styles.editInput}
-                                dense
-                                placeholder="1"
-                              />
-                            </View>
-                          )}
-                          {isFieldVisible('price') && (
-                            <View style={styles.detailItem}>
-                              <Text style={styles.detailLabel}>Price:</Text>
-                              <PaperTextInput
-                                value={price}
-                                onChangeText={(value) => handleEdit(itemId, 'price', value)}
-                                onBlur={() => autoSaveItem(itemId)}
-                                keyboardType="numeric"
-                                style={styles.editInput}
-                                dense
-                                placeholder="0.00"
-                                left={<PaperTextInput.Affix text="R" />}
-                              />
-                            </View>
-                          )}
-                        </View>
-
-                        <View style={styles.detailRow}>
-                          {isFieldVisible('room') && (
-                            <View style={styles.detailItem}>
-                              <Text style={styles.detailLabel}>Room:</Text>
-                              <PaperTextInput
-                                value={room}
-                                onChangeText={(value) => handleEdit(itemId, 'room', value)}
-                                onBlur={() => autoSaveItem(itemId)}
-                                style={styles.editInput}
-                                dense
-                                placeholder="Enter room/location"
-                              />
-                            </View>
-                          )}
-                          {isFieldVisible('photos') && (
-                            <View style={styles.detailItem}>
-                              <Text style={styles.detailLabel}>Photos:</Text>
-                              <View style={styles.photoSection}>
-                                <TouchableOpacity
-                                  style={styles.photoButton}
-                                  onPress={() => handleViewPhotos(itemId)}
-                                >
-                                  <MaterialCommunityIcons 
-                                    name={(itemPhotos[itemId]?.length || 0) > 0 ? "image-multiple" : "camera"} 
-                                    size={16} 
-                                    color="#4a90e2" 
-                                  />
-                                  <Text style={styles.photoButtonText}>
-                                    {(itemPhotos[itemId]?.length || 0) > 0 
-                                      ? `${itemPhotos[itemId]?.length || 0} photo${(itemPhotos[itemId]?.length || 0) !== 1 ? 's' : ''}`
-                                      : 'Take Photo'
-                                    }
-                                  </Text>
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          )}
-                        </View>
-
-                        {isFieldVisible('notes') && (
-                          <View style={styles.notesSection}>
-                            <Text style={styles.detailLabel}>Notes:</Text>
-                            <PaperTextInput
-                              value={notes}
-                              onChangeText={(value) => handleEdit(itemId, 'notes', value)}
-                              onBlur={() => autoSaveItem(itemId)}
-                              style={styles.editInputMultiline}
-                              multiline
-                              numberOfLines={2}
-                              dense
-                              placeholder="Add notes..."
-                            />
-                          </View>
-                        )}
+                        {renderDynamicFields(itemId, editItems[itemId] || {})}
                       </View>
 
                       {/* Action buttons */}
@@ -1517,6 +1785,12 @@ const styles = StyleSheet.create({
   },
   detailsGrid: {
     marginBottom: 16,
+  },
+  dynamicFieldContainer: {
+    marginBottom: 12,
+  },
+  legacyFieldWrapper: {
+    flex: 1,
   },
   detailRow: {
     flexDirection: 'row',

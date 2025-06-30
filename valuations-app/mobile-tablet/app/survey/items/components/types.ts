@@ -52,9 +52,11 @@ export interface PredefinedItemsListProps {
   categoryId: string; // Add categoryId prop
   isOffline: boolean;
   fromCache: boolean;
-  fieldConfig?: any[]; // Field configuration from API
+  fieldConfig?: any[]; // Legacy field configuration for backwards compatibility
+  dynamicFieldConfig?: import('../../../../types/dynamicUI').FieldConfiguration[]; // New dynamic field configuration
   useCustomFields?: boolean; // Whether to use custom field configuration
-  onRefresh: () => void;
+  groupingStrategy?: import('../../../../types/dynamicUI').GroupingStrategy; // Grouping strategy configuration
+  onRefresh?: () => void;
   onSelectItem: (item: Item) => void;
   onAddNewItem?: (addFunction: () => void) => void;
   // Sync functionality exposure

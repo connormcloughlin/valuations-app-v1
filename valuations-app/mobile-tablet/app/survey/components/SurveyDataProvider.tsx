@@ -8,6 +8,7 @@ export interface Category {
   name: string;
   items: number;
   value: number;
+  risktemplatecategoryid?: number; // Add the template category ID
 }
 
 export interface RiskTemplate {
@@ -183,8 +184,10 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
         for (const c of res.data) {
           const categoryId = c.id || c.categoryid || c.riskassessmentcategoryid;
           const categoryName = c.name || c.categoryname || 'Unnamed Category';
+          const riskTemplateCategoryId = c.risktemplatecategoryid || c.RiskTemplateCategoryID || c.risk_template_category_id;
           
           console.log('🔍 Fetching items for category:', categoryId);
+          console.log('🔍 RiskTemplateCategoryID for category:', riskTemplateCategoryId);
           
           try {
             // Check SQLite first, then API (same pattern as ItemComponents.tsx)
@@ -265,7 +268,8 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
               id: String(categoryId),
               name: categoryName,
               items: itemCount,
-              value: totalValue
+              value: totalValue,
+              risktemplatecategoryid: riskTemplateCategoryId
             });
             
           } catch (itemError) {
@@ -275,7 +279,8 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
               id: String(categoryId),
               name: categoryName,
               items: 0,
-              value: 0
+              value: 0,
+              risktemplatecategoryid: riskTemplateCategoryId
             });
           }
         }

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { Text, View } from '../Themed';
 import { Card, Button } from 'react-native-paper';
+import ConfigurationService from '../../services/configurationService';
 
 export const DevelopmentTools: React.FC = () => {
   // Only render in development mode
@@ -46,6 +47,18 @@ export const DevelopmentTools: React.FC = () => {
     }
   };
 
+  const handleClearConfigCache = async () => {
+    console.log('🗑️ Clearing dynamic UI configuration cache...');
+    try {
+      await ConfigurationService.clearCache(); // Clear all configuration cache
+      console.log('✅ Configuration cache cleared successfully');
+      alert('✅ Dynamic UI configuration cache cleared!\n\nNext time you navigate to a category, it will fetch fresh field configuration from the API.');
+    } catch (error) {
+      console.error('Error clearing configuration cache:', error);
+      alert(`❌ Error clearing cache: ${error}`);
+    }
+  };
+
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>🛠️ Development Tools</Text>
@@ -76,6 +89,15 @@ export const DevelopmentTools: React.FC = () => {
             icon="refresh"
           >
             Force API Reload
+          </Button>
+          
+          <Button 
+            mode="outlined" 
+            onPress={handleClearConfigCache}
+            style={styles.debugButton}
+            icon="cached"
+          >
+            Clear Config Cache
           </Button>
         </Card.Content>
       </Card>
