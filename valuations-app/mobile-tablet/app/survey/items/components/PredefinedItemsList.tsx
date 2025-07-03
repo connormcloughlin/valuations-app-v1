@@ -129,12 +129,18 @@ export default function PredefinedItemsList({
       return [...prevItems, newItem];
     });
     
-    // Ensure "New Items" group is expanded for new items
+    // Handle group expansion for new items based on grouping type
+    if (isNestedGrouping(groupedItems)) {
+      // For nested grouping, we can't predict the primary/secondary group until user fills in the fields
+      // Just expand the new item for editing
+      setExpandedItem(newItem.id);
+      console.log('PredefinedItemsList: Expanded new item for editing in nested grouping:', newItem.id);
+    } else {
+      // For flat grouping, ensure "New Items" group is expanded
     setExpandedGroup('New Items');
-    
-    // Immediately expand the new item for editing
     setExpandedItem(newItem.id);
-    console.log('PredefinedItemsList: Expanded item set to:', newItem.id);
+      console.log('PredefinedItemsList: Expanded group "New Items" and item:', newItem.id);
+    }
     
     // Set it as being edited
     setEditItems(prev => ({
@@ -458,6 +464,7 @@ export default function PredefinedItemsList({
       console.log('📋 Original item:', JSON.stringify(item, null, 2));
 
       const isNewItem = id.startsWith('custom-new-') || id.startsWith('duplicate-');
+      let sqliteId: string = id; // Default to original ID
       
       if (isNewItem) {
         // Handle new custom items - insert them into SQLite
@@ -474,20 +481,26 @@ export default function PredefinedItemsList({
         
         const { insertRiskAssessmentItem } = await import('../../../../utils/db');
         
+        console.log('🗄️ CREATING SQLITE RECORD - Input data:');
+        console.log('🗄️ Original item:', item);
+        console.log('🗄️ Changes:', changes);
+        console.log('🗄️ Room field - item.room:', item.room, 'changes.room:', changes.room);
+        console.log('🗄️ Type field - item.type:', item.type, 'changes.type:', changes.type);
+        
         // Create a new SQLite record for the custom item
         const newSqliteItem = {
           riskassessmentitemid: Date.now(), // Use timestamp as unique ID
           riskassessmentcategoryid: Number(item.categoryId) || 0,
-          itemprompt: changes.type || '',
+          itemprompt: changes.type || item.type || '',
           itemtype: 1, // Custom item type
           rank: 0,
           commaseparatedlist: '',
           selectedanswer: '',
-          qty: Number(changes.quantity) || 1,
-          price: Number(changes.price) || 0,
-          description: changes.description || '',
-          model: changes.model || '',
-          location: changes.room || '',
+          qty: Number(changes.quantity) || Number(item.quantity) || 1,
+          price: Number(changes.price) || Number(item.price) || 0,
+          description: changes.description || item.description || '',
+          model: changes.model || item.model || '',
+          location: changes.room || item.room || '',
           assessmentregisterid: 0,
           assessmentregistertypeid: 0,
           datecreated: new Date().toISOString(),
@@ -502,9 +515,15 @@ export default function PredefinedItemsList({
           hasphoto: 0,
           latitude: 0,
           longitude: 0,
-          notes: changes.notes || '',
+          notes: changes.notes || item.notes || '',
           pending_sync: 1 // Mark for sync
         };
+        
+        console.log('🗄️ SQLITE RECORD FINAL VALUES:');
+        console.log('🗄️ itemprompt (type):', `"${newSqliteItem.itemprompt}"`);
+        console.log('🗄️ location (room):', `"${newSqliteItem.location}"`);
+        console.log('🗄️ description:', `"${newSqliteItem.description}"`);
+        console.log('🗄️ model:', `"${newSqliteItem.model}"`);
         
         console.log('🗄️ SQLite record being created:');
         console.log('🆔 riskassessmentitemid:', newSqliteItem.riskassessmentitemid);
@@ -514,7 +533,7 @@ export default function PredefinedItemsList({
         await insertRiskAssessmentItem(newSqliteItem);
         
         // Use the SQLite ID we already set
-        const sqliteId = String(newSqliteItem.riskassessmentitemid);
+        sqliteId = String(newSqliteItem.riskassessmentitemid);
         console.log('Item saved to SQLite with ID:', sqliteId);
         console.log('Item details:', { 
           id: sqliteId, 
@@ -523,21 +542,39 @@ export default function PredefinedItemsList({
         });
         
         // Update local items state to reflect the saved changes immediately
-        setItems(prevItems => 
-          prevItems.map(prevItem => 
+        setItems(prevItems => {
+          const updatedItems = prevItems.map(prevItem => 
             prevItem.id === id ? {
               ...prevItem,
               id: sqliteId,
-              type: changes.type || '',
-              quantity: String(changes.quantity || 1),
-              price: String(changes.price || 0),
-              description: changes.description || '',
-              model: changes.model || '',
-              room: changes.room || '',
-              notes: changes.notes || ''
+              type: changes.type || prevItem.type || '',
+              quantity: String(changes.quantity || prevItem.quantity || 1),
+              price: String(changes.price || prevItem.price || 0),
+              description: changes.description || prevItem.description || '',
+              model: changes.model || prevItem.model || '',
+              room: changes.room || prevItem.room || '',
+              notes: changes.notes || prevItem.notes || ''
             } : prevItem
-          )
-        );
+          );
+          
+          console.log('🔄 Items state updated after auto-save:');
+          console.log('🔄 Old ID:', id, '→ New ID:', sqliteId);
+          console.log('🔄 Updated items count:', updatedItems.length);
+          
+          // Find the updated item for debugging
+          const updatedItem = updatedItems.find(item => item.id === sqliteId);
+          if (updatedItem) {
+            console.log('🔄 Updated item details:', {
+              id: updatedItem.id,
+              type: updatedItem.type,
+              description: updatedItem.description,
+              model: updatedItem.model,
+              room: updatedItem.room
+            });
+          }
+          
+          return updatedItems;
+        });
         
         // Update edit items with new ID
         setEditItems(prev => {
@@ -552,6 +589,49 @@ export default function PredefinedItemsList({
         // Update expanded item if needed
         if (expandedItem === id) {
           setExpandedItem(sqliteId);
+        }
+        
+        // For nested grouping, ensure secondary group expansion is maintained
+        if (isNestedGrouping(groupedItems)) {
+          const strategyConfig = groupingStrategy?.strategy_config;
+          let parsedConfig: any = null;
+          try {
+            parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+          } catch (error) {
+            parsedConfig = null;
+          }
+          
+          if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
+            // Create a temporary updated item with the changes applied to get correct grouping values
+            const updatedItemForGrouping = {
+              ...item,
+              type: changes.type ?? item.type,
+              description: changes.description ?? item.description,
+              model: changes.model ?? item.model,
+              room: changes.room ?? item.room,
+              quantity: changes.quantity ?? item.quantity,
+              price: changes.price ?? item.price,
+              notes: changes.notes ?? item.notes
+            };
+            
+            // Find which groups this item belongs to using the updated values
+            const primaryValue = getItemFieldValue(updatedItemForGrouping, parsedConfig.primary_group);
+            const secondaryValue = getItemFieldValue(updatedItemForGrouping, parsedConfig.secondary_group);
+            
+            console.log('🔄 Maintaining group expansion after ID change:');
+            console.log('🔄 Primary:', primaryValue, 'Secondary:', secondaryValue);
+            console.log('🔄 Updated item for grouping:', updatedItemForGrouping);
+            
+            // Ensure primary group stays expanded
+            setExpandedGroup(primaryValue);
+            
+            // Ensure secondary group stays expanded
+            const secondaryCompositeKey = `${primaryValue}::${secondaryValue}`;
+            setExpandedSecondaryGroups(prev => ({
+              ...prev,
+              [secondaryCompositeKey]: true
+            }));
+          }
         }
         
         console.log('New custom item inserted successfully with ID:', sqliteId);
@@ -608,7 +688,9 @@ export default function PredefinedItemsList({
       }
 
       // Mark as auto-saved but keep the changes visible
-      setAutoSavedItems(prev => ({ ...prev, [id]: true }));
+      // For new items, use the new SQLite ID if it was created
+      const finalId = (isNewItem && sqliteId) ? sqliteId : id;
+      setAutoSavedItems(prev => ({ ...prev, [finalId]: true }));
 
       // Update pending changes count immediately after database update
       const count = await riskAssessmentSyncService.getPendingChangesCount();
@@ -818,72 +900,26 @@ export default function PredefinedItemsList({
     // When collapsing a group, collapse all items in that group
     if (!isCurrentlyExpanded) {
       // Expanding: auto-expand all items in this group
-      const groupItems = groupedItems[groupKey] || [];
+      if (isNestedGrouping(groupedItems)) {
+        // For nested grouping, don't auto-expand individual items
+        // Let user choose which secondary group to expand
+      } else {
+        // For flat grouping, check if there's only one item to auto-expand
+        const flatGroups = groupedItems as FlatGroups;
+        const groupItems = flatGroups[groupKey] || [];
       if (groupItems.length === 1) {
         // If only one item, expand it immediately
         setExpandedItem(groupItems[0].id);
       }
       // For multiple items, let user choose which one to expand
+      }
     } else {
       // Collapsing: collapse any expanded item
       setExpandedItem(null);
     }
   };
 
-  // Function to duplicate an item with the same itemprompt
-  const duplicateItem = useCallback((originalItem: Item) => {
-    console.log('🔄 === DUPLICATE ITEM FUNCTION CALLED ===');
-    console.log('🔄 Original item:', originalItem);
-    console.log('🔄 Original item type:', originalItem.type);
-    console.log('🔄 Current items count before duplication:', items.length);
-    
-    const duplicatedItem: Item = {
-      id: `duplicate-${Date.now()}`,
-      type: originalItem.type, // Keep the same itemprompt
-      description: '',
-      model: '',
-      quantity: '1',
-      price: '',
-      room: '',
-      notes: '',
-      categoryId: categoryId
-    };
-    
-    console.log('🔄 Duplicated item to be created:', duplicatedItem);
-    
-    // Add to local items state
-    setItems(prevItems => {
-      console.log('🔄 Adding duplicated item to items array, current count:', prevItems.length);
-      const newItems = [...prevItems, duplicatedItem];
-      console.log('🔄 New items array count:', newItems.length);
-      return newItems;
-    });
-    
-    // Auto-expand the group containing this item
-    setExpandedGroup(originalItem.type);
-    console.log('🔄 Expanded group set to:', originalItem.type);
-    
-    // Immediately expand the new item for editing
-    setExpandedItem(duplicatedItem.id);
-    console.log('🔄 Expanded item set to:', duplicatedItem.id);
-    
-    // Set it as being edited
-    setEditItems(prev => ({
-      ...prev,
-      [duplicatedItem.id]: {
-        type: duplicatedItem.type,
-        description: '',
-        model: '',
-        quantity: '1',
-        price: '',
-        room: '',
-        notes: ''
-      }
-    }));
-    
-    console.log('🔄 Edit state set for duplicated item');
-    console.log('🔄 === DUPLICATE ITEM FUNCTION COMPLETED ===');
-  }, [categoryId, items.length]);
+  // Function to duplicate an item with the same itemprompt - moved after groupedItems definition
 
   // Function to delete an item
   const deleteItem = useCallback(async (itemToDelete: Item) => {
@@ -1456,11 +1492,51 @@ export default function PredefinedItemsList({
     );
   }, [items, isFieldVisible, handleEdit, autoSaveItem, itemPhotos, handleViewPhotos]);
 
+  // Type for nested grouping structure
+  interface NestedGroups {
+    [primaryKey: string]: {
+      [secondaryKey: string]: Item[]
+    }
+  }
+
+  // Type for flat grouping structure
+  interface FlatGroups {
+    [key: string]: Item[]
+  }
+
+  // Union type for all possible grouping structures
+  type GroupedItemsType = FlatGroups | NestedGroups;
+
+  // Helper function to check if grouping is nested (2-tier)
+  const isNestedGrouping = useCallback((groups: GroupedItemsType): groups is NestedGroups => {
+    const strategyConfig = groupingStrategy?.strategy_config;
+    let parsedConfig: any = null;
+    try {
+      parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+    } catch (error) {
+      parsedConfig = null;
+    }
+    return parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group;
+  }, [groupingStrategy]);
+
+  // Helper function to toggle secondary group expansion
+  const toggleSecondaryGroup = (primaryKey: string, secondaryKey: string) => {
+    const compositeKey = `${primaryKey}::${secondaryKey}`;
+    setExpandedSecondaryGroups(prev => ({
+      ...prev,
+      [compositeKey]: !prev[compositeKey]
+    }));
+  };
+
+  // Helper function to check if secondary group is expanded
+  const isSecondaryGroupExpanded = (primaryKey: string, secondaryKey: string): boolean => {
+    const compositeKey = `${primaryKey}::${secondaryKey}`;
+    return !!expandedSecondaryGroups[compositeKey];
+  };
+
   // Group items by strategy configuration - supports both single-tier and 2-tier grouping
   // CRITICAL: We only depend on 'items', NOT 'editItems' to prevent re-grouping while user types
   const groupedItems = useMemo(() => {
-    const groups: { [key: string]: Item[] } = {};
-    
     console.log('🔧 DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
     
     // Determine grouping strategy - default to 'by_type' (itemprompt) if none configured
@@ -1489,25 +1565,43 @@ export default function PredefinedItemsList({
     
     if (hasTwoTierGrouping) {
       console.log('🔧 Using 2-tier grouping:', parsedConfig.primary_group, '->', parsedConfig.secondary_group);
-    } else {
-      console.log('🔧 Using single-tier grouping:', effectiveGroupingStrategy);
-    }
     
-    items.forEach(item => {
-      let groupKey: string;
+      // Create nested structure for 2-tier grouping
+      const nestedGroups: NestedGroups = {};
       
-      if (hasTwoTierGrouping) {
-        // 2-tier grouping: Create composite key "Primary > Secondary"
+      items.forEach(item => {
         const primaryValue = getItemFieldValue(item, parsedConfig.primary_group);
         const secondaryValue = getItemFieldValue(item, parsedConfig.secondary_group);
-        groupKey = `${primaryValue} > ${secondaryValue}`;
         
         // Debug log for first few items
         if (items.indexOf(item) < 3) {
-          console.log(`🔧 Item ${item.id}: Primary(${parsedConfig.primary_group})="${primaryValue}", Secondary(${parsedConfig.secondary_group})="${secondaryValue}" → "${groupKey}"`);
+          console.log(`🔧 Item ${item.id}: Primary(${parsedConfig.primary_group})="${primaryValue}", Secondary(${parsedConfig.secondary_group})="${secondaryValue}"`);
         }
+        
+        if (!nestedGroups[primaryValue]) {
+          nestedGroups[primaryValue] = {};
+        }
+        
+        if (!nestedGroups[primaryValue][secondaryValue]) {
+          nestedGroups[primaryValue][secondaryValue] = [];
+        }
+        
+        nestedGroups[primaryValue][secondaryValue].push(item);
+      });
+      
+      console.log('🔧 Items grouped into nested structure:', Object.keys(nestedGroups).length, 'primary groups');
+      Object.entries(nestedGroups).forEach(([primary, secondary]) => {
+        console.log(`🔧   ${primary}: ${Object.keys(secondary).length} secondary groups`);
+      });
+      
+      return nestedGroups;
       } else {
-        // Single-tier grouping (original logic)
+      // Single-tier grouping (original logic) - return in compatible format
+      const flatGroups: { [key: string]: Item[] } = {};
+      
+      items.forEach(item => {
+        let groupKey: string;
+        
         switch (effectiveGroupingStrategy) {
           case 'by_type':
           default:
@@ -1538,21 +1632,196 @@ export default function PredefinedItemsList({
               groupKey = item.type || 'Unknown Items';
             }
             break;
-        }
       }
       
-      if (!groups[groupKey]) {
-        groups[groupKey] = [];
+        if (!flatGroups[groupKey]) {
+          flatGroups[groupKey] = [];
       }
-      groups[groupKey].push(item);
+        flatGroups[groupKey].push(item);
     });
     
-    console.log('🔧 Items grouped into', Object.keys(groups).length, 'groups:', Object.keys(groups));
+      console.log('🔧 Items grouped into', Object.keys(flatGroups).length, 'groups:', Object.keys(flatGroups));
     
-    return groups;
+      return flatGroups;
+    }
   }, [items, groupingStrategy, getItemFieldValue]);
 
-  // Load photos for all items
+  // Function to duplicate an item with the same itemprompt
+  const duplicateItem = useCallback((originalItem: Item) => {
+    console.log('🔄 === DUPLICATE ITEM FUNCTION CALLED ===');
+    console.log('🔄 Original item:', originalItem);
+    console.log('🔄 Original item type:', originalItem.type);
+    console.log('🔄 Current items count before duplication:', items.length);
+    
+    // For nested grouping, we need to preserve the grouping field values
+    let duplicatedItem: Item;
+    
+    if (isNestedGrouping(groupedItems)) {
+      const strategyConfig = groupingStrategy?.strategy_config;
+      let parsedConfig: any = null;
+      try {
+        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+      } catch (error) {
+        parsedConfig = null;
+      }
+      
+      // Create duplicated item starting with base values
+      duplicatedItem = {
+        id: `duplicate-${Date.now()}`,
+        type: originalItem.type,
+        description: '',
+        model: '',
+        quantity: '1',
+        price: '',
+        room: '',
+        notes: '',
+        categoryId: categoryId
+      };
+      
+      // Preserve the specific fields that are used for grouping
+      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
+        const primaryField = parsedConfig.primary_group;
+        const secondaryField = parsedConfig.secondary_group;
+        
+        // Map grouping field names to item property names
+        const setGroupingValue = (fieldName: string, value: string) => {
+          console.log('🔧 setGroupingValue called:', fieldName, '→', value);
+          switch (fieldName) {
+            case 'ItemPrompt':
+              duplicatedItem.type = value;
+              console.log('🔧 Set type to:', duplicatedItem.type);
+              break;
+            case 'Location':
+              duplicatedItem.room = value;
+              console.log('🔧 Set room to:', duplicatedItem.room);
+              break;
+            case 'Model':
+              duplicatedItem.model = value;
+              console.log('🔧 Set model to:', duplicatedItem.model);
+              break;
+            case 'Description':
+              duplicatedItem.description = value;
+              console.log('🔧 Set description to:', duplicatedItem.description);
+              break;
+            default:
+              // Try to set the field directly
+              (duplicatedItem as any)[fieldName] = value;
+              console.log('🔧 Set', fieldName, 'to:', (duplicatedItem as any)[fieldName]);
+              break;
+          }
+        };
+        
+        // Get and preserve the primary grouping field value
+        const primaryValue = getItemFieldValue(originalItem, primaryField);
+        console.log('🔄 PRIMARY VALUE EXTRACTION:', primaryField, 'from item:', originalItem, '→', primaryValue);
+        setGroupingValue(primaryField, primaryValue);
+        
+        // Get and preserve the secondary grouping field value
+        const secondaryValue = getItemFieldValue(originalItem, secondaryField);
+        console.log('🔄 SECONDARY VALUE EXTRACTION:', secondaryField, 'from item:', originalItem, '→', secondaryValue);
+        setGroupingValue(secondaryField, secondaryValue);
+        
+        console.log('🔄 Nested grouping - preserved field values:');
+        console.log('🔄 Primary field:', primaryField, '=', primaryValue);
+        console.log('🔄 Secondary field:', secondaryField, '=', secondaryValue);
+        console.log('🔄 Final duplicated item BEFORE state update:', duplicatedItem);
+        console.log('🔄 Duplicated item room value:', duplicatedItem.room);
+        console.log('🔄 Duplicated item type value:', duplicatedItem.type);
+      }
+    } else {
+      // For flat grouping, use the original logic
+      duplicatedItem = {
+        id: `duplicate-${Date.now()}`,
+        type: originalItem.type, // Keep the same itemprompt
+        description: '',
+        model: '',
+        quantity: '1',
+        price: '',
+        room: '',
+        notes: '',
+        categoryId: categoryId
+      };
+    }
+    
+    console.log('🔄 Duplicated item to be created:', duplicatedItem);
+    
+    // Add to local items state
+    setItems(prevItems => {
+      console.log('🔄 Adding duplicated item to items array, current count:', prevItems.length);
+      const newItems = [...prevItems, duplicatedItem];
+      console.log('🔄 New items array count:', newItems.length);
+      return newItems;
+    });
+    
+    // Handle group expansion based on grouping type
+    if (isNestedGrouping(groupedItems)) {
+      // For nested grouping, we need to find and maintain the primary and secondary group expansion
+      const strategyConfig = groupingStrategy?.strategy_config;
+      let parsedConfig: any = null;
+      try {
+        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+      } catch (error) {
+        parsedConfig = null;
+      }
+      
+      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
+        // Find which primary group contains this item
+        const primaryValue = getItemFieldValue(originalItem, parsedConfig.primary_group);
+        const secondaryValue = getItemFieldValue(originalItem, parsedConfig.secondary_group);
+        
+        console.log('🔄 Nested grouping - Primary:', primaryValue, 'Secondary:', secondaryValue);
+        
+        // Keep primary group expanded
+        setExpandedGroup(primaryValue);
+        
+        // Keep secondary group expanded
+        const secondaryCompositeKey = `${primaryValue}::${secondaryValue}`;
+        setExpandedSecondaryGroups(prev => ({
+          ...prev,
+          [secondaryCompositeKey]: true
+        }));
+        
+        console.log('🔄 Expanded primary group:', primaryValue);
+        console.log('🔄 Expanded secondary group:', secondaryCompositeKey);
+      }
+    } else {
+      // For flat grouping, use the original logic
+      setExpandedGroup(originalItem.type);
+      console.log('🔄 Expanded group set to:', originalItem.type);
+    }
+    
+    // Immediately expand the new item for editing
+    setExpandedItem(duplicatedItem.id);
+    console.log('🔄 Expanded item set to:', duplicatedItem.id);
+    
+    // Set it as being edited - preserve the duplicated item's field values
+    setEditItems(prev => {
+      const editState = {
+        type: duplicatedItem.type,
+        description: duplicatedItem.description || '',
+        model: duplicatedItem.model || '',
+        quantity: duplicatedItem.quantity || '1',
+        price: duplicatedItem.price || '',
+        room: duplicatedItem.room || '', // Preserve the room from duplication
+        notes: duplicatedItem.notes || ''
+      };
+      
+      console.log('🔧 Setting edit state for duplicated item:', duplicatedItem.id);
+      console.log('🔧 Edit state being set:', editState);
+      console.log('🔧 Duplicated item room value:', duplicatedItem.room);
+      console.log('🔧 Edit state room value:', editState.room);
+      
+      return {
+        ...prev,
+        [duplicatedItem.id]: editState
+      };
+    });
+    
+    console.log('🔄 Edit state set for duplicated item');
+    console.log('🔄 === DUPLICATE ITEM FUNCTION COMPLETED ===');
+  }, [categoryId, items.length, isNestedGrouping, groupedItems, groupingStrategy, getItemFieldValue]);
+
+  // Load photos for all items (silent)
   useEffect(() => {
     if (items.length > 0) {
       const loadPhotos = async () => {
@@ -1568,11 +1837,9 @@ export default function PredefinedItemsList({
 
         const results = await Promise.all(photoPromises);
         const newItemPhotos: { [key: string]: MediaFile[] } = {};
-        let totalWithPhotos = 0;
 
         results.forEach(({ itemId, photos }) => {
           newItemPhotos[itemId] = photos;
-          if (photos.length > 0) totalWithPhotos++;
         });
 
         setItemPhotos(newItemPhotos);
@@ -1601,7 +1868,226 @@ export default function PredefinedItemsList({
           showsVerticalScrollIndicator={true}
           persistentScrollbar={true}
         >
-          {Object.entries(groupedItems).map(([groupKey, groupItems], groupIndex) => {
+          {isNestedGrouping(groupedItems) ? (
+            // Render nested (2-tier) grouping
+            Object.entries(groupedItems).map(([primaryKey, secondaryGroups], primaryIndex) => {
+              const isPrimaryExpanded = expandedGroup === primaryKey;
+              const totalItemsInPrimary = Object.values(secondaryGroups).reduce((total, items) => total + items.length, 0);
+              
+              return (
+                <View key={primaryKey} style={styles.groupContainer}>
+                  {/* Primary Group Header */}
+                  <TouchableOpacity 
+                    style={[
+                      styles.groupHeader,
+                      primaryIndex % 2 === 1 ? styles.groupHeaderAlt : null,
+                      isPrimaryExpanded ? styles.groupHeaderExpanded : null
+                    ]}
+                    onPress={() => toggleGroupExpansion(primaryKey)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.groupTitle}>
+                      {primaryKey}
+                    </Text>
+                    
+                    <View style={styles.groupIndicators}>
+                      <View style={styles.countBadge}>
+                        <Text style={styles.countBadgeText}>{totalItemsInPrimary}</Text>
+                      </View>
+                      <MaterialCommunityIcons 
+                        name={isPrimaryExpanded ? "chevron-down" : "chevron-right"} 
+                        size={20} 
+                        color="#6c757d" 
+                      />
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Secondary Groups */}
+                  {isPrimaryExpanded && (
+                    <View style={styles.groupItems}>
+                      {Object.entries(secondaryGroups).map(([secondaryKey, items]) => {
+                        const isSecondaryExpanded = isSecondaryGroupExpanded(primaryKey, secondaryKey);
+                        const secondaryItemCount = items.length;
+                        
+                        return (
+                          <View key={`${primaryKey}-${secondaryKey}`} style={styles.secondaryGroupContainer}>
+                            {/* Secondary Group Header */}
+                            <TouchableOpacity 
+                              style={styles.secondaryGroupHeader}
+                              onPress={() => toggleSecondaryGroup(primaryKey, secondaryKey)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.secondaryGroupTitle}>
+                                {secondaryKey}
+                              </Text>
+                              
+                              <View style={styles.groupIndicators}>
+                                {/* Always show count for secondary groups */}
+                                <View style={styles.secondaryCountBadge}>
+                                  <Text style={styles.countBadgeText}>{secondaryItemCount}</Text>
+                                </View>
+                                
+                                <MaterialCommunityIcons 
+                                  name={isSecondaryExpanded ? "chevron-down" : "chevron-right"} 
+                                  size={18} 
+                                  color="#6c757d" 
+                                />
+                              </View>
+                            </TouchableOpacity>
+
+                            {/* Secondary Group Items */}
+                            {isSecondaryExpanded && (
+                              <View style={styles.secondaryGroupItems}>
+                                {items.map((item: Item, index: number) => {
+                                  const isExpanded = expandedItem === item.id;
+                                  const itemId = String(item.id);
+                                  const isAutoSaved = autoSavedItems[itemId];
+                                  
+                                  // Get current field values (edited or original)
+                                  const type = editItems[itemId]?.type ?? (item.type || '');
+                                  const quantity = editItems[itemId]?.quantity ?? String(item.quantity || '1');
+                                  const price = editItems[itemId]?.price ?? String(item.price || '');
+                                  const description = editItems[itemId]?.description ?? (item.description || '');
+                                  const model = editItems[itemId]?.model ?? (item.model || '');
+                                  const room = editItems[itemId]?.room ?? (item.room || '');
+                                  const notes = editItems[itemId]?.notes ?? (item.notes || '');
+                                  
+                                  // Check if this is a new custom item (starts with 'custom-new-' or 'duplicate-')
+                                  const isNewItem = item.id.startsWith('custom-new-') || item.id.startsWith('duplicate-');
+                                  
+                                  // Check if item has meaningful data captured
+                                  const hasData = hasDataCaptured(item);
+                                  
+                                  // Create a summary for the item (description, model, or "Item #X")
+                                  const itemSummary = description ? description 
+                                                    : model ? model
+                                                    : `Item #${index + 1}`;
+                                  
+                                  return (
+                                    <View key={item.id} style={styles.accordionContainer}>
+                                      {/* Main item row - show summary instead of repeating the group name */}
+                                      <TouchableOpacity 
+                                        style={[
+                                          styles.predefinedItem,
+                                          styles.secondaryGroupItemRow, // Different styling for items within secondary groups
+                                          index % 2 === 1 ? styles.predefinedItemAlt : null,
+                                          isExpanded ? styles.predefinedItemExpanded : null,
+                                          isAutoSaved ? styles.predefinedItemAutoSaved : null
+                                        ]}
+                                        onPress={() => toggleExpansion(item.id)}
+                                        activeOpacity={0.7}
+                                      >
+                                        <View style={styles.itemSummaryContainer}>
+                                          <Text style={styles.itemSummaryText} numberOfLines={1} ellipsizeMode="tail">
+                                            {itemSummary}
+                                          </Text>
+                                          {hasData && (
+                                            <Text style={styles.itemValueText}>
+                                              {quantity}x @ R{price}
+                                            </Text>
+                                          )}
+                                        </View>
+                                        
+                                        {/* Indicators container */}
+                                        <View style={styles.indicatorsContainer}>
+                                          {/* Data capture indicator */}
+                                          {hasData && (
+                                            <MaterialCommunityIcons 
+                                              name="database-check" 
+                                              size={16} 
+                                              color="#2196F3" 
+                                              style={{ marginRight: 4 }} 
+                                            />
+                                          )}
+                                          
+                                          {/* Auto-save indicator */}
+                                          {isAutoSaved && (
+                                            <MaterialCommunityIcons 
+                                              name="check-circle" 
+                                              size={16} 
+                                              color="#4CAF50" 
+                                              style={{ marginRight: 4 }} 
+                                            />
+                                          )}
+                                          
+                                          {/* Delete button - show for items with data or new items */}
+                                          {(hasData || isNewItem) && (
+                                            <TouchableOpacity
+                                              style={styles.deleteIconButton}
+                                              onPress={(e) => {
+                                                e.stopPropagation(); // Prevent row expansion
+                                                deleteItem(item);
+                                              }}
+                                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            >
+                                              <MaterialCommunityIcons 
+                                                name="delete-outline" 
+                                                size={16} 
+                                                color="#e74c3c" 
+                                              />
+                                            </TouchableOpacity>
+                                          )}
+                                        </View>
+                                        
+                                        <MaterialCommunityIcons 
+                                          name={isExpanded ? "chevron-down" : "chevron-right"} 
+                                          size={20} 
+                                          color="#6c757d" 
+                                        />
+                                      </TouchableOpacity>
+
+                                      {/* Expanded details section */}
+                                      {isExpanded && (
+                                        <View style={styles.expandedContent}>
+                                          <View style={styles.detailsContainer}>
+                                            {/* Dynamic Item Details Grid */}
+                                            <View style={styles.detailsGrid}>
+                                              {renderDynamicFields(itemId, editItems[itemId] || {})}
+                                            </View>
+
+                                            {/* Action buttons */}
+                                            <View style={styles.actionButtonsContainer}>
+                                              {isNewItem && (
+                                                <TouchableOpacity
+                                                  style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
+                                                  onPress={() => autoSaveItem(itemId)}
+                                                  disabled={!type}
+                                                >
+                                                  <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
+                                                  <Text style={styles.saveButtonText}>Save New Item</Text>
+                                                </TouchableOpacity>
+                                              )}
+                                              
+                                              {/* Add Another button - only show for saved items */}
+                                              {!isNewItem && hasData && (
+                                                <TouchableOpacity
+                                                  style={styles.duplicateButton}
+                                                  onPress={() => duplicateItem(item)}
+                                                >
+                                                  <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
+                                                  <Text style={styles.duplicateButtonText}>Add Another {type || item.type}</Text>
+                                                </TouchableOpacity>
+                                              )}
+                                            </View>
+                                          </View>
+                                        </View>
+                                      )}
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          ) : (
+            // Render flat (single-tier) grouping  
+            Object.entries(groupedItems as FlatGroups).map(([groupKey, groupItems], groupIndex) => {
             const isGroupExpanded = expandedGroup === groupKey;
             const groupItemCount = groupItems.length;
             
@@ -1617,12 +2103,8 @@ export default function PredefinedItemsList({
                   onPress={() => toggleGroupExpansion(groupKey)}
                   activeOpacity={0.7}
                 >
-                  <Text 
-                    style={groupKey.includes(' > ') ? styles.twoTierGroupTitle : styles.groupTitle} 
-                    numberOfLines={groupKey.includes(' > ') ? 2 : 1} 
-                    ellipsizeMode="tail"
-                  >
-                    {groupKey.includes(' > ') ? groupKey.replace(' > ', '\n└ ') : groupKey}
+                    <Text style={styles.groupTitle}>
+                      {groupKey}
                   </Text>
                   
                   {/* Group indicators */}
@@ -1789,9 +2271,10 @@ export default function PredefinedItemsList({
               )}
             </View>
             );
-          })}
+            })
+          )}
           
-          {Object.keys(groupedItems).length === 0 && (
+          {(isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length === 0 : Object.keys(groupedItems as FlatGroups).length === 0) && (
             <View style={styles.emptyState}>
               <MaterialCommunityIcons name="clipboard-text-outline" size={48} color="#bdc3c7" />
               <Text style={styles.emptyStateText}>No predefined items found</Text>
@@ -1799,7 +2282,7 @@ export default function PredefinedItemsList({
             </View>
           )}
         </ScrollView>
-        {Object.keys(groupedItems).length > 3 && (
+        {(isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length > 3 : Object.keys(groupedItems as FlatGroups).length > 3) && (
           <View style={styles.scrollIndicator}>
             <MaterialCommunityIcons name="gesture-swipe-up" size={16} color="#7f8c8d" />
           </View>
@@ -2154,5 +2637,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7f8c8d',
     fontWeight: '400',
+  },
+  // Secondary grouping styles
+  secondaryGroupContainer: {
+    marginBottom: 2,
+  },
+  secondaryGroupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    backgroundColor: '#f0f4f7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e8f0',
+    marginLeft: 8,
+  },
+  secondaryGroupTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#34495e',
+    flex: 1,
+  },
+  secondaryCountBadge: {
+    backgroundColor: '#6c757d',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    marginRight: 6,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  secondaryGroupItems: {
+    backgroundColor: '#f8f9fa',
+    marginLeft: 8,
+  },
+  secondaryGroupItemRow: {
+    paddingLeft: 32, // Double indent for items within secondary groups
+    backgroundColor: '#f5f6fa',
   },
 }); 

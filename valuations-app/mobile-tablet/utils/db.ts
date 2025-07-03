@@ -781,9 +781,9 @@ export async function getMediaFilesByEntity(entityName: string, entityID: number
       ? 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ?'
       : 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? AND IsDeleted = 0';
     
-    console.log(`Fetching media files for ${entityName} ID ${entityID}, includeDeleted: ${includeDeleted}`);
+    // Removed noisy media logging
     const res = await runSql(sql, [entityName, entityID]);
-    console.log('Number of media files found:', res.rows._array.length);
+    // console.log('Number of media files found:', res.rows._array.length);
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching media files by entity:', error);
