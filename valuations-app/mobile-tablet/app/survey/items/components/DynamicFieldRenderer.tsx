@@ -45,30 +45,43 @@ export default function DynamicFieldRenderer({
   const hasError = validationError?.fieldName === fieldName;
 
   const renderFieldByType = () => {
+    console.log(`🎨 DynamicFieldRenderer: Rendering field "${fieldName}" with type "${field.field_type}"`);
+    console.log(`🎨 Field config:`, JSON.stringify(field, null, 2));
+    
     // Special handling for photo fields
     if (fieldName === 'photos' && itemId && onTakePhoto) {
+      console.log(`🎨 Rendering special photos field for ${fieldName}`);
       return renderPhotoField();
     }
     
     switch (field.field_type) {
       case 'photo':
+        console.log(`🎨 Matched field_type: photo`);
         return renderPhotoField();
       case 'dropdown':
+        console.log(`🎨 Matched field_type: dropdown`);
         return renderDropdownField();
       case 'combobox':
+        console.log(`🎨 Matched field_type: combobox`);
         return renderComboboxField();
       case 'auto_suggest':
       case 'auto_suggest_box':
+        console.log(`🎨 Matched field_type: auto_suggest/auto_suggest_box`);
         return renderAutoSuggestField();
       case 'textarea':
+        console.log(`🎨 Matched field_type: textarea`);
         return renderTextAreaField();
       case 'number':
+        console.log(`🎨 Matched field_type: number`);
         return renderNumberField();
       case 'currency':
+        console.log(`🎨 Matched field_type: currency`);
         return renderCurrencyField();
       case 'location_group':
+        console.log(`🎨 Matched field_type: location_group - rendering location group field!`);
         return renderLocationGroupField();
       default:
+        console.log(`🎨 No match for field_type: "${field.field_type}" - using default text field`);
         return renderTextField();
     }
   };

@@ -144,11 +144,15 @@ class ConfigurationService {
         
         // Use backend field type if provided, with special handling for photos
         let fieldType = field.fieldType || 'text';
+        console.log(`🔧 Field "${backendFieldName}": Backend fieldType="${field.fieldType}"`);
+        
         if (uiFieldName === 'photos') {
           fieldType = 'photo'; // Special handling for photo fields
+          console.log(`🔧 Field "${backendFieldName}": Overriding to "photo" for photos field`);
         }
         // If backend doesn't provide fieldType, infer from field name
         else if (!field.fieldType) {
+          console.log(`🔧 Field "${backendFieldName}": No fieldType from backend, inferring...`);
           if (uiFieldName === 'quantity') {
             fieldType = 'number';
           } else if (uiFieldName === 'price') {
@@ -157,6 +161,11 @@ class ConfigurationService {
             fieldType = 'textarea';
           }
         }
+        
+        console.log(`🔧 Field "${backendFieldName}": Final fieldType="${fieldType}"`);
+        console.log(`🔧 Field "${backendFieldName}": Has dropdownOptions=${field.dropdownOptions ? field.dropdownOptions.length : 0} options`);
+        console.log(`🔧 Field "${backendFieldName}": isVisible=${field.isVisible}`);
+        console.log('🔧 Raw field from backend:', JSON.stringify(field, null, 2));
 
         return {
           riskfieldid: parseInt(field.riskfieldid) || 0,

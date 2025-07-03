@@ -61,6 +61,7 @@ export default function PredefinedItemsList({
   const [items, setItems] = useState<Item[]>([]);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [expandedSecondaryGroups, setExpandedSecondaryGroups] = useState<{ [key: string]: boolean }>({});
   // Editing state management
   const [editItems, setEditItems] = useState<{ [key: string]: any }>({});
   const [autoSavedItems, setAutoSavedItems] = useState<{ [key: string]: boolean }>({});
