@@ -79,7 +79,7 @@ export default function PredefinedItemsList({
   
   // ScrollView ref for auto-scrolling to new items
   const scrollViewRef = useRef<ScrollView>(null);
-
+  
   // Initialize local items state with props items while preserving new/duplicate items
   useEffect(() => {
     if (propsItems && propsItems.length > 0) {
@@ -155,6 +155,41 @@ export default function PredefinedItemsList({
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, []); // Remove categoryId dependency since it's stable from props
+
+  // Helper function to get item field value based on field name from strategy config
+  const getItemFieldValue = useCallback((item: Item, fieldName: string): string => {
+    let value: string;
+    
+    switch (fieldName) {
+      case 'ItemPrompt':
+        value = item.type || 'Unknown Type';
+        break;
+      case 'Location':
+        value = item.room || 'No Location';
+        break;
+      case 'Description':
+        value = item.description || 'No Description';
+        break;
+      case 'Model':
+        value = item.model || 'No Model';
+        break;
+      case 'Qty':
+        value = item.quantity || '1';
+        break;
+      case 'Price':
+        value = item.price || '0';
+        break;
+      case 'Notes':
+        value = item.notes || 'No Notes';
+        break;
+      default:
+        // Try to get the value directly from the item using the field name
+        value = (item as any)[fieldName] || `Unknown ${fieldName}`;
+        break;
+    }
+    
+    return value;
+  }, []);
 
   // Calculate and expose totals to parent component
   const calculateTotals = useCallback(() => {
@@ -987,7 +1022,7 @@ export default function PredefinedItemsList({
     }, 100);
   };
 
-  // Helper function to render dynamic fields based on configuration with legacy-style layout
+  // Helper function to render dynamic fields based on configuration respecting display_order
   const renderDynamicFields = useCallback((itemId: string, editData: any) => {
     if (!dynamicFieldConfig || dynamicFieldConfig.length === 0) {
       // Fall back to legacy hardcoded fields
@@ -998,21 +1033,101 @@ export default function PredefinedItemsList({
     if (!item) return null;
 
     const itemErrors = validationErrors[itemId] || [];
-    const visibleFields = dynamicFieldConfig.filter(field => field.display_on_ui === 1);
     
-    // Group fields by their position in the legacy layout
-    const fieldsByPosition = {
-      description: visibleFields.find(f => f.item_fields === 'description'),
-      model: visibleFields.find(f => f.item_fields === 'model'),
-      quantity: visibleFields.find(f => f.item_fields === 'quantity'),
-      price: visibleFields.find(f => f.item_fields === 'price'),
-      room: visibleFields.find(f => f.item_fields === 'room'),
-      photos: visibleFields.find(f => f.item_fields === 'photos'),
-      notes: visibleFields.find(f => f.item_fields === 'notes')
+    // Determine which fields are being used for grouping and should be excluded from editing
+    const getGroupingFields = (): string[] => {
+      console.log('🔧 DEBUG getGroupingFields - groupingStrategy:', JSON.stringify(groupingStrategy, null, 2));
+      
+      // Default to 'by_type' even when no grouping strategy is provided (matches the grouping logic)
+      const defaultStrategy = groupingStrategy?.strategy_type || 'by_type';
+      console.log('🔧 Effective grouping strategy:', defaultStrategy);
+      
+      if (!groupingStrategy) {
+        console.log('🔧 No groupingStrategy found, but defaulting to exclude "type" field for by_type grouping');
+        return ['type']; // Default exclusion for by_type grouping
+      }
+      
+      const fields: string[] = [];
+      const effectiveGroupingStrategy = groupingStrategy.strategy_type || 'by_type';
+      console.log('🔧 Effective grouping strategy:', effectiveGroupingStrategy);
+      
+      // Handle 2-tier grouping
+      const strategyConfig = groupingStrategy.strategy_config;
+      let parsedConfig: any = null;
+      try {
+        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+      } catch (error) {
+        parsedConfig = null;
+      }
+      
+      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
+        // 2-tier grouping: exclude both primary and secondary fields
+        const primaryFieldMap: { [key: string]: string } = {
+          'ItemPrompt': 'type',
+          'Location': 'room',
+          'Model': 'model',
+          'Price': 'price'
+        };
+        const secondaryFieldMap: { [key: string]: string } = {
+          'ItemPrompt': 'type',
+          'Location': 'room', 
+          'Model': 'model',
+          'Price': 'price'
+        };
+        
+        if (primaryFieldMap[parsedConfig.primary_group]) fields.push(primaryFieldMap[parsedConfig.primary_group]);
+        if (secondaryFieldMap[parsedConfig.secondary_group]) fields.push(secondaryFieldMap[parsedConfig.secondary_group]);
+      } else {
+        // Single-tier grouping
+        console.log('🔧 Using single-tier grouping strategy:', effectiveGroupingStrategy);
+        switch (effectiveGroupingStrategy) {
+          case 'by_type':
+            console.log('🔧 Adding "type" field to exclusion list');
+            fields.push('type'); // ItemPrompt field
+            break;
+          case 'by_location':
+            console.log('🔧 Adding "room" field to exclusion list');
+            fields.push('room'); // Location field
+            break;
+          case 'by_brand':
+            console.log('🔧 Adding "model" field to exclusion list');
+            fields.push('model'); // Model field
+            break;
+          case 'by_value_range':
+            console.log('🔧 Adding "price" field to exclusion list');
+            fields.push('price'); // Price field
+            break;
+          default:
+            console.log('🔧 Unknown grouping strategy, no fields excluded');
+        }
+      }
+      
+      console.log('🔧 Final exclusion fields array:', fields);
+      return fields;
     };
+    
+    const groupingFields = getGroupingFields();
+    console.log('🔧 Grouping fields to exclude from editing:', groupingFields);
+    console.log('🔧 Available dynamic fields BEFORE filtering:');
+    dynamicFieldConfig.forEach((field, index) => {
+      console.log(`  [${index}] item_fields: "${field.item_fields}", field_label: "${field.field_label}", display_on_ui: ${field.display_on_ui}`);
+    });
 
-    const renderFieldInLegacyStyle = (field: any, fieldName: string) => {
-      if (!field) return null;
+    // Get visible fields, exclude grouping fields, and sort by display_order
+    const visibleFieldsBeforeGroupingFilter = dynamicFieldConfig
+      .filter(field => field.display_on_ui === 1);
+    
+    console.log('🔧 Visible fields BEFORE grouping filter:', visibleFieldsBeforeGroupingFilter.map(f => f.item_fields));
+    
+    const visibleFields = visibleFieldsBeforeGroupingFilter
+      .filter(field => !groupingFields.includes(field.item_fields)) // Exclude grouping fields
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+    
+    console.log('🔧 Visible fields AFTER grouping filter:', visibleFields.map(f => f.item_fields));
+    console.log('🔧 Dynamic fields render order (excluding grouping):', visibleFields.map(f => `${f.item_fields}(${f.display_order})`).join(', '));
+
+    const renderField = (field: any) => {
+      const fieldName = field.item_fields;
       
       // Get current value with proper fallback to original item values
       const getFieldValue = (fieldName: string) => {
@@ -1034,8 +1149,11 @@ export default function PredefinedItemsList({
       const currentValue = getFieldValue(fieldName);
       const fieldError = itemErrors.find(e => e.fieldName === fieldName);
       
-              return (
-        <View style={styles.legacyFieldWrapper}>
+      return (
+        <View key={fieldName} style={[
+          styles.dynamicFieldContainer,
+          field.field_type === 'notes' ? { width: '100%' } : { flex: 1 }
+        ]}>
           <Text style={styles.detailLabel}>{field.field_label}:</Text>
           <DynamicFieldRenderer
             field={field}
@@ -1055,6 +1173,36 @@ export default function PredefinedItemsList({
     };
 
     const isNewItem = item.id.toString().startsWith('custom-new-');
+
+    // Group fields into rows for 2-column layout (except notes which is full width)
+    const fieldRows: any[][] = [];
+    let currentRow: any[] = [];
+    
+    visibleFields.forEach((field) => {
+      // Notes and textarea fields get their own full-width row
+      if (field.field_type === 'notes' || field.field_type === 'textarea') {
+        // If current row has content, push it first
+        if (currentRow.length > 0) {
+          fieldRows.push([...currentRow]);
+          currentRow = [];
+        }
+        // Add notes as a single-field row
+        fieldRows.push([field]);
+      } else {
+        // Add to current row
+        currentRow.push(field);
+        // If current row is full (2 fields), start a new row
+        if (currentRow.length === 2) {
+          fieldRows.push([...currentRow]);
+          currentRow = [];
+        }
+      }
+    });
+    
+    // Add any remaining fields in the current row
+    if (currentRow.length > 0) {
+      fieldRows.push(currentRow);
+    }
 
     return (
       <>
@@ -1076,57 +1224,19 @@ export default function PredefinedItemsList({
           </View>
         )}
         
-        {/* Row 1: Description | Model */}
-        <View style={styles.detailRow}>
-          {fieldsByPosition.description && (
-            <View style={styles.detailItem}>
-              {renderFieldInLegacyStyle(fieldsByPosition.description, 'description')}
-            </View>
-          )}
-          {fieldsByPosition.model && (
-            <View style={styles.detailItem}>
-              {renderFieldInLegacyStyle(fieldsByPosition.model, 'model')}
-            </View>
-          )}
-        </View>
-
-        {/* Row 2: Quantity | Price */}
-        <View style={styles.detailRow}>
-          {fieldsByPosition.quantity && (
-            <View style={styles.detailItem}>
-              {renderFieldInLegacyStyle(fieldsByPosition.quantity, 'quantity')}
-            </View>
-          )}
-          {fieldsByPosition.price && (
-            <View style={styles.detailItem}>
-              {renderFieldInLegacyStyle(fieldsByPosition.price, 'price')}
-            </View>
-          )}
-        </View>
-
-        {/* Row 3: Room | Photos */}
-        <View style={styles.detailRow}>
-          {fieldsByPosition.room && (
-            <View style={styles.detailItem}>
-              {renderFieldInLegacyStyle(fieldsByPosition.room, 'room')}
-            </View>
-          )}
-          {fieldsByPosition.photos && (
-            <View style={styles.detailItem}>
-              {renderFieldInLegacyStyle(fieldsByPosition.photos, 'photos')}
-            </View>
-          )}
-        </View>
-
-        {/* Row 4: Notes (full width) */}
-        {fieldsByPosition.notes && (
-          <View style={styles.notesSection}>
-            {renderFieldInLegacyStyle(fieldsByPosition.notes, 'notes')}
+        {/* Render fields in order based on display_order */}
+        {fieldRows.map((rowFields, rowIndex) => (
+          <View key={rowIndex} style={[
+            rowFields.length === 1 && (rowFields[0].field_type === 'notes' || rowFields[0].field_type === 'textarea')
+              ? styles.notesSection
+              : styles.detailRow
+          ]}>
+            {rowFields.map(field => renderField(field))}
           </View>
-        )}
+        ))}
       </>
     );
-  }, [dynamicFieldConfig, validationErrors, handleEdit, items, itemPhotos, handleViewPhotos, autoSaveItem]);
+  }, [dynamicFieldConfig, validationErrors, handleEdit, items, itemPhotos, handleViewPhotos, autoSaveItem, groupingStrategy]);
 
   // Helper function to check if a field should be visible
   const isFieldVisible = useCallback((fieldName: string) => {
@@ -1345,72 +1455,89 @@ export default function PredefinedItemsList({
     );
   }, [items, isFieldVisible, handleEdit, autoSaveItem, itemPhotos, handleViewPhotos]);
 
-  // Group items by itemprompt (type) - stable grouping to prevent re-render during typing
+  // Group items by strategy configuration - supports both single-tier and 2-tier grouping
   // CRITICAL: We only depend on 'items', NOT 'editItems' to prevent re-grouping while user types
-  // Default grouping strategy is by itemprompt unless configured otherwise
   const groupedItems = useMemo(() => {
     const groups: { [key: string]: Item[] } = {};
+    
+    console.log('🔧 DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
     
     // Determine grouping strategy - default to 'by_type' (itemprompt) if none configured
     const effectiveGroupingStrategy = groupingStrategy?.strategy_type || 'by_type';
     
     console.log('🔧 Grouping items using strategy:', effectiveGroupingStrategy);
     
+    // Check if we have a 2-tier grouping strategy configured
+    const strategyConfig = groupingStrategy?.strategy_config;
+    console.log('🔧 Raw strategy config:', strategyConfig);
+    console.log('🔧 Strategy type:', effectiveGroupingStrategy);
+    
+    // Handle both string (legacy) and object (new) types for strategy_config
+    let parsedConfig: any = null;
+    try {
+      parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+    } catch (error) {
+      console.warn('🔧 Error parsing strategy config:', error);
+      parsedConfig = null;
+    }
+    
+    const hasTwoTierGrouping = parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group;
+    
+    console.log('🔧 Parsed config:', parsedConfig);
+    console.log('🔧 Has two-tier grouping:', hasTwoTierGrouping);
+    
+    if (hasTwoTierGrouping) {
+      console.log('🔧 Using 2-tier grouping:', parsedConfig.primary_group, '->', parsedConfig.secondary_group);
+    } else {
+      console.log('🔧 Using single-tier grouping:', effectiveGroupingStrategy);
+    }
+    
     items.forEach(item => {
-      const itemId = String(item.id);
       let groupKey: string;
       
-      // Apply grouping strategy
-      switch (effectiveGroupingStrategy) {
-        case 'by_type':
-        default:
-          // Group by itemprompt (type) - this is the default behavior the user wants
-          // Use original item.type for stable grouping (not edited type)
-          groupKey = item.type || 'Unknown Items';
-          break;
+      if (hasTwoTierGrouping) {
+        // 2-tier grouping: Create composite key "Primary > Secondary"
+        const primaryValue = getItemFieldValue(item, parsedConfig.primary_group);
+        const secondaryValue = getItemFieldValue(item, parsedConfig.secondary_group);
+        groupKey = `${primaryValue} > ${secondaryValue}`;
         
-        case 'by_location':
-          // Group by room/location
-          groupKey = item.room || 'No Location';
-          break;
-        
-        case 'by_brand':
-          // Group by model (assuming model contains brand info)
-          groupKey = item.model || 'No Brand';
-          break;
-        
-        case 'by_value_range':
-          // Group by price ranges
-          const price = parseFloat(item.price) || 0;
-          if (price === 0) groupKey = 'No Value';
-          else if (price < 1000) groupKey = 'Under R1,000';
-          else if (price < 5000) groupKey = 'R1,000 - R5,000';
-          else if (price < 10000) groupKey = 'R5,000 - R10,000';
-          else groupKey = 'Over R10,000';
-          break;
-        
-        case 'custom':
-          // Use custom grouping if strategy config is provided
-          try {
-            const config = groupingStrategy?.strategy_config;
-            if (config) {
-              // Parse the JSON string if it's a string
-              const parsedConfig = typeof config === 'string' ? JSON.parse(config) : config;
-              if (parsedConfig && parsedConfig.customField) {
-                groupKey = (item as any)[parsedConfig.customField] || 'Other';
-              } else {
-                // Fallback to type grouping
-                groupKey = item.type || 'Unknown Items';
-              }
+        // Debug log for first few items
+        if (items.indexOf(item) < 3) {
+          console.log(`🔧 Item ${item.id}: Primary(${parsedConfig.primary_group})="${primaryValue}", Secondary(${parsedConfig.secondary_group})="${secondaryValue}" → "${groupKey}"`);
+        }
+      } else {
+        // Single-tier grouping (original logic)
+        switch (effectiveGroupingStrategy) {
+          case 'by_type':
+          default:
+            groupKey = item.type || 'Unknown Items';
+            break;
+          
+          case 'by_location':
+            groupKey = item.room || 'No Location';
+            break;
+          
+          case 'by_brand':
+            groupKey = item.model || 'No Brand';
+            break;
+          
+          case 'by_value_range':
+            const price = parseFloat(item.price) || 0;
+            if (price === 0) groupKey = 'No Value';
+            else if (price < 1000) groupKey = 'Under R1,000';
+            else if (price < 5000) groupKey = 'R1,000 - R5,000';
+            else if (price < 10000) groupKey = 'R5,000 - R10,000';
+            else groupKey = 'Over R10,000';
+            break;
+          
+          case 'custom':
+            if (parsedConfig && parsedConfig.customField) {
+              groupKey = (item as any)[parsedConfig.customField] || 'Other';
             } else {
-              // Fallback to type grouping
               groupKey = item.type || 'Unknown Items';
             }
-          } catch (error) {
-            console.warn('Error applying custom grouping strategy:', error);
-            groupKey = item.type || 'Unknown Items';
-          }
-          break;
+            break;
+        }
       }
       
       if (!groups[groupKey]) {
@@ -1422,7 +1549,7 @@ export default function PredefinedItemsList({
     console.log('🔧 Items grouped into', Object.keys(groups).length, 'groups:', Object.keys(groups));
     
     return groups;
-  }, [items, groupingStrategy]);
+  }, [items, groupingStrategy, getItemFieldValue]);
 
   // Load photos for all items
   useEffect(() => {
@@ -1489,8 +1616,12 @@ export default function PredefinedItemsList({
                   onPress={() => toggleGroupExpansion(groupKey)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.groupTitle} numberOfLines={1} ellipsizeMode="tail">
-                    {groupKey}
+                  <Text 
+                    style={groupKey.includes(' > ') ? styles.twoTierGroupTitle : styles.groupTitle} 
+                    numberOfLines={groupKey.includes(' > ') ? 2 : 1} 
+                    ellipsizeMode="tail"
+                  >
+                    {groupKey.includes(' > ') ? groupKey.replace(' > ', '\n└ ') : groupKey}
                   </Text>
                   
                   {/* Group indicators */}
@@ -1788,6 +1919,7 @@ const styles = StyleSheet.create({
   },
   dynamicFieldContainer: {
     marginBottom: 12,
+    marginRight: 8,
   },
   legacyFieldWrapper: {
     flex: 1,
@@ -1955,6 +2087,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2c3e50',
     flex: 1,
+  },
+  twoTierGroupTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2c3e50',
+    flex: 1,
+    lineHeight: 20,
   },
   groupIndicators: {
     flexDirection: 'row',

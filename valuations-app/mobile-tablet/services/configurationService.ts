@@ -187,7 +187,7 @@ class ConfigurationService {
         RiskTemplateCategoryID: finalRiskTemplateCategoryId,
         strategy_type: completeConfig.groupingStrategy.strategy_type,
         strategy_name: completeConfig.groupingStrategy.strategy_name,
-        strategy_config: JSON.stringify(completeConfig.groupingStrategy.strategy_config), // Convert back to string for compatibility
+        strategy_config: completeConfig.groupingStrategy.strategy_config, // Keep as object - no need to stringify
         is_active: completeConfig.groupingStrategy.is_active,
         display_order: completeConfig.groupingStrategy.display_order
       } : undefined;

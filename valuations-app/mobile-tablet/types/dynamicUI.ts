@@ -32,7 +32,7 @@ export interface GroupingStrategy {
   RiskTemplateCategoryID: number;
   strategy_type: 'by_location' | 'by_type' | 'by_brand' | 'by_value_range' | 'custom';
   strategy_name: string;
-  strategy_config: string; // JSON string
+  strategy_config: string | any; // Can be JSON string or parsed object
   is_active: boolean;
   display_order: number;
 }
