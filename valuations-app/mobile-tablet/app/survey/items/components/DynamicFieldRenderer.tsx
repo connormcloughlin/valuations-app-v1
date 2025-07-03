@@ -19,6 +19,8 @@ interface DynamicFieldRendererProps {
   hideLabel?: boolean;
   // Save functionality
   onBlur?: () => void;
+  // Focus restoration props
+  dataAttributes?: { [key: string]: string };
 }
 
 export default function DynamicFieldRenderer({
@@ -32,7 +34,8 @@ export default function DynamicFieldRenderer({
   itemPhotos,
   onTakePhoto,
   hideLabel = false,
-  onBlur
+  onBlur,
+  dataAttributes
 }: DynamicFieldRendererProps) {
   
   // Don't render if field is not visible
@@ -95,6 +98,7 @@ export default function DynamicFieldRenderer({
         onBlur={onBlur}
         placeholder={field.placeholder || field.field_label}
         placeholderTextColor="#95a5a6"
+        {...(dataAttributes || {})}
       />
       {handwritingEnabled && onOpenHandwriting && (
         <TouchableOpacity
@@ -117,6 +121,7 @@ export default function DynamicFieldRenderer({
         placeholder={field.placeholder || field.field_label}
         placeholderTextColor="#95a5a6"
         keyboardType="numeric"
+        {...(dataAttributes || {})}
       />
       {handwritingEnabled && onOpenHandwriting && (
         <TouchableOpacity
@@ -141,6 +146,7 @@ export default function DynamicFieldRenderer({
           placeholder={field.placeholder || "0.00"}
           placeholderTextColor="#95a5a6"
           keyboardType="numeric"
+          {...(dataAttributes || {})}
         />
       </View>
       {handwritingEnabled && onOpenHandwriting && (
@@ -164,6 +170,7 @@ export default function DynamicFieldRenderer({
       placeholderTextColor="#95a5a6"
       multiline
       numberOfLines={3}
+      {...(dataAttributes || {})}
     />
   );
 
@@ -335,6 +342,7 @@ export default function DynamicFieldRenderer({
             }}
             placeholder={field.placeholder || field.field_label}
             placeholderTextColor="#95a5a6"
+            {...(dataAttributes || {})}
           />
           <TouchableOpacity
             style={styles.dropdownToggle}
@@ -418,6 +426,7 @@ export default function DynamicFieldRenderer({
             }}
             placeholder={field.placeholder || field.field_label}
             placeholderTextColor="#95a5a6"
+            {...(dataAttributes || {})}
           />
           {handwritingEnabled && onOpenHandwriting && (
             <TouchableOpacity

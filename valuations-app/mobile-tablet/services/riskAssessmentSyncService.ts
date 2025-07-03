@@ -2,6 +2,7 @@ import api from '../api';
 import * as apiModule from '../api';
 import NetInfo from '@react-native-community/netinfo';
 import * as FileSystem from 'expo-file-system';
+import { SYNC_CONFIG, getEnvironmentConfig } from '../config/syncConfig';
 import {
   getPendingSyncRiskAssessmentItems,
   getPendingSyncAppointments,
@@ -37,10 +38,395 @@ const riskAssessmentSyncService = {
   },
 
   /**
-   * Sync all pending changes to the server
+   * Sync all pending changes to the server with batching
    * @returns {Promise<Object>} Sync result
    */
   syncPendingChanges: async () => {
+    try {
+      // Check internet connection
+      if (!(await riskAssessmentSyncService.isConnected())) {
+        return { 
+          success: false, 
+          error: 'No internet connection',
+          offline: true
+        };
+      }
+
+      console.log('Starting sync of pending changes...');
+      
+      // Get all pending changes from SQLite
+      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
+        getPendingSyncRiskAssessmentItems(),
+        getPendingSyncAppointments(),
+        getPendingSyncRiskAssessmentMasters(),
+        getPendingSyncMediaFiles()
+      ]);
+
+      console.log('Pending changes found:', {
+        riskAssessmentItems: pendingRiskAssessmentItems.length,
+        appointments: pendingAppointments.length,
+        riskAssessmentMasters: pendingRiskAssessmentMasters.length,
+        mediaFiles: pendingMediaFiles.length
+      });
+
+      // Return early if no changes to sync
+      if (pendingRiskAssessmentItems.length === 0 && pendingAppointments.length === 0 && 
+          pendingRiskAssessmentMasters.length === 0 && pendingMediaFiles.length === 0) {
+        return {
+          success: true,
+          message: 'No pending changes to sync.',
+          synced: {
+            riskAssessmentItems: 0,
+            appointments: 0,
+            riskAssessmentMasters: 0,
+            mediaFiles: 0
+          }
+        };
+      }
+
+      // Use batched sync for better performance
+      return await riskAssessmentSyncService.syncPendingChangesInBatches(
+        pendingRiskAssessmentItems,
+        pendingAppointments,
+        pendingRiskAssessmentMasters,
+        pendingMediaFiles
+      );
+    } catch (error) {
+      console.error('=== SYNC ERROR ===');
+      console.error('Error syncing pending changes:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      return {
+        success: false,
+        error: (error as Error).message || 'Sync failed'
+      };
+    }
+  },
+
+  /**
+   * Sync pending changes in smaller batches to improve performance
+   * @param {RiskAssessmentItem[]} pendingRiskAssessmentItems
+   * @param {Appointment[]} pendingAppointments
+   * @param {RiskAssessmentMaster[]} pendingRiskAssessmentMasters
+   * @param {MediaFile[]} pendingMediaFiles
+   * @returns {Promise<Object>} Sync result
+   */
+  syncPendingChangesInBatches: async (
+    pendingRiskAssessmentItems: RiskAssessmentItem[],
+    pendingAppointments: Appointment[],
+    pendingRiskAssessmentMasters: RiskAssessmentMaster[],
+    pendingMediaFiles: MediaFile[]
+  ) => {
+         try {
+       // Get sync configuration (use production config by default)
+       const syncConfig = getEnvironmentConfig('production');
+       const { batchSizes, delays } = syncConfig;
+
+       console.log('🔧 Using sync configuration:', { batchSizes, delays });
+
+       let totalSynced = {
+         riskAssessmentItems: 0,
+         appointments: 0,
+         riskAssessmentMasters: 0,
+         mediaFiles: 0
+       };
+
+       // Sync media files first (since they might be referenced by other entities)
+       if (pendingMediaFiles.length > 0) {
+         console.log(`Syncing ${pendingMediaFiles.length} media files in batches of ${batchSizes.mediaFiles}...`);
+         
+         for (let i = 0; i < pendingMediaFiles.length; i += batchSizes.mediaFiles) {
+           const batch = pendingMediaFiles.slice(i, i + batchSizes.mediaFiles);
+           console.log(`Uploading media batch ${Math.floor(i / batchSizes.mediaFiles) + 1}: ${batch.length} files`);
+           
+           const mediaUploadResult = await riskAssessmentSyncService.syncMediaFiles(batch);
+           
+           if (mediaUploadResult.success) {
+             totalSynced.mediaFiles += mediaUploadResult.uploaded || 0;
+             console.log(`✅ Media batch uploaded successfully: ${mediaUploadResult.uploaded} files`);
+           } else {
+             console.error('❌ Media batch upload failed:', mediaUploadResult.error);
+           }
+           
+           // Delay between media batches
+           await new Promise(resolve => setTimeout(resolve, delays.betweenMediaBatches));
+         }
+       }
+
+       // Sync risk assessment items in batches
+       if (pendingRiskAssessmentItems.length > 0) {
+         console.log(`Syncing ${pendingRiskAssessmentItems.length} risk assessment items in batches of ${batchSizes.riskAssessmentItems}...`);
+         
+         for (let i = 0; i < pendingRiskAssessmentItems.length; i += batchSizes.riskAssessmentItems) {
+           const batch = pendingRiskAssessmentItems.slice(i, i + batchSizes.riskAssessmentItems);
+           console.log(`Syncing risk assessment items batch ${Math.floor(i / batchSizes.riskAssessmentItems) + 1}: ${batch.length} items`);
+           
+           const batchResult = await riskAssessmentSyncService.syncRiskAssessmentItemsBatch(batch);
+           
+           if (batchResult.success) {
+             totalSynced.riskAssessmentItems += batch.length;
+             console.log(`✅ Risk assessment items batch synced successfully: ${batch.length} items`);
+           } else {
+             console.error('❌ Risk assessment items batch sync failed:', batchResult.error);
+           }
+           
+           // Delay between batches
+           await new Promise(resolve => setTimeout(resolve, delays.betweenBatches));
+         }
+       }
+
+       // Sync appointments in batches
+       if (pendingAppointments.length > 0) {
+         console.log(`Syncing ${pendingAppointments.length} appointments in batches of ${batchSizes.appointments}...`);
+         
+         for (let i = 0; i < pendingAppointments.length; i += batchSizes.appointments) {
+           const batch = pendingAppointments.slice(i, i + batchSizes.appointments);
+           console.log(`Syncing appointments batch ${Math.floor(i / batchSizes.appointments) + 1}: ${batch.length} items`);
+           
+           const batchResult = await riskAssessmentSyncService.syncAppointmentsBatch(batch);
+           
+           if (batchResult.success) {
+             totalSynced.appointments += batch.length;
+             console.log(`✅ Appointments batch synced successfully: ${batch.length} items`);
+           } else {
+             console.error('❌ Appointments batch sync failed:', batchResult.error);
+           }
+           
+           // Delay between batches
+           await new Promise(resolve => setTimeout(resolve, delays.betweenBatches));
+         }
+       }
+
+       // Sync risk assessment masters in batches
+       if (pendingRiskAssessmentMasters.length > 0) {
+         console.log(`Syncing ${pendingRiskAssessmentMasters.length} risk assessment masters in batches of ${batchSizes.riskAssessmentMasters}...`);
+         
+         for (let i = 0; i < pendingRiskAssessmentMasters.length; i += batchSizes.riskAssessmentMasters) {
+           const batch = pendingRiskAssessmentMasters.slice(i, i + batchSizes.riskAssessmentMasters);
+           console.log(`Syncing risk assessment masters batch ${Math.floor(i / batchSizes.riskAssessmentMasters) + 1}: ${batch.length} items`);
+           
+           const batchResult = await riskAssessmentSyncService.syncRiskAssessmentMastersBatch(batch);
+           
+           if (batchResult.success) {
+             totalSynced.riskAssessmentMasters += batch.length;
+             console.log(`✅ Risk assessment masters batch synced successfully: ${batch.length} items`);
+           } else {
+             console.error('❌ Risk assessment masters batch sync failed:', batchResult.error);
+           }
+           
+           // Delay between batches
+           await new Promise(resolve => setTimeout(resolve, delays.betweenBatches));
+         }
+       }
+
+      console.log('=== BATCH SYNC COMPLETED ===');
+      console.log('Total synced:', totalSynced);
+      
+      return {
+        success: true,
+        synced: totalSynced,
+        message: `Successfully synced ${totalSynced.riskAssessmentItems} items, ${totalSynced.appointments} appointments, ${totalSynced.riskAssessmentMasters} masters, and ${totalSynced.mediaFiles} media files in batches.`
+      };
+    } catch (error) {
+      console.error('=== BATCH SYNC ERROR ===');
+      console.error('Error in batch sync:', error);
+      return {
+        success: false,
+        error: (error as Error).message || 'Batch sync failed'
+      };
+    }
+  },
+
+  /**
+   * Sync a batch of risk assessment items
+   * @param {RiskAssessmentItem[]} batch
+   * @returns {Promise<Object>} Sync result
+   */
+  syncRiskAssessmentItemsBatch: async (batch: RiskAssessmentItem[]) => {
+    try {
+      // Log detailed information about pending risk assessment items
+      console.log('=== SYNCING RISK ASSESSMENT ITEMS BATCH ===');
+      console.log(`Batch contains ${batch.length} items`);
+
+      // Prepare sync data for this batch
+      const syncData = {
+        deviceId: "mobile-tablet-device",
+        userId: "current-user-id",
+        appointments: [],
+        riskAssessmentMasters: [],
+        riskAssessmentItems: batch.map((item: RiskAssessmentItem) => {
+          const isNewItem = item.riskassessmentitemid > 1000000000000;
+          
+          const syncItem = {
+            riskassessmentitemid: isNewItem ? null : item.riskassessmentitemid,
+            riskassessmentcategoryid: item.riskassessmentcategoryid,
+            itemprompt: item.itemprompt,
+            itemtype: item.itemtype,
+            rank: item.rank,
+            commaseparatedlist: item.commaseparatedlist,
+            selectedanswer: item.selectedanswer,
+            qty: item.qty,
+            price: item.price,
+            description: item.description,
+            model: item.model,
+            location: item.location,
+            assessmentregisterid: item.assessmentregisterid,
+            assessmentregistertypeid: item.assessmentregistertypeid,
+            datecreated: item.datecreated,
+            createdbyid: item.createdbyid,
+            dateupdated: item.dateupdated,
+            updatedbyid: item.updatedbyid,
+            issynced: item.issynced ? true : false,
+            syncversion: item.syncversion,
+            deviceid: item.deviceid,
+            syncstatus: item.syncstatus,
+            synctimestamp: item.synctimestamp,
+            hasphoto: item.hasphoto ? true : false,
+            latitude: item.latitude,
+            longitude: item.longitude,
+            notes: item.notes,
+            _localId: item.riskassessmentitemid
+          } as any;
+
+          delete syncItem.appointmentid;
+          return syncItem;
+        }),
+        deletedEntities: []
+      };
+
+      console.log('Sending batch to server...');
+      const response = await api.syncChanges(syncData);
+
+      if (response.success) {
+        console.log('✅ Batch sync successful');
+        
+        // Mark items as synced
+        const itemIds = batch.map(item => item.riskassessmentitemid);
+        await markRiskAssessmentItemsAsSynced(itemIds);
+        
+        return { success: true };
+      } else {
+        console.error('❌ Batch sync failed:', response.message);
+        return { success: false, error: response.message };
+      }
+    } catch (error) {
+      console.error('❌ Error in risk assessment items batch sync:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  /**
+   * Sync a batch of appointments
+   * @param {Appointment[]} batch
+   * @returns {Promise<Object>} Sync result
+   */
+  syncAppointmentsBatch: async (batch: Appointment[]) => {
+    try {
+      console.log('=== SYNCING APPOINTMENTS BATCH ===');
+      console.log(`Batch contains ${batch.length} appointments`);
+
+      const syncData = {
+        deviceId: "mobile-tablet-device",
+        userId: "current-user-id",
+        appointments: batch.map((apt: Appointment) => ({
+          appointmentID: apt.appointmentID,
+          orderID: apt.orderID,
+          startTime: apt.startTime,
+          endTime: apt.endTime,
+          followUpDate: apt.followUpDate,
+          arrivalTime: apt.arrivalTime,
+          departureTime: apt.departureTime,
+          inviteStatus: apt.inviteStatus,
+          meetingStatus: apt.meetingStatus,
+          location: apt.location,
+          comments: apt.comments,
+          category: apt.category,
+          outoftown: apt.outoftown,
+          surveyorComments: apt.surveyorComments,
+          eventId: apt.eventId,
+          surveyorEmail: apt.surveyorEmail,
+          dateModified: apt.dateModified
+        })),
+        riskAssessmentMasters: [],
+        riskAssessmentItems: [],
+        deletedEntities: []
+      };
+
+      console.log('Sending appointments batch to server...');
+      const response = await api.syncChanges(syncData);
+
+      if (response.success) {
+        console.log('✅ Appointments batch sync successful');
+        
+        const appointmentIds = batch.map(apt => apt.appointmentID);
+        await markAppointmentsAsSynced(appointmentIds);
+        
+        return { success: true };
+      } else {
+        console.error('❌ Appointments batch sync failed:', response.message);
+        return { success: false, error: response.message };
+      }
+    } catch (error) {
+      console.error('❌ Error in appointments batch sync:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  /**
+   * Sync a batch of risk assessment masters
+   * @param {RiskAssessmentMaster[]} batch
+   * @returns {Promise<Object>} Sync result
+   */
+  syncRiskAssessmentMastersBatch: async (batch: RiskAssessmentMaster[]) => {
+    try {
+      console.log('=== SYNCING RISK ASSESSMENT MASTERS BATCH ===');
+      console.log(`Batch contains ${batch.length} masters`);
+
+      const syncData = {
+        deviceId: "mobile-tablet-device",
+        userId: "current-user-id",
+        appointments: [],
+        riskAssessmentMasters: batch.map((master: RiskAssessmentMaster) => ({
+          riskassessmentid: master.riskassessmentid,
+          assessmenttypename: master.assessmenttypename,
+          surveydate: master.surveydate,
+          clientnumber: master.clientnumber,
+          comments: master.comments,
+          totalvalue: master.totalvalue,
+          iscomplete: master.iscomplete ? true : false
+        })),
+        riskAssessmentItems: [],
+        deletedEntities: []
+      };
+
+      console.log('Sending masters batch to server...');
+      const response = await api.syncChanges(syncData);
+
+      if (response.success) {
+        console.log('✅ Masters batch sync successful');
+        
+        const masterIds = batch.map(master => master.riskassessmentid);
+        await markRiskAssessmentMastersAsSynced(masterIds);
+        
+        return { success: true };
+      } else {
+        console.error('❌ Masters batch sync failed:', response.message);
+        return { success: false, error: response.message };
+      }
+    } catch (error) {
+      console.error('❌ Error in masters batch sync:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  },
+
+  /**
+   * OLD SINGLE BATCH SYNC - DEPRECATED
+   * This method is kept for backward compatibility but is no longer recommended
+   * Use syncPendingChanges() instead which calls syncPendingChangesInBatches()
+   */
+  syncPendingChangesOld: async () => {
     try {
       // Check internet connection
       if (!(await riskAssessmentSyncService.isConnected())) {

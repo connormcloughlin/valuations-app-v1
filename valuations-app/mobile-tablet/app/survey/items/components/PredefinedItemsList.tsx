@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Card, Divider, Button, TextInput as PaperTextInput, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { PredefinedItemsListProps, Item } from './types';
@@ -56,6 +56,19 @@ export default function PredefinedItemsList({
       />
     );
   }
+
+  // Handle dynamic field configuration loading state
+  // If useCustomFields is true but dynamicFieldConfig is still empty, show loading
+  const isDynamicFieldConfigLoading = useCustomFields && (!dynamicFieldConfig || dynamicFieldConfig.length === 0);
+  
+  if (isDynamicFieldConfigLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4a90e2" />
+        <Text style={styles.loadingText}>Loading field configuration...</Text>
+      </View>
+    );
+  }
   
   // Manage local items state like ItemsTable does
   const [items, setItems] = useState<Item[]>([]);
@@ -64,6 +77,9 @@ export default function PredefinedItemsList({
   const [expandedSecondaryGroups, setExpandedSecondaryGroups] = useState<{ [key: string]: boolean }>({});
   // Editing state management
   const [editItems, setEditItems] = useState<{ [key: string]: any }>({});
+  // Focus management for auto-save
+  const [focusedField, setFocusedField] = useState<{ itemId: string; fieldName: string } | null>(null);
+  const [pendingFocusRestore, setPendingFocusRestore] = useState<{ newItemId: string; fieldName: string } | null>(null);
   const [autoSavedItems, setAutoSavedItems] = useState<{ [key: string]: boolean }>({});
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: FieldValidationError[] }>({});
   const [pendingChangesCount, setPendingChangesCount] = useState(0);
@@ -399,11 +415,46 @@ export default function PredefinedItemsList({
     }
   }, [onTotalsChange, items, editItems]); // Only depend on the actual data, not the function
 
+  // SEPARATE USEEFFECT 5: Focus Restoration After Auto-Save
+  // Handles: restoring focus to the correct field after ID changes during auto-save
+  useEffect(() => {
+    if (pendingFocusRestore) {
+      console.log('🔧 Attempting to restore focus to:', pendingFocusRestore.fieldName, 'for item:', pendingFocusRestore.newItemId);
+      
+      // Small delay to ensure the DOM has updated with the new ID
+      const timeoutId = setTimeout(() => {
+        try {
+          // Try to find the input field using a data attribute or similar
+          // We'll use a more specific selector based on the field name and item ID
+          const inputSelector = `input[data-item-id="${pendingFocusRestore.newItemId}"][data-field="${pendingFocusRestore.fieldName}"]`;
+          const inputElement = document.querySelector(inputSelector) as HTMLInputElement;
+          
+          if (inputElement) {
+            inputElement.focus();
+            console.log('🔧 Successfully restored focus to:', pendingFocusRestore.fieldName);
+          } else {
+            console.log('🔧 Could not find input element to restore focus:', inputSelector);
+          }
+        } catch (error) {
+          console.error('🔧 Error restoring focus:', error);
+        } finally {
+          // Clear the pending focus restoration
+          setPendingFocusRestore(null);
+        }
+      }, 100); // 100ms delay for DOM update
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [pendingFocusRestore]);
+
 
 
   // Handle editing a field - updated for dynamic fields
   const handleEdit = (id: string, field: string, value: string) => {
     console.log(`🔧 Editing field "${field}" for item ${id}:`, value);
+    
+    // Track the currently focused field for focus restoration after auto-save
+    setFocusedField({ itemId: id, fieldName: field });
     
     setEditItems(prev => ({
       ...prev,
@@ -589,6 +640,13 @@ export default function PredefinedItemsList({
         // Update expanded item if needed
         if (expandedItem === id) {
           setExpandedItem(sqliteId);
+        }
+        
+        // Handle focus restoration for the field that was being edited
+        if (focusedField && focusedField.itemId === id) {
+          console.log('🔧 Setting up focus restoration:', focusedField.fieldName, 'for new ID:', sqliteId);
+          setPendingFocusRestore({ newItemId: sqliteId, fieldName: focusedField.fieldName });
+          setFocusedField(null); // Clear the old focus state
         }
         
         // For nested grouping, ensure secondary group expansion is maintained
@@ -1204,6 +1262,11 @@ export default function PredefinedItemsList({
             onTakePhoto={handleViewPhotos}
             hideLabel={true}
             onBlur={() => autoSaveItem(itemId)}
+            // Add data attributes for focus restoration
+            dataAttributes={{
+              'data-item-id': itemId,
+              'data-field': fieldName
+            }}
           />
         </View>
       );
@@ -1870,9 +1933,12 @@ export default function PredefinedItemsList({
         >
           {isNestedGrouping(groupedItems) ? (
             // Render nested (2-tier) grouping
-            Object.entries(groupedItems).map(([primaryKey, secondaryGroups], primaryIndex) => {
+            Object.entries(groupedItems).sort(([a], [b]) => a.localeCompare(b)).map(([primaryKey, secondaryGroups], primaryIndex) => {
               const isPrimaryExpanded = expandedGroup === primaryKey;
-              const totalItemsInPrimary = Object.values(secondaryGroups).reduce((total, items) => total + items.length, 0);
+              const allItemsInPrimary = Object.values(secondaryGroups).flat();
+              const itemsWithDataInPrimary = allItemsInPrimary.filter(item => hasDataCaptured(item));
+              const totalItemsInPrimary = itemsWithDataInPrimary.length;
+              const hasAnyDataInPrimary = totalItemsInPrimary > 0;
               
               return (
                 <View key={primaryKey} style={styles.groupContainer}>
@@ -1891,9 +1957,12 @@ export default function PredefinedItemsList({
                     </Text>
                     
                     <View style={styles.groupIndicators}>
-                      <View style={styles.countBadge}>
-                        <Text style={styles.countBadgeText}>{totalItemsInPrimary}</Text>
-                      </View>
+                      {/* Show count badge if there are items with meaningful data in primary group */}
+                      {hasAnyDataInPrimary && (
+                        <View style={styles.countBadge}>
+                          <Text style={styles.countBadgeText}>{totalItemsInPrimary}</Text>
+                        </View>
+                      )}
                       <MaterialCommunityIcons 
                         name={isPrimaryExpanded ? "chevron-down" : "chevron-right"} 
                         size={20} 
@@ -1905,9 +1974,11 @@ export default function PredefinedItemsList({
                   {/* Secondary Groups */}
                   {isPrimaryExpanded && (
                     <View style={styles.groupItems}>
-                      {Object.entries(secondaryGroups).map(([secondaryKey, items]) => {
+                      {Object.entries(secondaryGroups).sort(([a], [b]) => a.localeCompare(b)).map(([secondaryKey, items]) => {
                         const isSecondaryExpanded = isSecondaryGroupExpanded(primaryKey, secondaryKey);
-                        const secondaryItemCount = items.length;
+                        const itemsWithDataInSecondary = items.filter(item => hasDataCaptured(item));
+                        const secondaryItemCount = itemsWithDataInSecondary.length;
+                        const hasAnyDataInSecondary = secondaryItemCount > 0;
                         
                         return (
                           <View key={`${primaryKey}-${secondaryKey}`} style={styles.secondaryGroupContainer}>
@@ -1922,10 +1993,12 @@ export default function PredefinedItemsList({
                               </Text>
                               
                               <View style={styles.groupIndicators}>
-                                {/* Always show count for secondary groups */}
-                                <View style={styles.secondaryCountBadge}>
-                                  <Text style={styles.countBadgeText}>{secondaryItemCount}</Text>
-                                </View>
+                                {/* Show count badge if there are items with meaningful data in secondary group */}
+                                {hasAnyDataInSecondary && (
+                                  <View style={styles.secondaryCountBadge}>
+                                    <Text style={styles.countBadgeText}>{secondaryItemCount}</Text>
+                                  </View>
+                                )}
                                 
                                 <MaterialCommunityIcons 
                                   name={isSecondaryExpanded ? "chevron-down" : "chevron-right"} 
@@ -2087,7 +2160,7 @@ export default function PredefinedItemsList({
             })
           ) : (
             // Render flat (single-tier) grouping  
-            Object.entries(groupedItems as FlatGroups).map(([groupKey, groupItems], groupIndex) => {
+            Object.entries(groupedItems as FlatGroups).sort(([a], [b]) => a.localeCompare(b)).map(([groupKey, groupItems], groupIndex) => {
             const isGroupExpanded = expandedGroup === groupKey;
             const groupItemCount = groupItems.length;
             
@@ -2326,6 +2399,17 @@ const styles = StyleSheet.create({
   fullScreenContainer: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#7f8c8d',
   },
   header: {
     backgroundColor: '#fff',
