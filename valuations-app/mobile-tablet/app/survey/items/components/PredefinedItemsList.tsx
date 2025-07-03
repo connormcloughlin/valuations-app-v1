@@ -58,8 +58,27 @@ export default function PredefinedItemsList({
   }
 
   // Handle dynamic field configuration loading state
-  // If useCustomFields is true but dynamicFieldConfig is still empty, show loading
-  const isDynamicFieldConfigLoading = useCustomFields && (!dynamicFieldConfig || dynamicFieldConfig.length === 0);
+  // Show loading when we expect dynamic config but it's not ready yet
+  const isDynamicFieldConfigLoading = useMemo(() => {
+    // Debug logging
+    console.log('🔧 Loading state check:', {
+      useCustomFields,
+      dynamicFieldConfigLength: dynamicFieldConfig?.length || 0,
+      dynamicFieldConfigExists: !!dynamicFieldConfig,
+      propsItemsLength: propsItems?.length || 0
+    });
+    
+    // If we have items but no dynamic field config yet, and useCustomFields is true, show loading
+    if (useCustomFields && propsItems && propsItems.length > 0) {
+      const hasValidDynamicConfig = dynamicFieldConfig && dynamicFieldConfig.length > 0;
+      if (!hasValidDynamicConfig) {
+        console.log('🔧 Showing loading state - waiting for dynamic field config');
+        return true;
+      }
+    }
+    
+    return false;
+  }, [useCustomFields, dynamicFieldConfig, propsItems]);
   
   if (isDynamicFieldConfigLoading) {
     return (
@@ -1119,10 +1138,20 @@ export default function PredefinedItemsList({
 
   // Helper function to render dynamic fields based on configuration respecting display_order
   const renderDynamicFields = useCallback((itemId: string, editData: any) => {
+    console.log('🎨 renderDynamicFields called:', {
+      itemId,
+      dynamicFieldConfigLength: dynamicFieldConfig?.length || 0,
+      useCustomFields,
+      hasEditData: !!editData && Object.keys(editData).length > 0
+    });
+    
     if (!dynamicFieldConfig || dynamicFieldConfig.length === 0) {
+      console.log('🎨 Falling back to legacy fields - no dynamic config available');
       // Fall back to legacy hardcoded fields
       return renderLegacyFields(itemId, editData);
     }
+    
+    console.log('🎨 Using dynamic fields - config available:', dynamicFieldConfig.length, 'fields');
 
     const item = items.find(i => String(i.id) === itemId);
     if (!item) return null;
@@ -1404,6 +1433,7 @@ export default function PredefinedItemsList({
 
   // Legacy hardcoded field renderer (kept for backward compatibility)
   const renderLegacyFields = useCallback((itemId: string, editData: any) => {
+    console.log('🏠 renderLegacyFields called for item:', itemId);
     const item = items.find(i => String(i.id) === itemId);
     if (!item) return null;
 
@@ -2115,7 +2145,14 @@ export default function PredefinedItemsList({
                                           <View style={styles.detailsContainer}>
                                             {/* Dynamic Item Details Grid */}
                                             <View style={styles.detailsGrid}>
-                                              {renderDynamicFields(itemId, editItems[itemId] || {})}
+                                              {isDynamicFieldConfigLoading ? (
+                                                <View style={styles.fieldLoadingContainer}>
+                                                  <ActivityIndicator size="small" color="#4a90e2" />
+                                                  <Text style={styles.fieldLoadingText}>Loading fields...</Text>
+                                                </View>
+                                              ) : (
+                                                renderDynamicFields(itemId, editItems[itemId] || {})
+                                              )}
                                             </View>
 
                                             {/* Action buttons */}
@@ -2307,7 +2344,14 @@ export default function PredefinedItemsList({
                     <View style={styles.detailsContainer}>
                       {/* Dynamic Item Details Grid */}
                       <View style={styles.detailsGrid}>
-                        {renderDynamicFields(itemId, editItems[itemId] || {})}
+                        {isDynamicFieldConfigLoading ? (
+                          <View style={styles.fieldLoadingContainer}>
+                            <ActivityIndicator size="small" color="#4a90e2" />
+                            <Text style={styles.fieldLoadingText}>Loading fields...</Text>
+                          </View>
+                        ) : (
+                          renderDynamicFields(itemId, editItems[itemId] || {})
+                        )}
                       </View>
 
                       {/* Action buttons */}
@@ -2409,6 +2453,17 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+    color: '#7f8c8d',
+  },
+  fieldLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  fieldLoadingText: {
+    marginLeft: 8,
+    fontSize: 14,
     color: '#7f8c8d',
   },
   header: {
