@@ -996,42 +996,7 @@ export default function PredefinedItemsList({
     }
   };
 
-  // Helper function to find which group an item belongs to
-  const findItemGroup = useCallback((item: Item) => {
-    if (!groupedItems || groupedItems === null) {
-      console.log('🔍 findItemGroup: No groupedItems available');
-      return null; // No grouping
-    }
-    
-    console.log('🔍 findItemGroup: Searching for item', item.id, 'in groupedItems:', {
-      isNestedGrouping: isNestedGrouping(groupedItems),
-      totalPrimaryGroups: isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length : Object.keys(groupedItems as FlatGroups).length
-    });
-    
-    if (isNestedGrouping(groupedItems)) {
-      // For nested grouping, find primary and secondary group
-      for (const [primaryKey, secondaryGroups] of Object.entries(groupedItems)) {
-        for (const [secondaryKey, groupItems] of Object.entries(secondaryGroups)) {
-          if (groupItems.some(groupItem => String(groupItem.id) === String(item.id))) {
-            console.log('🔍 findItemGroup: Found item in nested group:', { primaryKey, secondaryKey, groupSize: groupItems.length });
-            return { primaryGroup: primaryKey, secondaryGroup: secondaryKey, items: groupItems };
-          }
-        }
-      }
-    } else {
-      // For flat grouping
-      const flatGroups = groupedItems as FlatGroups;
-      for (const [groupKey, groupItems] of Object.entries(flatGroups)) {
-        if (groupItems.some(groupItem => String(groupItem.id) === String(item.id))) {
-          console.log('🔍 findItemGroup: Found item in flat group:', { groupKey, groupSize: groupItems.length });
-          return { group: groupKey, items: groupItems };
-        }
-      }
-    }
-    
-    console.log('🔍 findItemGroup: Item not found in any group');
-    return null;
-  }, [groupedItems, isNestedGrouping]);
+
 
   // Type for nested grouping structure
   interface NestedGroups {
@@ -1201,6 +1166,43 @@ export default function PredefinedItemsList({
       return flatGroups;
     }
   }, [items, groupingStrategy, getItemFieldValue]);
+
+  // Helper function to find which group an item belongs to
+  const findItemGroup = useCallback((item: Item) => {
+    if (!groupedItems || groupedItems === null) {
+      console.log('🔍 findItemGroup: No groupedItems available');
+      return null; // No grouping
+    }
+    
+    console.log('🔍 findItemGroup: Searching for item', item.id, 'in groupedItems:', {
+      isNestedGrouping: isNestedGrouping(groupedItems),
+      totalPrimaryGroups: isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length : Object.keys(groupedItems as FlatGroups).length
+    });
+    
+    if (isNestedGrouping(groupedItems)) {
+      // For nested grouping, find primary and secondary group
+      for (const [primaryKey, secondaryGroups] of Object.entries(groupedItems)) {
+        for (const [secondaryKey, groupItems] of Object.entries(secondaryGroups)) {
+          if (groupItems.some(groupItem => String(groupItem.id) === String(item.id))) {
+            console.log('🔍 findItemGroup: Found item in nested group:', { primaryKey, secondaryKey, groupSize: groupItems.length });
+            return { primaryGroup: primaryKey, secondaryGroup: secondaryKey, items: groupItems };
+          }
+        }
+      }
+    } else {
+      // For flat grouping
+      const flatGroups = groupedItems as FlatGroups;
+      for (const [groupKey, groupItems] of Object.entries(flatGroups)) {
+        if (groupItems.some(groupItem => String(groupItem.id) === String(item.id))) {
+          console.log('🔍 findItemGroup: Found item in flat group:', { groupKey, groupSize: groupItems.length });
+          return { group: groupKey, items: groupItems };
+        }
+      }
+    }
+    
+    console.log('🔍 findItemGroup: Item not found in any group');
+    return null;
+  }, [groupedItems, isNestedGrouping]);
 
   // Function to delete an item
   const deleteItem = useCallback(async (itemToDelete: Item) => {
@@ -2124,7 +2126,6 @@ export default function PredefinedItemsList({
           {groupedItems === null ? (
             // Render items without grouping when no strategy is provided
             items.map((item: Item, index: number) => {
-              const isExpanded = expandedItem === item.id;
               const itemId = String(item.id);
               const isAutoSaved = autoSavedItems[itemId];
               
@@ -2143,29 +2144,33 @@ export default function PredefinedItemsList({
               // Check if item has meaningful data captured
               const hasData = hasDataCaptured(item);
               
-              // Create a summary for the item
-              const itemSummary = type || description || model || `Item #${index + 1}`;
-              
               return (
-                <View key={item.id} style={styles.accordionContainer}>
-                  {/* Main item row */}
-                  <TouchableOpacity 
+                <View key={item.id} style={styles.displayOnlyItemContainer}>
+                  {/* Display-only item row - no accordion */}
+                  <View 
                     style={[
-                      styles.predefinedItem,
-                      index % 2 === 1 ? styles.predefinedItemAlt : null,
-                      isExpanded ? styles.predefinedItemExpanded : null,
-                      isAutoSaved ? styles.predefinedItemAutoSaved : null
+                      styles.displayOnlyItem,
+                      index % 2 === 1 ? styles.displayOnlyItemAlt : null,
+                      isAutoSaved ? styles.displayOnlyItemAutoSaved : null
                     ]}
-                    onPress={() => toggleExpansion(item.id)}
-                    activeOpacity={0.7}
                   >
-                    <View style={styles.itemSummaryContainer}>
-                      <Text style={styles.itemSummaryText} numberOfLines={1} ellipsizeMode="tail">
-                        {itemSummary}
+                    {/* Item Type Display */}
+                    <View style={styles.itemTypeContainer}>
+                      <Text style={styles.itemTypeText} numberOfLines={1} ellipsizeMode="tail">
+                        {type || 'No Type Specified'}
                       </Text>
+                    </View>
+                    
+                    {/* Item Details */}
+                    <View style={styles.itemDetailsContainer}>
                       {hasData && (
                         <Text style={styles.itemValueText}>
                           {quantity}x @ R{price}
+                        </Text>
+                      )}
+                      {description && (
+                        <Text style={styles.itemDescriptionText} numberOfLines={2} ellipsizeMode="tail">
+                          {description}
                         </Text>
                       )}
                     </View>
@@ -2196,10 +2201,7 @@ export default function PredefinedItemsList({
                       {(hasData || isNewItem) && (
                         <TouchableOpacity
                           style={styles.deleteIconButton}
-                          onPress={(e) => {
-                            e.stopPropagation(); // Prevent row expansion
-                            deleteItem(item);
-                          }}
+                          onPress={() => deleteItem(item)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
                           <MaterialCommunityIcons 
@@ -2210,57 +2212,49 @@ export default function PredefinedItemsList({
                         </TouchableOpacity>
                       )}
                     </View>
-                    
-                    <MaterialCommunityIcons 
-                      name={isExpanded ? "chevron-down" : "chevron-right"} 
-                      size={20} 
-                      color="#6c757d" 
-                    />
-                  </TouchableOpacity>
+                  </View>
 
-                  {/* Expanded details section */}
-                  {isExpanded && (
-                    <View style={styles.expandedContent}>
-                      <View style={styles.detailsContainer}>
-                        {/* Dynamic Item Details Grid */}
-                        <View style={styles.detailsGrid}>
-                          {isDynamicFieldConfigLoading ? (
-                            <View style={styles.fieldLoadingContainer}>
-                              <ActivityIndicator size="small" color="#4a90e2" />
-                              <Text style={styles.fieldLoadingText}>Loading fields...</Text>
-                            </View>
-                          ) : (
-                            renderDynamicFields(itemId, editItems[itemId] || {})
-                          )}
-                        </View>
+                  {/* Always show editable fields below the display row */}
+                  <View style={styles.displayOnlyFieldsContainer}>
+                    <View style={styles.detailsContainer}>
+                      {/* Dynamic Item Details Grid */}
+                      <View style={styles.detailsGrid}>
+                        {isDynamicFieldConfigLoading ? (
+                          <View style={styles.fieldLoadingContainer}>
+                            <ActivityIndicator size="small" color="#4a90e2" />
+                            <Text style={styles.fieldLoadingText}>Loading fields...</Text>
+                          </View>
+                        ) : (
+                          renderDynamicFields(itemId, editItems[itemId] || {})
+                        )}
+                      </View>
 
-                        {/* Action buttons */}
-                        <View style={styles.actionButtonsContainer}>
-                          {isNewItem && (
-                            <TouchableOpacity
-                              style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
-                              onPress={() => autoSaveItem(itemId)}
-                              disabled={!type}
-                            >
-                              <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
-                              <Text style={styles.saveButtonText}>Save New Item</Text>
-                            </TouchableOpacity>
-                          )}
-                          
-                          {/* Add Another button - only show for saved items */}
-                          {!isNewItem && hasData && (
-                            <TouchableOpacity
-                              style={styles.duplicateButton}
-                              onPress={() => duplicateItem(item)}
-                            >
-                              <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
-                              <Text style={styles.duplicateButtonText}>Add Another {type || item.type}</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
+                      {/* Action buttons */}
+                      <View style={styles.actionButtonsContainer}>
+                        {isNewItem && (
+                          <TouchableOpacity
+                            style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
+                            onPress={() => autoSaveItem(itemId)}
+                            disabled={!type}
+                          >
+                            <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
+                            <Text style={styles.saveButtonText}>Save New Item</Text>
+                          </TouchableOpacity>
+                        )}
+                        
+                        {/* Add Another button - only show for saved items */}
+                        {!isNewItem && hasData && (
+                          <TouchableOpacity
+                            style={styles.duplicateButton}
+                            onPress={() => duplicateItem(item)}
+                          >
+                            <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
+                            <Text style={styles.duplicateButtonText}>Add Another {type || item.type}</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
                     </View>
-                  )}
+                  </View>
                 </View>
               );
             })
@@ -3175,5 +3169,56 @@ const styles = StyleSheet.create({
   secondaryGroupItemRow: {
     paddingLeft: 32, // Double indent for items within secondary groups
     backgroundColor: '#f5f6fa',
+  },
+  // Display-only item styles (when no grouping strategy)
+  displayOnlyItemContainer: {
+    marginBottom: 8,
+  },
+  displayOnlyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  displayOnlyItemAlt: {
+    backgroundColor: '#f9f9f9',
+  },
+  displayOnlyItemAutoSaved: {
+    backgroundColor: '#f0f8f0',
+  },
+  itemTypeContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  itemTypeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6c757d',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  itemTypeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  itemDetailsContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  itemDescriptionText: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginTop: 2,
+  },
+  displayOnlyFieldsContainer: {
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
   },
 }); 
