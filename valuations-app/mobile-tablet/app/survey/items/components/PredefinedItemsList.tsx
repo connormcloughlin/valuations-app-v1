@@ -1162,18 +1162,15 @@ export default function PredefinedItemsList({
     const getGroupingFields = (): string[] => {
       console.log('🔧 DEBUG getGroupingFields - groupingStrategy:', JSON.stringify(groupingStrategy, null, 2));
       
-      // Default to 'by_type' even when no grouping strategy is provided (matches the grouping logic)
-      const defaultStrategy = groupingStrategy?.strategy_type || 'by_type';
-      console.log('🔧 Effective grouping strategy:', defaultStrategy);
-      
       if (!groupingStrategy) {
-        console.log('🔧 No groupingStrategy found, but defaulting to exclude "type" field for by_type grouping');
-        return ['type']; // Default exclusion for by_type grouping
+        console.log('🔧 No groupingStrategy found, no fields will be excluded');
+        return []; // No exclusions when no grouping strategy is configured
       }
       
-      const fields: string[] = [];
-      const effectiveGroupingStrategy = groupingStrategy.strategy_type || 'by_type';
-      console.log('🔧 Effective grouping strategy:', effectiveGroupingStrategy);
+      const effectiveStrategy = groupingStrategy.strategy_type;
+      console.log('🔧 Effective grouping strategy:', effectiveStrategy);
+      
+              const fields: string[] = [];
       
       // Handle 2-tier grouping
       const strategyConfig = groupingStrategy.strategy_config;
@@ -1201,10 +1198,10 @@ export default function PredefinedItemsList({
         
         if (primaryFieldMap[parsedConfig.primary_group]) fields.push(primaryFieldMap[parsedConfig.primary_group]);
         if (secondaryFieldMap[parsedConfig.secondary_group]) fields.push(secondaryFieldMap[parsedConfig.secondary_group]);
-      } else {
-        // Single-tier grouping
-        console.log('🔧 Using single-tier grouping strategy:', effectiveGroupingStrategy);
-        switch (effectiveGroupingStrategy) {
+              } else {
+          // Single-tier grouping
+          console.log('🔧 Using single-tier grouping strategy:', effectiveStrategy);
+          switch (effectiveStrategy) {
           case 'by_type':
             console.log('🔧 Adding "type" field to exclusion list');
             fields.push('type'); // ItemPrompt field
@@ -1598,7 +1595,7 @@ export default function PredefinedItemsList({
   }
 
   // Union type for all possible grouping structures
-  type GroupedItemsType = FlatGroups | NestedGroups;
+  type GroupedItemsType = FlatGroups | NestedGroups | null;
 
   // Helper function to check if grouping is nested (2-tier)
   const isNestedGrouping = useCallback((groups: GroupedItemsType): groups is NestedGroups => {
@@ -1632,8 +1629,14 @@ export default function PredefinedItemsList({
   const groupedItems = useMemo(() => {
     console.log('🔧 DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
     
-    // Determine grouping strategy - default to 'by_type' (itemprompt) if none configured
-    const effectiveGroupingStrategy = groupingStrategy?.strategy_type || 'by_type';
+    // If no grouping strategy is provided, return items without grouping
+    if (!groupingStrategy?.strategy_type) {
+      console.log('🔧 No grouping strategy found - returning items without grouping');
+      return null; // Signal that no grouping should be applied
+    }
+    
+    // Require explicit grouping strategy configuration
+    const effectiveGroupingStrategy = groupingStrategy.strategy_type;
     
     console.log('🔧 Grouping items using strategy:', effectiveGroupingStrategy);
     
@@ -1697,7 +1700,6 @@ export default function PredefinedItemsList({
         
         switch (effectiveGroupingStrategy) {
           case 'by_type':
-          default:
             groupKey = item.type || 'Unknown Items';
             break;
           
@@ -1724,6 +1726,11 @@ export default function PredefinedItemsList({
             } else {
               groupKey = item.type || 'Unknown Items';
             }
+            break;
+            
+          default:
+            // Unknown strategy - fall back to type grouping
+            groupKey = item.type || 'Unknown Items';
             break;
       }
       
@@ -1961,9 +1968,175 @@ export default function PredefinedItemsList({
           showsVerticalScrollIndicator={true}
           persistentScrollbar={true}
         >
-          {isNestedGrouping(groupedItems) ? (
+          {groupedItems === null ? (
+            // Render items without grouping when no strategy is provided
+            items.map((item: Item, index: number) => {
+              const isExpanded = expandedItem === item.id;
+              const itemId = String(item.id);
+              const isAutoSaved = autoSavedItems[itemId];
+              
+              // Get current field values (edited or original)
+              const type = editItems[itemId]?.type ?? (item.type || '');
+              const quantity = editItems[itemId]?.quantity ?? String(item.quantity || '1');
+              const price = editItems[itemId]?.price ?? String(item.price || '');
+              const description = editItems[itemId]?.description ?? (item.description || '');
+              const model = editItems[itemId]?.model ?? (item.model || '');
+              const room = editItems[itemId]?.room ?? (item.room || '');
+              const notes = editItems[itemId]?.notes ?? (item.notes || '');
+              
+              // Check if this is a new custom item (starts with 'custom-new-' or 'duplicate-')
+              const isNewItem = item.id.startsWith('custom-new-') || item.id.startsWith('duplicate-');
+              
+              // Check if item has meaningful data captured
+              const hasData = hasDataCaptured(item);
+              
+              // Create a summary for the item
+              const itemSummary = type || description || model || `Item #${index + 1}`;
+              
+              return (
+                <View key={item.id} style={styles.accordionContainer}>
+                  {/* Main item row */}
+                  <TouchableOpacity 
+                    style={[
+                      styles.predefinedItem,
+                      index % 2 === 1 ? styles.predefinedItemAlt : null,
+                      isExpanded ? styles.predefinedItemExpanded : null,
+                      isAutoSaved ? styles.predefinedItemAutoSaved : null
+                    ]}
+                    onPress={() => toggleExpansion(item.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.itemSummaryContainer}>
+                      <Text style={styles.itemSummaryText} numberOfLines={1} ellipsizeMode="tail">
+                        {itemSummary}
+                      </Text>
+                      {hasData && (
+                        <Text style={styles.itemValueText}>
+                          {quantity}x @ R{price}
+                        </Text>
+                      )}
+                    </View>
+                    
+                    {/* Indicators container */}
+                    <View style={styles.indicatorsContainer}>
+                      {/* Data capture indicator */}
+                      {hasData && (
+                        <MaterialCommunityIcons 
+                          name="database-check" 
+                          size={16} 
+                          color="#2196F3" 
+                          style={{ marginRight: 4 }} 
+                        />
+                      )}
+                      
+                      {/* Auto-save indicator */}
+                      {isAutoSaved && (
+                        <MaterialCommunityIcons 
+                          name="check-circle" 
+                          size={16} 
+                          color="#4CAF50" 
+                          style={{ marginRight: 4 }} 
+                        />
+                      )}
+                      
+                      {/* Delete button - show for items with data or new items */}
+                      {(hasData || isNewItem) && (
+                        <TouchableOpacity
+                          style={styles.deleteIconButton}
+                          onPress={(e) => {
+                            e.stopPropagation(); // Prevent row expansion
+                            deleteItem(item);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <MaterialCommunityIcons 
+                            name="delete-outline" 
+                            size={16} 
+                            color="#e74c3c" 
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    
+                    <MaterialCommunityIcons 
+                      name={isExpanded ? "chevron-down" : "chevron-right"} 
+                      size={20} 
+                      color="#6c757d" 
+                    />
+                  </TouchableOpacity>
+
+                  {/* Expanded details section */}
+                  {isExpanded && (
+                    <View style={styles.expandedContent}>
+                      <View style={styles.detailsContainer}>
+                        {/* Dynamic Item Details Grid */}
+                        <View style={styles.detailsGrid}>
+                          {isDynamicFieldConfigLoading ? (
+                            <View style={styles.fieldLoadingContainer}>
+                              <ActivityIndicator size="small" color="#4a90e2" />
+                              <Text style={styles.fieldLoadingText}>Loading fields...</Text>
+                            </View>
+                          ) : (
+                            renderDynamicFields(itemId, editItems[itemId] || {})
+                          )}
+                        </View>
+
+                        {/* Action buttons */}
+                        <View style={styles.actionButtonsContainer}>
+                          {isNewItem && (
+                            <TouchableOpacity
+                              style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
+                              onPress={() => autoSaveItem(itemId)}
+                              disabled={!type}
+                            >
+                              <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
+                              <Text style={styles.saveButtonText}>Save New Item</Text>
+                            </TouchableOpacity>
+                          )}
+                          
+                          {/* Add Another button - only show for saved items */}
+                          {!isNewItem && hasData && (
+                            <TouchableOpacity
+                              style={styles.duplicateButton}
+                              onPress={() => duplicateItem(item)}
+                            >
+                              <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
+                              <Text style={styles.duplicateButtonText}>Add Another {type || item.type}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          ) : isNestedGrouping(groupedItems) ? (
             // Render nested (2-tier) grouping
-            Object.entries(groupedItems).sort(([a], [b]) => a.localeCompare(b)).map(([primaryKey, secondaryGroups], primaryIndex) => {
+            Object.entries(groupedItems).sort(([a, aGroups], [b, bGroups]) => {
+              // Check if primary grouping is by location
+              const strategyConfig = groupingStrategy?.strategy_config;
+              let parsedConfig: any = null;
+              try {
+                parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+              } catch (error) {
+                parsedConfig = null;
+              }
+              
+              const isLocationGrouping = parsedConfig && parsedConfig.primary_group === 'Location';
+              
+              if (isLocationGrouping) {
+                // Sort alphabetically for location grouping
+                return a.localeCompare(b);
+              } else {
+                // Sort by rank for other groupings
+                const aItems = Object.values(aGroups).flat();
+                const bItems = Object.values(bGroups).flat();
+                const aRank = aItems.length > 0 ? (aItems[0] as any).rank || 0 : 0;
+                const bRank = bItems.length > 0 ? (bItems[0] as any).rank || 0 : 0;
+                return aRank - bRank;
+              }
+            }).map(([primaryKey, secondaryGroups], primaryIndex) => {
               const isPrimaryExpanded = expandedGroup === primaryKey;
               const allItemsInPrimary = Object.values(secondaryGroups).flat();
               const itemsWithDataInPrimary = allItemsInPrimary.filter(item => hasDataCaptured(item));
@@ -2004,7 +2177,28 @@ export default function PredefinedItemsList({
                   {/* Secondary Groups */}
                   {isPrimaryExpanded && (
                     <View style={styles.groupItems}>
-                      {Object.entries(secondaryGroups).sort(([a], [b]) => a.localeCompare(b)).map(([secondaryKey, items]) => {
+                      {Object.entries(secondaryGroups).sort(([a, aItems], [b, bItems]) => {
+                        // Check if secondary grouping is by location
+                        const strategyConfig = groupingStrategy?.strategy_config;
+                        let parsedConfig: any = null;
+                        try {
+                          parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+                        } catch (error) {
+                          parsedConfig = null;
+                        }
+                        
+                        const isLocationGrouping = parsedConfig && parsedConfig.secondary_group === 'Location';
+                        
+                        if (isLocationGrouping) {
+                          // Sort alphabetically for location grouping
+                          return a.localeCompare(b);
+                        } else {
+                          // Sort by rank for other groupings
+                          const aRank = aItems.length > 0 ? (aItems[0] as any).rank || 0 : 0;
+                          const bRank = bItems.length > 0 ? (bItems[0] as any).rank || 0 : 0;
+                          return aRank - bRank;
+                        }
+                      }).map(([secondaryKey, items]) => {
                         const isSecondaryExpanded = isSecondaryGroupExpanded(primaryKey, secondaryKey);
                         const itemsWithDataInSecondary = items.filter(item => hasDataCaptured(item));
                         const secondaryItemCount = itemsWithDataInSecondary.length;
@@ -2197,7 +2391,21 @@ export default function PredefinedItemsList({
             })
           ) : (
             // Render flat (single-tier) grouping  
-            Object.entries(groupedItems as FlatGroups).sort(([a], [b]) => a.localeCompare(b)).map(([groupKey, groupItems], groupIndex) => {
+            Object.entries(groupedItems as FlatGroups).sort(([a, aItems], [b, bItems]) => {
+              // Check if primary grouping is by location
+              const effectiveGroupingStrategy = groupingStrategy?.strategy_type;
+              const isLocationGrouping = effectiveGroupingStrategy === 'by_location';
+              
+              if (isLocationGrouping) {
+                // Sort alphabetically for location grouping
+                return a.localeCompare(b);
+              } else {
+                // Sort by rank for other groupings
+                const aRank = aItems.length > 0 ? (aItems[0] as any).rank || 0 : 0;
+                const bRank = bItems.length > 0 ? (bItems[0] as any).rank || 0 : 0;
+                return aRank - bRank;
+              }
+            }).map(([groupKey, groupItems], groupIndex) => {
             const isGroupExpanded = expandedGroup === groupKey;
             const groupItemCount = groupItems.length;
             
@@ -2391,7 +2599,7 @@ export default function PredefinedItemsList({
             })
           )}
           
-          {(isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length === 0 : Object.keys(groupedItems as FlatGroups).length === 0) && (
+          {(groupedItems === null ? items.length === 0 : (isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length === 0 : Object.keys(groupedItems as FlatGroups).length === 0)) && (
             <View style={styles.emptyState}>
               <MaterialCommunityIcons name="clipboard-text-outline" size={48} color="#bdc3c7" />
               <Text style={styles.emptyStateText}>No predefined items found</Text>
@@ -2399,7 +2607,7 @@ export default function PredefinedItemsList({
             </View>
           )}
         </ScrollView>
-        {(isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length > 3 : Object.keys(groupedItems as FlatGroups).length > 3) && (
+        {(groupedItems === null ? items.length > 10 : (isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length > 3 : Object.keys(groupedItems as FlatGroups).length > 3)) && (
           <View style={styles.scrollIndicator}>
             <MaterialCommunityIcons name="gesture-swipe-up" size={16} color="#7f8c8d" />
           </View>
