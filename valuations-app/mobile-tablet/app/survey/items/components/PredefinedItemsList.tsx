@@ -996,87 +996,454 @@ export default function PredefinedItemsList({
     }
   };
 
-  // Function to duplicate an item with the same itemprompt - moved after groupedItems definition
+  // Helper function to find which group an item belongs to
+  const findItemGroup = useCallback((item: Item) => {
+    if (!groupedItems || groupedItems === null) {
+      console.log('🔍 findItemGroup: No groupedItems available');
+      return null; // No grouping
+    }
+    
+    console.log('🔍 findItemGroup: Searching for item', item.id, 'in groupedItems:', {
+      isNestedGrouping: isNestedGrouping(groupedItems),
+      totalPrimaryGroups: isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length : Object.keys(groupedItems as FlatGroups).length
+    });
+    
+    if (isNestedGrouping(groupedItems)) {
+      // For nested grouping, find primary and secondary group
+      for (const [primaryKey, secondaryGroups] of Object.entries(groupedItems)) {
+        for (const [secondaryKey, groupItems] of Object.entries(secondaryGroups)) {
+          if (groupItems.some(groupItem => String(groupItem.id) === String(item.id))) {
+            console.log('🔍 findItemGroup: Found item in nested group:', { primaryKey, secondaryKey, groupSize: groupItems.length });
+            return { primaryGroup: primaryKey, secondaryGroup: secondaryKey, items: groupItems };
+          }
+        }
+      }
+    } else {
+      // For flat grouping
+      const flatGroups = groupedItems as FlatGroups;
+      for (const [groupKey, groupItems] of Object.entries(flatGroups)) {
+        if (groupItems.some(groupItem => String(groupItem.id) === String(item.id))) {
+          console.log('🔍 findItemGroup: Found item in flat group:', { groupKey, groupSize: groupItems.length });
+          return { group: groupKey, items: groupItems };
+        }
+      }
+    }
+    
+    console.log('🔍 findItemGroup: Item not found in any group');
+    return null;
+  }, [groupedItems, isNestedGrouping]);
+
+  // Type for nested grouping structure
+  interface NestedGroups {
+    [primaryKey: string]: {
+      [secondaryKey: string]: Item[]
+    }
+  }
+
+  // Type for flat grouping structure
+  interface FlatGroups {
+    [key: string]: Item[]
+  }
+
+  // Union type for all possible grouping structures
+  type GroupedItemsType = FlatGroups | NestedGroups | null;
+
+  // Helper function to check if grouping is nested (2-tier)
+  const isNestedGrouping = useCallback((groups: GroupedItemsType): groups is NestedGroups => {
+    const strategyConfig = groupingStrategy?.strategy_config;
+    let parsedConfig: any = null;
+    try {
+      parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+    } catch (error) {
+      parsedConfig = null;
+    }
+    return parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group;
+  }, [groupingStrategy]);
+
+  // Helper function to toggle secondary group expansion
+  const toggleSecondaryGroup = (primaryKey: string, secondaryKey: string) => {
+    const compositeKey = `${primaryKey}::${secondaryKey}`;
+    setExpandedSecondaryGroups(prev => ({
+      ...prev,
+      [compositeKey]: !prev[compositeKey]
+    }));
+  };
+
+  // Helper function to check if secondary group is expanded
+  const isSecondaryGroupExpanded = (primaryKey: string, secondaryKey: string): boolean => {
+    const compositeKey = `${primaryKey}::${secondaryKey}`;
+    return !!expandedSecondaryGroups[compositeKey];
+  };
+
+  // Group items by strategy configuration - supports both single-tier and 2-tier grouping
+  // CRITICAL: We only depend on 'items', NOT 'editItems' to prevent re-grouping while user types
+  const groupedItems = useMemo(() => {
+    console.log('🔧 DEBUG: groupedItems useMemo triggered');
+    console.log('🔧 DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
+    console.log('🔧 DEBUG: Items count for grouping:', items.length);
+    console.log('🔧 DEBUG: Items for grouping:', items.map(item => ({ id: item.id, type: item.type, room: item.room })));
+    
+    // If no grouping strategy is provided, return items without grouping
+    if (!groupingStrategy?.strategy_type) {
+      console.log('🔧 No grouping strategy found - returning items without grouping');
+      console.log('🔧 groupingStrategy object:', groupingStrategy);
+      return null; // Signal that no grouping should be applied
+    }
+    
+    // Require explicit grouping strategy configuration
+    const effectiveGroupingStrategy = groupingStrategy.strategy_type;
+    
+    console.log('🔧 Grouping items using strategy:', effectiveGroupingStrategy);
+    
+    // Check if we have a 2-tier grouping strategy configured
+    const strategyConfig = groupingStrategy?.strategy_config;
+    console.log('🔧 Raw strategy config:', strategyConfig);
+    console.log('🔧 Strategy type:', effectiveGroupingStrategy);
+    
+    // Handle both string (legacy) and object (new) types for strategy_config
+    let parsedConfig: any = null;
+    try {
+      parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+    } catch (error) {
+      console.warn('🔧 Error parsing strategy config:', error);
+      parsedConfig = null;
+    }
+    
+    const hasTwoTierGrouping = parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group;
+    
+    console.log('🔧 Parsed config:', parsedConfig);
+    console.log('🔧 Has two-tier grouping:', hasTwoTierGrouping);
+    
+    if (hasTwoTierGrouping) {
+      console.log('🔧 Using 2-tier grouping:', parsedConfig.primary_group, '->', parsedConfig.secondary_group);
+    
+      // Create nested structure for 2-tier grouping
+      const nestedGroups: NestedGroups = {};
+      
+      items.forEach(item => {
+        const primaryValue = getItemFieldValue(item, parsedConfig.primary_group);
+        const secondaryValue = getItemFieldValue(item, parsedConfig.secondary_group);
+        
+        // Debug log for first few items
+        if (items.indexOf(item) < 3) {
+          console.log(`🔧 Item ${item.id}: Primary(${parsedConfig.primary_group})="${primaryValue}", Secondary(${parsedConfig.secondary_group})="${secondaryValue}"`);
+        }
+        
+        if (!nestedGroups[primaryValue]) {
+          nestedGroups[primaryValue] = {};
+        }
+        
+        if (!nestedGroups[primaryValue][secondaryValue]) {
+          nestedGroups[primaryValue][secondaryValue] = [];
+        }
+        
+        nestedGroups[primaryValue][secondaryValue].push(item);
+      });
+      
+      console.log('🔧 Items grouped into nested structure:', Object.keys(nestedGroups).length, 'primary groups');
+      Object.entries(nestedGroups).forEach(([primary, secondary]) => {
+        console.log(`🔧   ${primary}: ${Object.keys(secondary).length} secondary groups`);
+      });
+      
+      console.log('🔧 DEBUG: Final nested groups structure:', nestedGroups);
+      return nestedGroups;
+      } else {
+      // Single-tier grouping (original logic) - return in compatible format
+      const flatGroups: { [key: string]: Item[] } = {};
+      
+      items.forEach(item => {
+        let groupKey: string;
+        
+        switch (effectiveGroupingStrategy) {
+          case 'by_type':
+            groupKey = item.type || 'Unknown Items';
+            break;
+          
+          case 'by_location':
+            groupKey = item.room || 'No Location';
+            break;
+          
+          case 'by_brand':
+            groupKey = item.model || 'No Brand';
+            break;
+          
+          case 'by_value_range':
+            const price = parseFloat(item.price) || 0;
+            if (price === 0) groupKey = 'No Value';
+            else if (price < 1000) groupKey = 'Under R1,000';
+            else if (price < 5000) groupKey = 'R1,000 - R5,000';
+            else if (price < 10000) groupKey = 'R5,000 - R10,000';
+            else groupKey = 'Over R10,000';
+            break;
+          
+          case 'custom':
+            if (parsedConfig && parsedConfig.customField) {
+              groupKey = (item as any)[parsedConfig.customField] || 'Other';
+            } else {
+              groupKey = item.type || 'Unknown Items';
+            }
+            break;
+            
+          default:
+            // Unknown strategy - fall back to type grouping
+            groupKey = item.type || 'Unknown Items';
+            break;
+      }
+      
+        if (!flatGroups[groupKey]) {
+          flatGroups[groupKey] = [];
+      }
+        flatGroups[groupKey].push(item);
+    });
+    
+      console.log('🔧 Items grouped into', Object.keys(flatGroups).length, 'groups:', Object.keys(flatGroups));
+    
+      return flatGroups;
+    }
+  }, [items, groupingStrategy, getItemFieldValue]);
 
   // Function to delete an item
   const deleteItem = useCallback(async (itemToDelete: Item) => {
     const itemId = String(itemToDelete.id);
     
+    // Check if this item is the only one with data in its group
+    const groupInfo = findItemGroup(itemToDelete);
+    let isOnlyItemWithData = false;
+    
+    console.log('🗑️ DELETE ATTEMPT - Item details:', {
+      itemId,
+      itemType: itemToDelete.type,
+      hasData: hasDataCaptured(itemToDelete),
+      groupInfo,
+      isNestedGrouping: isNestedGrouping(groupedItems)
+    });
+    
+    if (groupInfo?.items) {
+      const itemsWithData = groupInfo.items.filter(item => hasDataCaptured(item));
+      isOnlyItemWithData = itemsWithData.length === 1 && hasDataCaptured(itemToDelete);
+      
+      console.log('🗑️ GROUP ANALYSIS:', {
+        totalItemsInGroup: groupInfo.items.length,
+        itemsWithData: itemsWithData.length,
+        isOnlyItemWithData,
+        condition1: itemsWithData.length === 1,
+        condition2: hasDataCaptured(itemToDelete),
+        itemsWithDataIds: itemsWithData.map(item => ({ id: item.id, type: item.type, hasData: hasDataCaptured(item) }))
+      });
+      
+      console.log('🗑️ Group analysis for item deletion:', {
+        itemId,
+        groupSize: groupInfo.items.length,
+        itemsWithDataCount: itemsWithData.length,
+        isOnlyItemWithData,
+        currentItemHasData: hasDataCaptured(itemToDelete),
+        isSecondaryGroup: isNestedGrouping(groupedItems) && groupInfo.secondaryGroup,
+        primaryGroup: groupInfo.primaryGroup,
+        secondaryGroup: groupInfo.secondaryGroup,
+        group: groupInfo.group
+      });
+    }
+    
+    const actionText = isOnlyItemWithData ? 'Clear' : 'Delete';
+    
+    // Determine if this is a secondary group for better messaging
+    const isSecondaryGroup = isNestedGrouping(groupedItems) && groupInfo?.secondaryGroup;
+    const groupType = isSecondaryGroup ? 'secondary group' : 'group';
+    
+    const actionDescription = isOnlyItemWithData 
+      ? `This is the only item with data in its ${groupType}. Clear all values instead of deleting?`
+      : 'Are you sure you want to delete this item?';
+    
     Alert.alert(
-      'Delete Item',
-      `Are you sure you want to delete this item?${itemToDelete.type ? `\n\nItem: ${itemToDelete.type}` : ''}`,
+      `${actionText} Item`,
+      `${actionDescription}${itemToDelete.type ? `\n\nItem: ${itemToDelete.type}` : ''}`,
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: actionText,
+          style: isOnlyItemWithData ? 'default' : 'destructive',
           onPress: async () => {
             try {
-              console.log('Deleting item:', itemId);
+              console.log(`${actionText.toLowerCase()}ing item:`, itemId);
               
-              // If it's not a new item, mark it as deleted in the database
-              if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
-                // Get existing SQLite record
-                const existingItems = await getAllRiskAssessmentItems();
-                const existingItem = existingItems.find(dbItem => 
-                  String(dbItem.riskassessmentitemid) === String(itemToDelete.id)
-                );
+              if (isOnlyItemWithData) {
+                // Clear values instead of deleting
+                console.log('🧹 Clearing item values instead of deleting (only item with data in group)');
+                
+                // If it's not a new item, update it in the database with cleared values
+                if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
+                  // Get existing SQLite record
+                  const existingItems = await getAllRiskAssessmentItems();
+                  const existingItem = existingItems.find(dbItem => 
+                    String(dbItem.riskassessmentitemid) === String(itemToDelete.id)
+                  );
 
-                if (existingItem) {
-                  // Mark as deleted and pending sync
-                  const updated: RiskAssessmentItem = {
-                    ...existingItem,
-                    qty: 0, // Set quantity to 0 to effectively "delete"
-                    price: 0, // Clear price
-                    description: '', // Clear description
-                    model: '', // Clear model
-                    location: '', // Clear location
-                    notes: '', // Clear notes
-                    pending_sync: 1,
-                    issynced: 0,
-                    dateupdated: new Date().toISOString(),
-                  };
-                  
-                  await updateRiskAssessmentItem(updated);
-                  
-                  // Update pending changes count
-                  const count = await riskAssessmentSyncService.getPendingChangesCount();
-                  setPendingChangesCount(count.total);
+                  if (existingItem) {
+                    // Reset to default values while preserving grouping fields
+                    const updated: RiskAssessmentItem = {
+                      ...existingItem,
+                      qty: 1, // Reset to default quantity
+                      price: 0, // Reset price
+                      description: '', // Clear description
+                      model: '', // Clear model if not used for grouping
+                      location: existingItem.location, // Preserve location for grouping
+                      notes: '', // Clear notes
+                      pending_sync: 1,
+                      issynced: 0,
+                      dateupdated: new Date().toISOString(),
+                    };
+                    
+                    // Preserve grouping field values based on strategy
+                    if (groupingStrategy?.strategy_type) {
+                      const strategyConfig = groupingStrategy.strategy_config;
+                      let parsedConfig: any = null;
+                      try {
+                        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+                      } catch (error) {
+                        parsedConfig = null;
+                      }
+                      
+                      // For nested grouping, preserve both primary and secondary group fields
+                      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
+                        // Preserve fields used for grouping
+                        if (parsedConfig.primary_group !== 'Location') updated.location = existingItem.location;
+                        if (parsedConfig.secondary_group !== 'Location') updated.location = existingItem.location;
+                        if (parsedConfig.primary_group === 'Model' || parsedConfig.secondary_group === 'Model') {
+                          updated.model = existingItem.model; // Preserve model if used for grouping
+                        }
+                      } else {
+                        // For single-tier grouping, preserve the grouping field
+                        switch (groupingStrategy.strategy_type) {
+                          case 'by_location':
+                            updated.location = existingItem.location;
+                            break;
+                          case 'by_brand':
+                            updated.model = existingItem.model;
+                            break;
+                          case 'by_type':
+                            // itemprompt is preserved by default
+                            break;
+                        }
+                      }
+                    }
+                    
+                    await updateRiskAssessmentItem(updated);
+                    
+                    // Update pending changes count
+                    const count = await riskAssessmentSyncService.getPendingChangesCount();
+                    setPendingChangesCount(count.total);
+                  }
                 }
+                
+                // Clear edit state and reset local item state to defaults
+                setEditItems(prev => {
+                  const newEditItems = { ...prev };
+                  delete newEditItems[itemId];
+                  return newEditItems;
+                });
+                
+                // Update local items state to reflect cleared values
+                setItems(prevItems => {
+                  const updatedItems = prevItems.map(item => 
+                    item.id === itemToDelete.id ? {
+                      ...item,
+                      quantity: '1',
+                      price: '0',
+                      description: '',
+                      model: (groupingStrategy?.strategy_type === 'by_brand') ? item.model : '', // Preserve model only if used for grouping
+                      room: item.room, // Always preserve room/location
+                      // Don't preserve type - let it be cleared to maintain original behavior
+                      notes: ''
+                    } : item
+                  );
+
+                  console.log('🧹 Connor');
+                  console.log('🧹 Updated items after clearing:', {
+                    itemId,
+                    totalItems: updatedItems.length,
+                    clearedItem: updatedItems.find(item => item.id === itemToDelete.id),
+                    hasDataAfterClear: hasDataCaptured(updatedItems.find(item => item.id === itemToDelete.id) || itemToDelete)
+                  });
+                  
+                  return updatedItems;
+                });
+                
+                // Clear auto-saved state
+                setAutoSavedItems(prev => {
+                  const newAutoSaved = { ...prev };
+                  delete newAutoSaved[itemId];
+                  return newAutoSaved;
+                });
+                
+                console.log('Item values cleared successfully:', itemId);
+                
+              } else {
+                // Proceed with normal deletion
+                
+                // If it's not a new item, mark it as deleted in the database
+                if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
+                  // Get existing SQLite record
+                  const existingItems = await getAllRiskAssessmentItems();
+                  const existingItem = existingItems.find(dbItem => 
+                    String(dbItem.riskassessmentitemid) === String(itemToDelete.id)
+                  );
+
+                  if (existingItem) {
+                    // Mark as deleted and pending sync
+                    const updated: RiskAssessmentItem = {
+                      ...existingItem,
+                      qty: 0, // Set quantity to 0 to effectively "delete"
+                      price: 0, // Clear price
+                      description: '', // Clear description
+                      model: '', // Clear model
+                      location: '', // Clear location
+                      notes: '', // Clear notes
+                      pending_sync: 1,
+                      issynced: 0,
+                      dateupdated: new Date().toISOString(),
+                    };
+                    
+                    await updateRiskAssessmentItem(updated);
+                    
+                    // Update pending changes count
+                    const count = await riskAssessmentSyncService.getPendingChangesCount();
+                    setPendingChangesCount(count.total);
+                  }
+                }
+                
+                // Remove from local state
+                setItems(prevItems => prevItems.filter(item => item.id !== itemToDelete.id));
+                
+                // Clear any edit state for this item
+                setEditItems(prev => {
+                  const newEditItems = { ...prev };
+                  delete newEditItems[itemId];
+                  return newEditItems;
+                });
+                
+                // Clear auto-saved state
+                setAutoSavedItems(prev => {
+                  const newAutoSaved = { ...prev };
+                  delete newAutoSaved[itemId];
+                  return newAutoSaved;
+                });
+                
+                // If this item was expanded, collapse it
+                if (expandedItem === itemId) {
+                  setExpandedItem(null);
+                }
+                
+                console.log('Item deleted successfully:', itemId);
               }
-              
-              // Remove from local state
-              setItems(prevItems => prevItems.filter(item => item.id !== itemToDelete.id));
-              
-              // Clear any edit state for this item
-              setEditItems(prev => {
-                const newEditItems = { ...prev };
-                delete newEditItems[itemId];
-                return newEditItems;
-              });
-              
-              // Clear auto-saved state
-              setAutoSavedItems(prev => {
-                const newAutoSaved = { ...prev };
-                delete newAutoSaved[itemId];
-                return newAutoSaved;
-              });
-              
-              // If this item was expanded, collapse it
-              if (expandedItem === itemId) {
-                setExpandedItem(null);
-              }
-              
-              console.log('Item deleted successfully:', itemId);
               
             } catch (error) {
-              console.error('Error deleting item:', error);
+              console.error('Error processing item:', error);
               Alert.alert(
-                'Delete Failed',
-                'Failed to delete the item. Please try again.',
+                `${actionText} Failed`,
+                `Failed to ${actionText.toLowerCase()} the item. Please try again.`,
                 [{ text: 'OK' }]
               );
             }
@@ -1084,57 +1451,210 @@ export default function PredefinedItemsList({
         },
       ]
     );
-  }, [expandedItem]);
+  }, [expandedItem, findItemGroup, hasDataCaptured, groupingStrategy]);
 
-  // Helper function to scroll to a specific item by finding its group
-  const scrollToItem = (itemId: string) => {
-    console.log(`🎯 Navigating to item: ${itemId}`);
+  // Function to duplicate an item with the same itemprompt
+  const duplicateItem = useCallback((originalItem: Item) => {
+    console.log('🔄 === DUPLICATE ITEM FUNCTION CALLED ===');
+    console.log('🔄 Original item:', originalItem);
+    console.log('🔄 Original item type:', originalItem.type);
+    console.log('🔄 Current items count before duplication:', items.length);
     
-    // Group items by type
-    const grouped = items.reduce((acc, item) => {
-      const type = item.type || 'Unknown Items';
-      if (!acc[type]) acc[type] = [];
-      acc[type].push(item);
-      return acc;
-    }, {} as Record<string, Item[]>);
-
-    // Find the target item and its group
-    let targetGroup = '';
-    let foundItem: Item | null = null;
-
-    for (const [groupName, groupItems] of Object.entries(grouped)) {
-      const item = groupItems.find(i => String(i.id) === itemId);
-      if (item) {
-        targetGroup = groupName;
-        foundItem = item;
-        break;
-      }
-    }
-
-    if (!foundItem) {
-      console.warn(`❌ Item ${itemId} not found in any group`);
-      return;
-    }
-
-    console.log(`✅ Found item in group: ${targetGroup}`);
+    // For nested grouping, we need to preserve the grouping field values
+    let duplicatedItem: Item;
     
-    // Expand the group and highlight the item
-    setExpandedGroup(targetGroup);
-    setExpandedItem(itemId);
-
-    // Scroll to the appropriate position
-    setTimeout(() => {
-      if (scrollViewRef.current) {
-        // For items at the end of the list, scroll to the bottom
-        if (targetGroup === 'Unknown Items' || Object.keys(grouped).indexOf(targetGroup) >= Object.keys(grouped).length - 2) {
-          scrollViewRef.current.scrollToEnd({ animated: true });
-        } else {
-          // For items at the top, scroll to the top
-          scrollViewRef.current.scrollTo({ y: 0, animated: true });
-        }
+    if (isNestedGrouping(groupedItems)) {
+      const strategyConfig = groupingStrategy?.strategy_config;
+      let parsedConfig: any = null;
+      try {
+        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+      } catch (error) {
+        parsedConfig = null;
       }
-    }, 100);
-  };
+      
+      // Create duplicated item starting with base values
+      duplicatedItem = {
+        id: `duplicate-${Date.now()}`,
+        type: originalItem.type,
+        description: '',
+        model: '',
+        quantity: '1',
+        price: '',
+        room: '',
+        notes: '',
+        categoryId: categoryId
+      };
+      
+      // Preserve the specific fields that are used for grouping
+      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
+        const primaryField = parsedConfig.primary_group;
+        const secondaryField = parsedConfig.secondary_group;
+        
+        // Map grouping field names to item property names
+        const setGroupingValue = (fieldName: string, value: string) => {
+          console.log('🔧 setGroupingValue called:', fieldName, '→', value);
+          switch (fieldName) {
+            case 'ItemPrompt':
+              duplicatedItem.type = value;
+              console.log('🔧 Set type to:', duplicatedItem.type);
+              break;
+            case 'Location':
+              duplicatedItem.room = value;
+              console.log('🔧 Set room to:', duplicatedItem.room);
+              break;
+            case 'Model':
+              duplicatedItem.model = value;
+              console.log('🔧 Set model to:', duplicatedItem.model);
+              break;
+            case 'Description':
+              duplicatedItem.description = value;
+              console.log('🔧 Set description to:', duplicatedItem.description);
+              break;
+            default:
+              // Try to set the field directly
+              (duplicatedItem as any)[fieldName] = value;
+              console.log('🔧 Set', fieldName, 'to:', (duplicatedItem as any)[fieldName]);
+              break;
+          }
+        };
+        
+        // Get and preserve the primary grouping field value
+        const primaryValue = getItemFieldValue(originalItem, primaryField);
+        console.log('🔄 PRIMARY VALUE EXTRACTION:', primaryField, 'from item:', originalItem, '→', primaryValue);
+        setGroupingValue(primaryField, primaryValue);
+        
+        // Get and preserve the secondary grouping field value
+        const secondaryValue = getItemFieldValue(originalItem, secondaryField);
+        console.log('🔄 SECONDARY VALUE EXTRACTION:', secondaryField, 'from item:', originalItem, '→', secondaryValue);
+        setGroupingValue(secondaryField, secondaryValue);
+        
+        console.log('🔄 Nested grouping - preserved field values:');
+        console.log('🔄 Primary field:', primaryField, '=', primaryValue);
+        console.log('🔄 Secondary field:', secondaryField, '=', secondaryValue);
+        console.log('🔄 Final duplicated item BEFORE state update:', duplicatedItem);
+        console.log('🔄 Duplicated item room value:', duplicatedItem.room);
+        console.log('🔄 Duplicated item type value:', duplicatedItem.type);
+      }
+    } else {
+      // For flat grouping, use the original logic
+      duplicatedItem = {
+        id: `duplicate-${Date.now()}`,
+        type: originalItem.type, // Keep the same itemprompt
+        description: '',
+        model: '',
+        quantity: '1',
+        price: '',
+        room: '',
+        notes: '',
+        categoryId: categoryId
+      };
+    }
+    
+    console.log('🔄 Duplicated item to be created:', duplicatedItem);
+    
+    // Add to local items state
+    setItems(prevItems => {
+      console.log('🔄 Adding duplicated item to items array, current count:', prevItems.length);
+      const newItems = [...prevItems, duplicatedItem];
+      console.log('🔄 New items array count:', newItems.length);
+      return newItems;
+    });
+    
+    // Handle group expansion based on grouping type
+    if (isNestedGrouping(groupedItems)) {
+      // For nested grouping, we need to find and maintain the primary and secondary group expansion
+      const strategyConfig = groupingStrategy?.strategy_config;
+      let parsedConfig: any = null;
+      try {
+        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
+      } catch (error) {
+        parsedConfig = null;
+      }
+      
+      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
+        // Find which primary group contains this item
+        const primaryValue = getItemFieldValue(originalItem, parsedConfig.primary_group);
+        const secondaryValue = getItemFieldValue(originalItem, parsedConfig.secondary_group);
+        
+        console.log('🔄 Nested grouping - Primary:', primaryValue, 'Secondary:', secondaryValue);
+        
+        // Keep primary group expanded
+        setExpandedGroup(primaryValue);
+        
+        // Keep secondary group expanded
+        const secondaryCompositeKey = `${primaryValue}::${secondaryValue}`;
+        setExpandedSecondaryGroups(prev => ({
+          ...prev,
+          [secondaryCompositeKey]: true
+        }));
+        
+        console.log('🔄 Expanded primary group:', primaryValue);
+        console.log('🔄 Expanded secondary group:', secondaryCompositeKey);
+      }
+    } else {
+      // For flat grouping, use the original logic
+      setExpandedGroup(originalItem.type);
+      console.log('🔄 Expanded group set to:', originalItem.type);
+    }
+    
+    // Immediately expand the new item for editing
+    setExpandedItem(duplicatedItem.id);
+    console.log('🔄 Expanded item set to:', duplicatedItem.id);
+    
+    // Set it as being edited - preserve the duplicated item's field values
+    setEditItems(prev => {
+      const editState = {
+        type: duplicatedItem.type,
+        description: duplicatedItem.description || '',
+        model: duplicatedItem.model || '',
+        quantity: duplicatedItem.quantity || '1',
+        price: duplicatedItem.price || '',
+        room: duplicatedItem.room || '', // Preserve the room from duplication
+        notes: duplicatedItem.notes || ''
+      };
+      
+      console.log('🔧 Setting edit state for duplicated item:', duplicatedItem.id);
+      console.log('🔧 Edit state being set:', editState);
+      console.log('🔧 Duplicated item room value:', duplicatedItem.room);
+      console.log('🔧 Edit state room value:', editState.room);
+      
+      return {
+        ...prev,
+        [duplicatedItem.id]: editState
+      };
+    });
+    
+    console.log('🔄 Edit state set for duplicated item');
+    console.log('🔄 === DUPLICATE ITEM FUNCTION COMPLETED ===');
+  }, [categoryId, items.length, isNestedGrouping, groupedItems, groupingStrategy, getItemFieldValue]);
+
+  // Load photos for all items (silent)
+  useEffect(() => {
+    if (items.length > 0) {
+      const loadPhotos = async () => {
+        const photoPromises = items.map(async (item) => {
+          try {
+            const { getMediaFilesByEntity } = await import('../../../../utils/db');
+            const mediaFiles = await getMediaFilesByEntity('riskAssessmentItem', Number(item.id), false);
+            return { itemId: item.id, photos: mediaFiles };
+          } catch (error) {
+            return { itemId: item.id, photos: [] };
+          }
+        });
+
+        const results = await Promise.all(photoPromises);
+        const newItemPhotos: { [key: string]: MediaFile[] } = {};
+
+        results.forEach(({ itemId, photos }) => {
+          newItemPhotos[itemId] = photos;
+        });
+
+        setItemPhotos(newItemPhotos);
+      };
+
+      loadPhotos();
+    }
+  }, [items]);
 
   // Helper function to render dynamic fields based on configuration respecting display_order
   const renderDynamicFields = useCallback((itemId: string, editData: any) => {
@@ -1170,7 +1690,7 @@ export default function PredefinedItemsList({
       const effectiveStrategy = groupingStrategy.strategy_type;
       console.log('🔧 Effective grouping strategy:', effectiveStrategy);
       
-              const fields: string[] = [];
+      const fields: string[] = [];
       
       // Handle 2-tier grouping
       const strategyConfig = groupingStrategy.strategy_config;
@@ -1198,10 +1718,10 @@ export default function PredefinedItemsList({
         
         if (primaryFieldMap[parsedConfig.primary_group]) fields.push(primaryFieldMap[parsedConfig.primary_group]);
         if (secondaryFieldMap[parsedConfig.secondary_group]) fields.push(secondaryFieldMap[parsedConfig.secondary_group]);
-              } else {
-          // Single-tier grouping
-          console.log('🔧 Using single-tier grouping strategy:', effectiveStrategy);
-          switch (effectiveStrategy) {
+      } else {
+        // Single-tier grouping
+        console.log('🔧 Using single-tier grouping strategy:', effectiveStrategy);
+        switch (effectiveStrategy) {
           case 'by_type':
             console.log('🔧 Adding "type" field to exclusion list');
             fields.push('type'); // ItemPrompt field
@@ -1581,373 +2101,6 @@ export default function PredefinedItemsList({
       </>
     );
   }, [items, isFieldVisible, handleEdit, autoSaveItem, itemPhotos, handleViewPhotos]);
-
-  // Type for nested grouping structure
-  interface NestedGroups {
-    [primaryKey: string]: {
-      [secondaryKey: string]: Item[]
-    }
-  }
-
-  // Type for flat grouping structure
-  interface FlatGroups {
-    [key: string]: Item[]
-  }
-
-  // Union type for all possible grouping structures
-  type GroupedItemsType = FlatGroups | NestedGroups | null;
-
-  // Helper function to check if grouping is nested (2-tier)
-  const isNestedGrouping = useCallback((groups: GroupedItemsType): groups is NestedGroups => {
-    const strategyConfig = groupingStrategy?.strategy_config;
-    let parsedConfig: any = null;
-    try {
-      parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
-    } catch (error) {
-      parsedConfig = null;
-    }
-    return parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group;
-  }, [groupingStrategy]);
-
-  // Helper function to toggle secondary group expansion
-  const toggleSecondaryGroup = (primaryKey: string, secondaryKey: string) => {
-    const compositeKey = `${primaryKey}::${secondaryKey}`;
-    setExpandedSecondaryGroups(prev => ({
-      ...prev,
-      [compositeKey]: !prev[compositeKey]
-    }));
-  };
-
-  // Helper function to check if secondary group is expanded
-  const isSecondaryGroupExpanded = (primaryKey: string, secondaryKey: string): boolean => {
-    const compositeKey = `${primaryKey}::${secondaryKey}`;
-    return !!expandedSecondaryGroups[compositeKey];
-  };
-
-  // Group items by strategy configuration - supports both single-tier and 2-tier grouping
-  // CRITICAL: We only depend on 'items', NOT 'editItems' to prevent re-grouping while user types
-  const groupedItems = useMemo(() => {
-    console.log('🔧 DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
-    
-    // If no grouping strategy is provided, return items without grouping
-    if (!groupingStrategy?.strategy_type) {
-      console.log('🔧 No grouping strategy found - returning items without grouping');
-      return null; // Signal that no grouping should be applied
-    }
-    
-    // Require explicit grouping strategy configuration
-    const effectiveGroupingStrategy = groupingStrategy.strategy_type;
-    
-    console.log('🔧 Grouping items using strategy:', effectiveGroupingStrategy);
-    
-    // Check if we have a 2-tier grouping strategy configured
-    const strategyConfig = groupingStrategy?.strategy_config;
-    console.log('🔧 Raw strategy config:', strategyConfig);
-    console.log('🔧 Strategy type:', effectiveGroupingStrategy);
-    
-    // Handle both string (legacy) and object (new) types for strategy_config
-    let parsedConfig: any = null;
-    try {
-      parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
-    } catch (error) {
-      console.warn('🔧 Error parsing strategy config:', error);
-      parsedConfig = null;
-    }
-    
-    const hasTwoTierGrouping = parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group;
-    
-    console.log('🔧 Parsed config:', parsedConfig);
-    console.log('🔧 Has two-tier grouping:', hasTwoTierGrouping);
-    
-    if (hasTwoTierGrouping) {
-      console.log('🔧 Using 2-tier grouping:', parsedConfig.primary_group, '->', parsedConfig.secondary_group);
-    
-      // Create nested structure for 2-tier grouping
-      const nestedGroups: NestedGroups = {};
-      
-      items.forEach(item => {
-        const primaryValue = getItemFieldValue(item, parsedConfig.primary_group);
-        const secondaryValue = getItemFieldValue(item, parsedConfig.secondary_group);
-        
-        // Debug log for first few items
-        if (items.indexOf(item) < 3) {
-          console.log(`🔧 Item ${item.id}: Primary(${parsedConfig.primary_group})="${primaryValue}", Secondary(${parsedConfig.secondary_group})="${secondaryValue}"`);
-        }
-        
-        if (!nestedGroups[primaryValue]) {
-          nestedGroups[primaryValue] = {};
-        }
-        
-        if (!nestedGroups[primaryValue][secondaryValue]) {
-          nestedGroups[primaryValue][secondaryValue] = [];
-        }
-        
-        nestedGroups[primaryValue][secondaryValue].push(item);
-      });
-      
-      console.log('🔧 Items grouped into nested structure:', Object.keys(nestedGroups).length, 'primary groups');
-      Object.entries(nestedGroups).forEach(([primary, secondary]) => {
-        console.log(`🔧   ${primary}: ${Object.keys(secondary).length} secondary groups`);
-      });
-      
-      return nestedGroups;
-      } else {
-      // Single-tier grouping (original logic) - return in compatible format
-      const flatGroups: { [key: string]: Item[] } = {};
-      
-      items.forEach(item => {
-        let groupKey: string;
-        
-        switch (effectiveGroupingStrategy) {
-          case 'by_type':
-            groupKey = item.type || 'Unknown Items';
-            break;
-          
-          case 'by_location':
-            groupKey = item.room || 'No Location';
-            break;
-          
-          case 'by_brand':
-            groupKey = item.model || 'No Brand';
-            break;
-          
-          case 'by_value_range':
-            const price = parseFloat(item.price) || 0;
-            if (price === 0) groupKey = 'No Value';
-            else if (price < 1000) groupKey = 'Under R1,000';
-            else if (price < 5000) groupKey = 'R1,000 - R5,000';
-            else if (price < 10000) groupKey = 'R5,000 - R10,000';
-            else groupKey = 'Over R10,000';
-            break;
-          
-          case 'custom':
-            if (parsedConfig && parsedConfig.customField) {
-              groupKey = (item as any)[parsedConfig.customField] || 'Other';
-            } else {
-              groupKey = item.type || 'Unknown Items';
-            }
-            break;
-            
-          default:
-            // Unknown strategy - fall back to type grouping
-            groupKey = item.type || 'Unknown Items';
-            break;
-      }
-      
-        if (!flatGroups[groupKey]) {
-          flatGroups[groupKey] = [];
-      }
-        flatGroups[groupKey].push(item);
-    });
-    
-      console.log('🔧 Items grouped into', Object.keys(flatGroups).length, 'groups:', Object.keys(flatGroups));
-    
-      return flatGroups;
-    }
-  }, [items, groupingStrategy, getItemFieldValue]);
-
-  // Function to duplicate an item with the same itemprompt
-  const duplicateItem = useCallback((originalItem: Item) => {
-    console.log('🔄 === DUPLICATE ITEM FUNCTION CALLED ===');
-    console.log('🔄 Original item:', originalItem);
-    console.log('🔄 Original item type:', originalItem.type);
-    console.log('🔄 Current items count before duplication:', items.length);
-    
-    // For nested grouping, we need to preserve the grouping field values
-    let duplicatedItem: Item;
-    
-    if (isNestedGrouping(groupedItems)) {
-      const strategyConfig = groupingStrategy?.strategy_config;
-      let parsedConfig: any = null;
-      try {
-        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
-      } catch (error) {
-        parsedConfig = null;
-      }
-      
-      // Create duplicated item starting with base values
-      duplicatedItem = {
-        id: `duplicate-${Date.now()}`,
-        type: originalItem.type,
-        description: '',
-        model: '',
-        quantity: '1',
-        price: '',
-        room: '',
-        notes: '',
-        categoryId: categoryId
-      };
-      
-      // Preserve the specific fields that are used for grouping
-      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
-        const primaryField = parsedConfig.primary_group;
-        const secondaryField = parsedConfig.secondary_group;
-        
-        // Map grouping field names to item property names
-        const setGroupingValue = (fieldName: string, value: string) => {
-          console.log('🔧 setGroupingValue called:', fieldName, '→', value);
-          switch (fieldName) {
-            case 'ItemPrompt':
-              duplicatedItem.type = value;
-              console.log('🔧 Set type to:', duplicatedItem.type);
-              break;
-            case 'Location':
-              duplicatedItem.room = value;
-              console.log('🔧 Set room to:', duplicatedItem.room);
-              break;
-            case 'Model':
-              duplicatedItem.model = value;
-              console.log('🔧 Set model to:', duplicatedItem.model);
-              break;
-            case 'Description':
-              duplicatedItem.description = value;
-              console.log('🔧 Set description to:', duplicatedItem.description);
-              break;
-            default:
-              // Try to set the field directly
-              (duplicatedItem as any)[fieldName] = value;
-              console.log('🔧 Set', fieldName, 'to:', (duplicatedItem as any)[fieldName]);
-              break;
-          }
-        };
-        
-        // Get and preserve the primary grouping field value
-        const primaryValue = getItemFieldValue(originalItem, primaryField);
-        console.log('🔄 PRIMARY VALUE EXTRACTION:', primaryField, 'from item:', originalItem, '→', primaryValue);
-        setGroupingValue(primaryField, primaryValue);
-        
-        // Get and preserve the secondary grouping field value
-        const secondaryValue = getItemFieldValue(originalItem, secondaryField);
-        console.log('🔄 SECONDARY VALUE EXTRACTION:', secondaryField, 'from item:', originalItem, '→', secondaryValue);
-        setGroupingValue(secondaryField, secondaryValue);
-        
-        console.log('🔄 Nested grouping - preserved field values:');
-        console.log('🔄 Primary field:', primaryField, '=', primaryValue);
-        console.log('🔄 Secondary field:', secondaryField, '=', secondaryValue);
-        console.log('🔄 Final duplicated item BEFORE state update:', duplicatedItem);
-        console.log('🔄 Duplicated item room value:', duplicatedItem.room);
-        console.log('🔄 Duplicated item type value:', duplicatedItem.type);
-      }
-    } else {
-      // For flat grouping, use the original logic
-      duplicatedItem = {
-        id: `duplicate-${Date.now()}`,
-        type: originalItem.type, // Keep the same itemprompt
-        description: '',
-        model: '',
-        quantity: '1',
-        price: '',
-        room: '',
-        notes: '',
-        categoryId: categoryId
-      };
-    }
-    
-    console.log('🔄 Duplicated item to be created:', duplicatedItem);
-    
-    // Add to local items state
-    setItems(prevItems => {
-      console.log('🔄 Adding duplicated item to items array, current count:', prevItems.length);
-      const newItems = [...prevItems, duplicatedItem];
-      console.log('🔄 New items array count:', newItems.length);
-      return newItems;
-    });
-    
-    // Handle group expansion based on grouping type
-    if (isNestedGrouping(groupedItems)) {
-      // For nested grouping, we need to find and maintain the primary and secondary group expansion
-      const strategyConfig = groupingStrategy?.strategy_config;
-      let parsedConfig: any = null;
-      try {
-        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
-      } catch (error) {
-        parsedConfig = null;
-      }
-      
-      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
-        // Find which primary group contains this item
-        const primaryValue = getItemFieldValue(originalItem, parsedConfig.primary_group);
-        const secondaryValue = getItemFieldValue(originalItem, parsedConfig.secondary_group);
-        
-        console.log('🔄 Nested grouping - Primary:', primaryValue, 'Secondary:', secondaryValue);
-        
-        // Keep primary group expanded
-        setExpandedGroup(primaryValue);
-        
-        // Keep secondary group expanded
-        const secondaryCompositeKey = `${primaryValue}::${secondaryValue}`;
-        setExpandedSecondaryGroups(prev => ({
-          ...prev,
-          [secondaryCompositeKey]: true
-        }));
-        
-        console.log('🔄 Expanded primary group:', primaryValue);
-        console.log('🔄 Expanded secondary group:', secondaryCompositeKey);
-      }
-    } else {
-      // For flat grouping, use the original logic
-      setExpandedGroup(originalItem.type);
-      console.log('🔄 Expanded group set to:', originalItem.type);
-    }
-    
-    // Immediately expand the new item for editing
-    setExpandedItem(duplicatedItem.id);
-    console.log('🔄 Expanded item set to:', duplicatedItem.id);
-    
-    // Set it as being edited - preserve the duplicated item's field values
-    setEditItems(prev => {
-      const editState = {
-        type: duplicatedItem.type,
-        description: duplicatedItem.description || '',
-        model: duplicatedItem.model || '',
-        quantity: duplicatedItem.quantity || '1',
-        price: duplicatedItem.price || '',
-        room: duplicatedItem.room || '', // Preserve the room from duplication
-        notes: duplicatedItem.notes || ''
-      };
-      
-      console.log('🔧 Setting edit state for duplicated item:', duplicatedItem.id);
-      console.log('🔧 Edit state being set:', editState);
-      console.log('🔧 Duplicated item room value:', duplicatedItem.room);
-      console.log('🔧 Edit state room value:', editState.room);
-      
-      return {
-        ...prev,
-        [duplicatedItem.id]: editState
-      };
-    });
-    
-    console.log('🔄 Edit state set for duplicated item');
-    console.log('🔄 === DUPLICATE ITEM FUNCTION COMPLETED ===');
-  }, [categoryId, items.length, isNestedGrouping, groupedItems, groupingStrategy, getItemFieldValue]);
-
-  // Load photos for all items (silent)
-  useEffect(() => {
-    if (items.length > 0) {
-      const loadPhotos = async () => {
-        const photoPromises = items.map(async (item) => {
-          try {
-            const { getMediaFilesByEntity } = await import('../../../../utils/db');
-            const mediaFiles = await getMediaFilesByEntity('riskAssessmentItem', Number(item.id), false);
-            return { itemId: item.id, photos: mediaFiles };
-          } catch (error) {
-            return { itemId: item.id, photos: [] };
-          }
-        });
-
-        const results = await Promise.all(photoPromises);
-        const newItemPhotos: { [key: string]: MediaFile[] } = {};
-
-        results.forEach(({ itemId, photos }) => {
-          newItemPhotos[itemId] = photos;
-        });
-
-        setItemPhotos(newItemPhotos);
-      };
-
-      loadPhotos();
-    }
-  }, [items]);
 
   return (
     <>
