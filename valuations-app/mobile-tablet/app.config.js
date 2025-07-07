@@ -81,16 +81,23 @@ module.exports = {
     "assetBundlePatterns": [
       "**/*"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/fe1dee59-ac56-4ef1-82cd-b04aabd1bebc"
+    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.valuationsmobiletablet"
+      "bundleIdentifier": "com.anonymous.valuationsmobiletablet",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "android": {
       "package": "com.anonymous.valuationsmobiletablet",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "bundler": "metro",
