@@ -265,6 +265,17 @@ export default function ItemsScreen() {
         if (apiResponse?.success && Array.isArray(apiResponse.data)) {
           console.log('Got items from API, storing in SQLite:', apiResponse.data.length);
           
+          // Debug: Check for commaseparatedlist in API response
+          const itemsWithCommaList = apiResponse.data.filter((item: any) => item.commaseparatedlist);
+          if (itemsWithCommaList.length > 0) {
+            console.log('🔍 API items with commaseparatedlist:', itemsWithCommaList.length);
+            console.log('🔍 Sample commaseparatedlist values:', itemsWithCommaList.slice(0, 3).map((item: any) => ({
+              id: item.riskassessmentitemid,
+              commaseparatedlist: item.commaseparatedlist,
+              type: typeof item.commaseparatedlist
+            })));
+          }
+          
           // Store each item in SQLite (same as ItemComponents)
           const { insertRiskAssessmentItem } = await import('../../utils/db');
           for (const item of apiResponse.data) {
@@ -325,6 +336,8 @@ export default function ItemsScreen() {
             room: item.location || '',
             notes: item.notes || '',
             photo: undefined,
+            commaseparatedlist: item.commaseparatedlist || '',
+            selectedanswer: item.selectedanswer || '',
           }));
           
           console.log(`Using newly stored SQLite items: ${formattedItems.length}`);
@@ -357,6 +370,8 @@ export default function ItemsScreen() {
             room: item.location || '',
             notes: item.notes || '',
             photo: undefined,
+            commaseparatedlist: item.commaseparatedlist || '',
+            selectedanswer: item.selectedanswer || '',
           };
           
           // Log any items with empty types for debugging

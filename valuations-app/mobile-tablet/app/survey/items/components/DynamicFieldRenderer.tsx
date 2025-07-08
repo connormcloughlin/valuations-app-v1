@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Modal } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Modal, ScrollView, Dimensions } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { FieldConfiguration, DropdownOption, FieldValidationError } from '../../../../types/dynamicUI';
@@ -21,6 +21,102 @@ interface DynamicFieldRendererProps {
   onBlur?: () => void;
   // Focus restoration props
   dataAttributes?: { [key: string]: string };
+}
+
+interface ModalDropdownProps {
+  value: any;
+  onChange: (fieldName: string, value: any) => void;
+  field: FieldConfiguration;
+  hasError: boolean;
+  onBlur?: () => void;
+  dataAttributes?: { [key: string]: string };
+}
+
+function ModalDropdown({ value, onChange, field, hasError, onBlur, dataAttributes }: ModalDropdownProps) {
+  const [showModal, setShowModal] = useState(false);
+
+  if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
+    return null;
+  }
+
+  const selectedOption = field.dropdownOptions.find((option: DropdownOption) => option.option_value === value);
+  const displayText = selectedOption ? selectedOption.option_label : (field.placeholder || field.field_label);
+
+  const handleSelectOption = (optionValue: string) => {
+    onChange(field.item_fields, optionValue);
+    setShowModal(false);
+    onBlur?.();
+  };
+
+  return (
+    <View style={styles.modalDropdownContainer}>
+      <TouchableOpacity
+        style={[styles.input, styles.dropdownButton, hasError && styles.inputError]}
+        onPress={() => setShowModal(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={[
+          styles.dropdownButtonText,
+          !selectedOption && styles.dropdownButtonPlaceholder
+        ]}>
+          {displayText}
+        </Text>
+        <MaterialCommunityIcons 
+          name="chevron-down" 
+          size={24} 
+          color="#4a90e2" 
+        />
+      </TouchableOpacity>
+
+      <Modal
+        visible={showModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{field.field_label}</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowModal(false)}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={true}>
+              {field.dropdownOptions.map((item: DropdownOption) => (
+                <TouchableOpacity
+                  key={item.option_value}
+                  style={[
+                    styles.modalDropdownItem,
+                    value === item.option_value && styles.modalDropdownItemSelected
+                  ]}
+                  onPress={() => handleSelectOption(item.option_value)}
+                >
+                  <Text style={[
+                    styles.modalDropdownItemText,
+                    value === item.option_value && styles.modalDropdownItemTextSelected
+                  ]}>
+                    {item.option_label}
+                  </Text>
+                  {value === item.option_value && (
+                    <MaterialCommunityIcons 
+                      name="check" 
+                      size={20} 
+                      color="#4a90e2" 
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
 }
 
 export default function DynamicFieldRenderer({
@@ -48,13 +144,19 @@ export default function DynamicFieldRenderer({
   const hasError = validationError?.fieldName === fieldName;
 
   const renderFieldByType = () => {
-    console.log(`🎨 DynamicFieldRenderer: Rendering field "${fieldName}" with type "${field.field_type}"`);
-    console.log(`🎨 Field config:`, JSON.stringify(field, null, 2));
-    
     // Special handling for photo fields
     if (fieldName === 'photos' && itemId && onTakePhoto) {
-      console.log(`🎨 Rendering special photos field for ${fieldName}`);
       return renderPhotoField();
+    }
+    
+    // Special debugging for selectedanswer field
+    if (fieldName === 'selectedanswer') {
+      console.log(`🎯 selectedanswer field in DynamicFieldRenderer:`, {
+        fieldType: field.field_type,
+        dropdownOptions: field.dropdownOptions,
+        dropdownOptionsLength: field.dropdownOptions?.length || 0,
+        hasDropdownOptions: !!field.dropdownOptions && field.dropdownOptions.length > 0
+      });
     }
     
     switch (field.field_type) {
@@ -176,34 +278,17 @@ export default function DynamicFieldRenderer({
 
   const renderDropdownField = () => {
     if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
-      // Fallback to text input if no options available
       return renderTextField();
     }
-
-    // Render all dropdowns as picker/select lists
     return (
-      <View style={[styles.pickerContainer, hasError && styles.inputError]}>
-        <Picker
-          selectedValue={value || ''}
-          onValueChange={(itemValue: any) => onChange(fieldName, itemValue)}
-          style={styles.picker}
-        >
-          <Picker.Item 
-            label={field.placeholder || `Select ${field.field_label}`} 
-            value="" 
-            color="#95a5a6"
-          />
-          {field.dropdownOptions
-            .filter(option => option.is_active !== false) // Include undefined values
-            .map((option) => (
-              <Picker.Item
-                key={option.option_value}
-                label={option.option_label}
-                value={option.option_value}
-              />
-            ))}
-        </Picker>
-      </View>
+      <ModalDropdown
+        value={value}
+        onChange={onChange}
+        field={field}
+        hasError={hasError}
+        onBlur={onBlur}
+        dataAttributes={dataAttributes}
+      />
     );
   };
 
@@ -308,24 +393,43 @@ export default function DynamicFieldRenderer({
   };
 
   const renderComboboxField = () => {
-    const [showDropdown, setShowDropdown] = useState(false);
-    const [inputText, setInputText] = useState(value || '');
-
     if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
-      // Fallback to text input if no options available
       return renderTextField();
     }
 
-    const handleSelectOption = (optionValue: string) => {
-      setInputText(optionValue);
-      onChange(fieldName, optionValue);
-      setShowDropdown(false);
-      onBlur?.();
-    };
+    const [inputText, setInputText] = useState(value || '');
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [filteredOptions, setFilteredOptions] = useState(field.dropdownOptions);
+    const selectingOption = useRef(false);
 
     const handleTextChange = (text: string) => {
       setInputText(text);
       onChange(fieldName, text);
+      
+      // Filter options based on input
+      const filtered = field.dropdownOptions?.filter((option: DropdownOption) =>
+        option.option_label.toLowerCase().includes(text.toLowerCase())
+      ) || [];
+      setFilteredOptions(filtered);
+      setShowSuggestions(text.length > 0 && filtered.length > 0);
+    };
+
+    const handleSelectSuggestion = (optionValue: string) => {
+      const selectedOption = field.dropdownOptions?.find((option: DropdownOption) => option.option_value === optionValue);
+      const displayText = selectedOption ? selectedOption.option_label : optionValue;
+      setInputText(displayText);
+      onChange(fieldName, optionValue);
+      setShowSuggestions(false);
+    };
+
+    // Only close suggestions on blur if not selecting an option
+    const handleBlur = () => {
+      setTimeout(() => {
+        if (!selectingOption.current) {
+          setShowSuggestions(false);
+        }
+        onBlur?.();
+      }, 100);
     };
 
     return (
@@ -335,95 +439,12 @@ export default function DynamicFieldRenderer({
             style={[styles.input, hasError && styles.inputError]}
             value={inputText}
             onChangeText={handleTextChange}
-            onFocus={() => setShowDropdown(true)}
-            onBlur={() => {
-              setTimeout(() => setShowDropdown(false), 200); // Delay to allow option selection
-              onBlur?.();
+            onFocus={() => {
+              if (inputText.length > 0) {
+                setShowSuggestions(true);
+              }
             }}
-            placeholder={field.placeholder || field.field_label}
-            placeholderTextColor="#95a5a6"
-            {...(dataAttributes || {})}
-          />
-          <TouchableOpacity
-            style={styles.dropdownToggle}
-            onPress={() => setShowDropdown(!showDropdown)}
-          >
-            <MaterialCommunityIcons 
-              name={showDropdown ? "chevron-up" : "chevron-down"} 
-              size={24} 
-              color="#4a90e2" 
-            />
-          </TouchableOpacity>
-        </View>
-        
-        {showDropdown && (
-          <View style={styles.dropdownList}>
-            <FlatList
-              data={field.dropdownOptions.filter(option => option.is_active !== false)}
-              keyExtractor={(item) => item.option_value}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.dropdownItem}
-                  onPress={() => handleSelectOption(item.option_value)}
-                >
-                  <Text style={styles.dropdownItemText}>{item.option_label}</Text>
-                </TouchableOpacity>
-              )}
-              style={styles.dropdownContent}
-              nestedScrollEnabled={true}
-            />
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderAutoSuggestField = () => {
-    const [showSuggestions, setShowSuggestions] = useState(false);
-    const [inputText, setInputText] = useState(value || '');
-    const [filteredOptions, setFilteredOptions] = useState<DropdownOption[]>([]);
-
-    useEffect(() => {
-      if (!field.dropdownOptions || inputText.length === 0) {
-        setFilteredOptions([]);
-        return;
-      }
-
-      const filtered = field.dropdownOptions
-        .filter(option => 
-          option.is_active !== false && 
-          option.option_label.toLowerCase().includes(inputText.toLowerCase())
-        )
-        .slice(0, 5); // Limit to 5 suggestions
-
-      setFilteredOptions(filtered);
-    }, [inputText, field.dropdownOptions]);
-
-    const handleTextChange = (text: string) => {
-      setInputText(text);
-      onChange(fieldName, text);
-      setShowSuggestions(text.length > 0 && filteredOptions.length > 0);
-    };
-
-    const handleSelectSuggestion = (optionValue: string) => {
-      setInputText(optionValue);
-      onChange(fieldName, optionValue);
-      setShowSuggestions(false);
-      onBlur?.();
-    };
-
-    return (
-      <View style={styles.autoSuggestContainer}>
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={[styles.input, hasError && styles.inputError]}
-            value={inputText}
-            onChangeText={handleTextChange}
-            onFocus={() => setShowSuggestions(inputText.length > 0 && filteredOptions.length > 0)}
-            onBlur={() => {
-              setTimeout(() => setShowSuggestions(false), 200); // Delay to allow suggestion selection
-              onBlur?.();
-            }}
+            onBlur={handleBlur}
             placeholder={field.placeholder || field.field_label}
             placeholderTextColor="#95a5a6"
             {...(dataAttributes || {})}
@@ -437,27 +458,30 @@ export default function DynamicFieldRenderer({
             </TouchableOpacity>
           )}
         </View>
-        
-        {showSuggestions && filteredOptions.length > 0 && (
-          <View style={styles.suggestionsList}>
-            <FlatList
-              data={filteredOptions}
-              keyExtractor={(item) => item.option_value}
-              renderItem={({ item }) => (
+        {showSuggestions && (
+          <View style={styles.suggestionsContainer}>
+            <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
+              {filteredOptions.map((item: DropdownOption) => (
                 <TouchableOpacity
+                  key={item.option_value}
                   style={styles.suggestionItem}
                   onPress={() => handleSelectSuggestion(item.option_value)}
+                  onPressIn={() => { selectingOption.current = true; }}
+                  onPressOut={() => { setTimeout(() => { selectingOption.current = false; }, 150); }}
                 >
-                  <Text style={styles.suggestionItemText}>{item.option_label}</Text>
+                  <Text style={styles.suggestionText}>{item.option_label}</Text>
                 </TouchableOpacity>
-              )}
-              style={styles.suggestionsContent}
-              nestedScrollEnabled={true}
-            />
+              ))}
+            </ScrollView>
           </View>
         )}
       </View>
     );
+  };
+
+  const renderAutoSuggestField = () => {
+    // Auto-suggest is similar to combobox but with different behavior
+    return renderComboboxField();
   };
 
   const renderPhotoField = () => {
@@ -637,9 +661,25 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 1000,
   },
-  dropdownToggle: {
-    marginLeft: 8,
-    padding: 8,
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    minHeight: 48,
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: '#2c3e50',
+    flex: 1,
+  },
+  dropdownButtonPlaceholder: {
+    color: '#95a5a6',
   },
   dropdownList: {
     position: 'absolute',
@@ -650,19 +690,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,
-    borderTopWidth: 0,
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
+    marginTop: 2,
     maxHeight: 200,
-    zIndex: 1001,
-    elevation: 5, // Android shadow
-    shadowColor: '#000', // iOS shadow
+    elevation: 10,
+    zIndex: 9999,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
-  },
-  dropdownContent: {
-    maxHeight: 200,
   },
   dropdownItem: {
     paddingHorizontal: 12,
@@ -670,9 +705,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
+  dropdownItemSelected: {
+    backgroundColor: '#f8f9fa',
+  },
   dropdownItemText: {
     fontSize: 16,
     color: '#2c3e50',
+  },
+  dropdownItemTextSelected: {
+    color: '#4a90e2',
+    fontWeight: '600',
   },
   // Auto-suggest styles
   autoSuggestContainer: {
@@ -786,5 +828,93 @@ const styles = StyleSheet.create({
     color: '#27ae60',
     marginLeft: 8,
     fontWeight: '500',
+  },
+  // Modal dropdown styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '100%',
+    maxHeight: '80%',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalScrollView: {
+    maxHeight: 400,
+  },
+  modalDropdownContainer: {
+    position: 'relative',
+    zIndex: 1000,
+  },
+  modalDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalDropdownItemSelected: {
+    backgroundColor: '#f8f9fa',
+  },
+  modalDropdownItemText: {
+    fontSize: 16,
+    color: '#2c3e50',
+    flex: 1,
+  },
+  modalDropdownItemTextSelected: {
+    color: '#4a90e2',
+    fontWeight: '600',
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    borderTopWidth: 0,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    maxHeight: 150,
+    zIndex: 1001,
+    elevation: 5, // Android shadow
+    shadowColor: '#000', // iOS shadow
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  suggestionText: {
+    fontSize: 14,
+    color: '#2c3e50',
   },
 }); 

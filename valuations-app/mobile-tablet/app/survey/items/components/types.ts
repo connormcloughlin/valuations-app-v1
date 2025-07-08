@@ -21,6 +21,8 @@ export interface Item {
   photo?: string;
   model?: string;
   selection?: string;
+  selectedanswer?: string;
+  commaseparatedlist?: string;
 }
 
 // Define the API response type

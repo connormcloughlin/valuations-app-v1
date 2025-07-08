@@ -1660,20 +1660,10 @@ export default function PredefinedItemsList({
 
   // Helper function to render dynamic fields based on configuration respecting display_order
   const renderDynamicFields = useCallback((itemId: string, editData: any) => {
-    console.log('🎨 renderDynamicFields called:', {
-      itemId,
-      dynamicFieldConfigLength: dynamicFieldConfig?.length || 0,
-      useCustomFields,
-      hasEditData: !!editData && Object.keys(editData).length > 0
-    });
-    
     if (!dynamicFieldConfig || dynamicFieldConfig.length === 0) {
-      console.log('🎨 Falling back to legacy fields - no dynamic config available');
       // Fall back to legacy hardcoded fields
       return renderLegacyFields(itemId, editData);
     }
-    
-    console.log('🎨 Using dynamic fields - config available:', dynamicFieldConfig.length, 'fields');
 
     const item = items.find(i => String(i.id) === itemId);
     if (!item) return null;
@@ -1682,15 +1672,11 @@ export default function PredefinedItemsList({
     
     // Determine which fields are being used for grouping and should be excluded from editing
     const getGroupingFields = (): string[] => {
-      console.log('🔧 DEBUG getGroupingFields - groupingStrategy:', JSON.stringify(groupingStrategy, null, 2));
-      
       if (!groupingStrategy) {
-        console.log('🔧 No groupingStrategy found, no fields will be excluded');
         return []; // No exclusions when no grouping strategy is configured
       }
       
       const effectiveStrategy = groupingStrategy.strategy_type;
-      console.log('🔧 Effective grouping strategy:', effectiveStrategy);
       
       const fields: string[] = [];
       
@@ -1722,55 +1708,98 @@ export default function PredefinedItemsList({
         if (secondaryFieldMap[parsedConfig.secondary_group]) fields.push(secondaryFieldMap[parsedConfig.secondary_group]);
       } else {
         // Single-tier grouping
-        console.log('🔧 Using single-tier grouping strategy:', effectiveStrategy);
         switch (effectiveStrategy) {
           case 'by_type':
-            console.log('🔧 Adding "type" field to exclusion list');
             fields.push('type'); // ItemPrompt field
             break;
           case 'by_location':
-            console.log('🔧 Adding "room" field to exclusion list');
             fields.push('room'); // Location field
             break;
           case 'by_brand':
-            console.log('🔧 Adding "model" field to exclusion list');
             fields.push('model'); // Model field
             break;
           case 'by_value_range':
-            console.log('🔧 Adding "price" field to exclusion list');
             fields.push('price'); // Price field
             break;
           default:
-            console.log('🔧 Unknown grouping strategy, no fields excluded');
+            // Unknown grouping strategy, no fields excluded
+            break;
         }
       }
       
-      console.log('🔧 Final exclusion fields array:', fields);
       return fields;
     };
     
     const groupingFields = getGroupingFields();
-    console.log('🔧 Grouping fields to exclude from editing:', groupingFields);
-    console.log('🔧 Available dynamic fields BEFORE filtering:');
-    dynamicFieldConfig.forEach((field, index) => {
-      console.log(`  [${index}] item_fields: "${field.item_fields}", field_label: "${field.field_label}", display_on_ui: ${field.display_on_ui}`);
-    });
 
     // Get visible fields, exclude grouping fields, and sort by display_order
     const visibleFieldsBeforeGroupingFilter = dynamicFieldConfig
       .filter(field => field.display_on_ui === 1);
     
-    console.log('🔧 Visible fields BEFORE grouping filter:', visibleFieldsBeforeGroupingFilter.map(f => f.item_fields));
-    
     const visibleFields = visibleFieldsBeforeGroupingFilter
       .filter(field => !groupingFields.includes(field.item_fields)) // Exclude grouping fields
       .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     
-    console.log('🔧 Visible fields AFTER grouping filter:', visibleFields.map(f => f.item_fields));
-    console.log('🔧 Dynamic fields render order (excluding grouping):', visibleFields.map(f => `${f.item_fields}(${f.display_order})`).join(', '));
+    // Debug: Check items for commaseparatedlist values
+    const itemsWithCommaList = items.filter(item => item.commaseparatedlist);
+    console.log('🔍 Items with commaseparatedlist:', itemsWithCommaList.length);
+    if (itemsWithCommaList.length > 0) {
+      console.log('🔍 Sample commaseparatedlist values:', itemsWithCommaList.slice(0, 3).map(item => ({
+        id: item.id,
+        commaseparatedlist: item.commaseparatedlist,
+        type: typeof item.commaseparatedlist,
+        length: item.commaseparatedlist?.length || 0
+      })));
+    }
 
     const renderField = (field: any) => {
       const fieldName = field.item_fields;
+      
+      // Process commaseparatedlist for selectedanswer field
+      if (fieldName === 'selectedanswer' && item.commaseparatedlist) {
+        console.log('🎯 Processing commaseparatedlist for selectedanswer field:', item.commaseparatedlist);
+        
+        // Parse the comma-separated list and create dropdown options
+        const commaSeparatedOptions = item.commaseparatedlist.split(',').map(option => option.trim()).filter(option => option.length > 0);
+        
+        if (commaSeparatedOptions.length > 0) {
+          // Create dropdown options from the comma-separated list
+          const dropdownOptions = commaSeparatedOptions.map((option, index) => ({
+            option_value: option,
+            option_label: option,
+            is_active: true
+          }));
+          
+          // Create a new field configuration with the dropdown options
+          const enhancedField = {
+            ...field,
+            dropdownOptions: dropdownOptions,
+            field_type: 'dropdown' // Use dropdown to match InlineDropdown
+          };
+          
+          console.log('🎯 Enhanced selectedanswer field with dropdown options:', {
+            originalFieldType: field.field_type,
+            enhancedFieldType: enhancedField.field_type,
+            dropdownOptionsCount: enhancedField.dropdownOptions.length,
+            dropdownOptions: enhancedField.dropdownOptions
+          });
+          
+          // Use the enhanced field for rendering
+          field = enhancedField;
+        }
+      }
+      
+      // Create a local copy of the field for rendering
+      let renderField = { ...field };
+      
+      // Debug logging for selectedanswer field
+      if (fieldName === 'selectedanswer') {
+        console.log('🎯 Processing selectedanswer field for item:', item.id, {
+          hasCommaseparatedlist: !!item.commaseparatedlist,
+          commaseparatedlistValue: item.commaseparatedlist,
+          dropdownOptionsCount: field.dropdownOptions?.length || 0
+        });
+      }
       
       // Get current value with proper fallback to original item values
       const getFieldValue = (fieldName: string) => {
@@ -1785,12 +1814,23 @@ export default function PredefinedItemsList({
           case 'room': return item.room || '';
           case 'notes': return item.notes || '';
           case 'type': return item.type || '';
+          case 'selectedanswer': return item.selectedanswer || '';
           default: return '';
         }
       };
       
       const currentValue = getFieldValue(fieldName);
       const fieldError = itemErrors.find(e => e.fieldName === fieldName);
+      
+      // Debug logging for selectedanswer field rendering
+      if (fieldName === 'selectedanswer') {
+        console.log('🎯 Rendering selectedanswer field with:', {
+          fieldType: field.field_type,
+          currentValue,
+          hasDropdownOptions: !!field.dropdownOptions && field.dropdownOptions.length > 0,
+          dropdownOptionsCount: field.dropdownOptions?.length || 0
+        });
+      }
       
       return (
         <View key={fieldName} style={[
@@ -1799,7 +1839,7 @@ export default function PredefinedItemsList({
         ]}>
           <Text style={styles.detailLabel}>{field.field_label}:</Text>
           <DynamicFieldRenderer
-            field={field}
+            field={renderField}
             value={currentValue}
             onChange={(fieldName, value) => handleEdit(itemId, fieldName, value)}
             validationError={fieldError}
