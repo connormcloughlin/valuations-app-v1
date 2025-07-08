@@ -2164,140 +2164,17 @@ export default function PredefinedItemsList({
           persistentScrollbar={true}
         >
           {groupedItems === null ? (
-            // Render items without grouping when no strategy is provided
-            items.map((item: Item, index: number) => {
-              const itemId = String(item.id);
-              const isAutoSaved = autoSavedItems[itemId];
-              
-              // Get current field values (edited or original)
-              const type = editItems[itemId]?.type ?? (item.type || '');
-              const quantity = editItems[itemId]?.quantity ?? String(item.quantity || '1');
-              const price = editItems[itemId]?.price ?? String(item.price || '');
-              const description = editItems[itemId]?.description ?? (item.description || '');
-              const model = editItems[itemId]?.model ?? (item.model || '');
-              const room = editItems[itemId]?.room ?? (item.room || '');
-              const notes = editItems[itemId]?.notes ?? (item.notes || '');
-              
-              // Check if this is a new custom item (starts with 'custom-new-' or 'duplicate-')
-              const isNewItem = item.id.startsWith('custom-new-') || item.id.startsWith('duplicate-');
-              
-              // Check if item has meaningful data captured
-              const hasData = hasDataCaptured(item);
-              
-              return (
-                <View key={item.id} style={styles.displayOnlyItemContainer}>
-                  {/* Display-only item row - no accordion */}
-                  <View 
-                    style={[
-                      styles.displayOnlyItem,
-                      index % 2 === 1 ? styles.displayOnlyItemAlt : null,
-                      isAutoSaved ? styles.displayOnlyItemAutoSaved : null
-                    ]}
-                  >
-                    {/* Item Type Display */}
-                    <View style={styles.itemTypeContainer}>
-                      <Text style={styles.itemTypeText} numberOfLines={1} ellipsizeMode="tail">
-                        {type || 'No Type Specified'}
-                      </Text>
-                    </View>
-                    
-                    {/* Item Details */}
-                    <View style={styles.itemDetailsContainer}>
-                      {hasData && (
-                        <Text style={styles.itemValueText}>
-                          {quantity}x @ R{price}
-                        </Text>
-                      )}
-                      {description && (
-                        <Text style={styles.itemDescriptionText} numberOfLines={2} ellipsizeMode="tail">
-                          {description}
-                        </Text>
-                      )}
-                    </View>
-                    
-                    {/* Indicators container */}
-                    <View style={styles.indicatorsContainer}>
-                      {/* Data capture indicator */}
-                      {hasData && (
-                        <MaterialCommunityIcons 
-                          name="database-check" 
-                          size={16} 
-                          color="#2196F3" 
-                          style={{ marginRight: 4 }} 
-                        />
-                      )}
-                      
-                      {/* Auto-save indicator */}
-                      {isAutoSaved && (
-                        <MaterialCommunityIcons 
-                          name="check-circle" 
-                          size={16} 
-                          color="#4CAF50" 
-                          style={{ marginRight: 4 }} 
-                        />
-                      )}
-                      
-                      {/* Delete button - show for items with data or new items */}
-                      {(hasData || isNewItem) && (
-                        <TouchableOpacity
-                          style={styles.deleteIconButton}
-                          onPress={() => deleteItem(item)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <MaterialCommunityIcons 
-                            name="delete-outline" 
-                            size={16} 
-                            color="#e74c3c" 
-                          />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-
-                  {/* Always show editable fields below the display row */}
-                  <View style={styles.displayOnlyFieldsContainer}>
-                    <View style={styles.detailsContainer}>
-                      {/* Dynamic Item Details Grid */}
-                      <View style={styles.detailsGrid}>
-                        {isDynamicFieldConfigLoading ? (
-                          <View style={styles.fieldLoadingContainer}>
-                            <ActivityIndicator size="small" color="#4a90e2" />
-                            <Text style={styles.fieldLoadingText}>Loading fields...</Text>
-                          </View>
-                        ) : (
-                          renderDynamicFields(itemId, editItems[itemId] || {})
-                        )}
-                      </View>
-
-                      {/* Action buttons */}
-                      <View style={styles.actionButtonsContainer}>
-                        {isNewItem && (
-                          <TouchableOpacity
-                            style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
-                            onPress={() => autoSaveItem(itemId)}
-                            disabled={!type}
-                          >
-                            <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
-                            <Text style={styles.saveButtonText}>Save New Item</Text>
-                          </TouchableOpacity>
-                        )}
-                        
-                        {/* Add Another button - only show for saved items */}
-                        {!isNewItem && hasData && (
-                          <TouchableOpacity
-                            style={styles.duplicateButton}
-                            onPress={() => duplicateItem(item)}
-                          >
-                            <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
-                            <Text style={styles.duplicateButtonText}>Add Another {type || item.type}</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              );
-            })
+            // Render all fields for all items in a single flat form (no per-item container)
+            <View style={{ width: '100%' }}>
+              {items.map((item, itemIndex) => {
+                const itemId = String(item.id);
+                return (
+                  <React.Fragment key={itemId}>
+                    {renderDynamicFields(itemId, editItems[itemId] || {})}
+                  </React.Fragment>
+                );
+              })}
+            </View>
           ) : isNestedGrouping(groupedItems) ? (
             // Render nested (2-tier) grouping
             Object.entries(groupedItems).sort(([a, aGroups], [b, bGroups]) => {
