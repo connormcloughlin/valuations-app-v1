@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import AppHeader from './AppHeader';
 import BottomNavigation, { TabConfig } from './BottomNavigation';
+import { appLayoutStyles } from '../../app/GlobalStyles';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -25,7 +26,7 @@ export default function AppLayout({
   onLogout
 }: AppLayoutProps) {
   return (
-    <View style={styles.container}>
+    <View style={appLayoutStyles.container}>
       {showHeader && (
         <AppHeader 
           title={title}
@@ -34,7 +35,7 @@ export default function AppLayout({
         />
       )}
       
-      <View style={styles.content}>
+      <View style={appLayoutStyles.content}>
         {children}
       </View>
       
@@ -46,14 +47,4 @@ export default function AppLayout({
       )}
     </View>
   );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f6fa',
-  },
-  content: {
-    flex: 1,
-  },
-}); 
+} 

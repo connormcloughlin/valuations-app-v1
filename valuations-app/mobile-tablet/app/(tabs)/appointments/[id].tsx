@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, ScrollView, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { Card, Button, Divider, List } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { logNavigation } from '../../../utils/logger';
 import api from '../../../api';
 import prefetchService from '../../../services/prefetchService';
 import { PrefetchProgressIndicator } from '../../../components/PrefetchProgressIndicator';
+import { appointmentDetailsStyles } from '../../GlobalStyles';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../../types/api';
@@ -191,9 +192,9 @@ export default function AppointmentDetails() {
             headerTitleStyle: { fontWeight: '600' }
           }}
         />
-        <View style={[styles.container, styles.centered]}>
+        <View style={[appointmentDetailsStyles.container, appointmentDetailsStyles.centered]}>
           <ActivityIndicator size="large" color="#4a90e2" />
-          <Text style={styles.loadingText}>Loading appointment details...</Text>
+          <Text style={appointmentDetailsStyles.loadingText}>Loading appointment details...</Text>
         </View>
       </>
     );
@@ -208,16 +209,16 @@ export default function AppointmentDetails() {
             headerTitleStyle: { fontWeight: '600' }
           }}
         />
-        <View style={[styles.container, styles.centered]}>
+        <View style={[appointmentDetailsStyles.container, appointmentDetailsStyles.centered]}>
           <MaterialCommunityIcons name="alert-circle-outline" size={64} color="#e74c3c" />
-          <Text style={styles.errorText}>{error || 'Appointment not found'}</Text>
-          <Button mode="contained" style={styles.actionButton} onPress={() => router.back()}>
+          <Text style={appointmentDetailsStyles.errorText}>{error || 'Appointment not found'}</Text>
+          <Button mode="contained" style={appointmentDetailsStyles.actionButton} onPress={() => router.back()}>
             Go Back
           </Button>
           {error && (
             <Button 
               mode="outlined" 
-              style={styles.retryButton} 
+              style={appointmentDetailsStyles.retryButton} 
               onPress={fetchAppointmentDetails}
             >
               Retry
@@ -240,15 +241,15 @@ export default function AppointmentDetails() {
         }}
       />
       
-      <View style={styles.container}>
-        <ScrollView style={styles.scrollView}>
+      <View style={appointmentDetailsStyles.container}>
+        <ScrollView style={appointmentDetailsStyles.scrollView}>
           {/* Prefetch Progress Indicator */}
           <PrefetchProgressIndicator />
 
           {/* Client Information and Appointment Details in a row */}
-          <View style={styles.rowContainer}>
+          <View style={appointmentDetailsStyles.rowContainer}>
             {/* Client Information */}
-            <Card style={[styles.card, styles.halfWidth]}>
+            <Card style={[appointmentDetailsStyles.card, appointmentDetailsStyles.halfWidth]}>
               <Card.Title 
                 title="Client Information" 
                 left={(props) => <MaterialCommunityIcons name="account" {...props} size={24} color="#4a90e2" />}
@@ -275,7 +276,7 @@ export default function AppointmentDetails() {
             </Card>
             
             {/* Appointment Details */}
-            <Card style={[styles.card, styles.halfWidth]}>
+            <Card style={[appointmentDetailsStyles.card, appointmentDetailsStyles.halfWidth]}>
               <Card.Title 
                 title="Appointment Details" 
                 left={(props) => <MaterialCommunityIcons name="calendar-clock" {...props} size={24} color="#4a90e2" />}
@@ -315,33 +316,33 @@ export default function AppointmentDetails() {
           </View>
           
           {/* Location */}
-          <View style={styles.mapContainer}>
-            <Text style={styles.sectionTitle}>Location</Text>
-            <Card style={styles.mapCard}>
-              <Card.Content style={styles.mapContent}>
+          <View style={appointmentDetailsStyles.mapContainer}>
+            <Text style={appointmentDetailsStyles.sectionTitle}>Location</Text>
+            <Card style={appointmentDetailsStyles.mapCard}>
+              <Card.Content style={appointmentDetailsStyles.mapContent}>
                 <Image 
                   source={{ uri: 'https://maps.googleapis.com/maps/api/staticmap?center=' + 
                     encodeURIComponent(appointment.address) + 
                     '&zoom=14&size=600x300&maptype=roadmap&markers=color:red%7C' + 
                     encodeURIComponent(appointment.address) + 
                     '&key=YOUR_API_KEY' }}
-                  style={styles.mapImage}
+                  style={appointmentDetailsStyles.mapImage}
                   resizeMode="cover"
                 />
-                <TouchableOpacity style={styles.mapButton}>
+                <TouchableOpacity style={appointmentDetailsStyles.mapButton}>
                   <MaterialCommunityIcons name="directions" size={20} color="#fff" />
-                  <Text style={styles.mapButtonText}>Get Directions</Text>
+                  <Text style={appointmentDetailsStyles.mapButtonText}>Get Directions</Text>
                 </TouchableOpacity>
               </Card.Content>
             </Card>
           </View>
         </ScrollView>
         
-        <View style={styles.buttonContainer}>
-          <View style={styles.buttonRow}>
+        <View style={appointmentDetailsStyles.buttonContainer}>
+          <View style={appointmentDetailsStyles.buttonRow}>
             <Button
               mode="outlined"
-              style={styles.rescheduleButton}
+              style={appointmentDetailsStyles.rescheduleButton}
               icon="calendar-clock"
               onPress={() => router.back()}
             >
@@ -349,7 +350,7 @@ export default function AppointmentDetails() {
             </Button>
             <Button
               mode="contained"
-              style={styles.startButton}
+              style={appointmentDetailsStyles.startButton}
               icon="clipboard-edit-outline"
               onPress={startSurvey}
             >
@@ -362,114 +363,3 @@ export default function AppointmentDetails() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f6fa',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  card: {
-    margin: 16,
-    marginBottom: 8,
-    borderRadius: 8,
-    elevation: 2,
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#7f8c8d',
-  },
-  errorText: {
-    color: '#e74c3c',
-    marginTop: 10,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 10,
-  },
-  mapContainer: {
-    padding: 16,
-    paddingTop: 0,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-  mapCard: {
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  mapContent: {
-    padding: 0,
-  },
-  mapImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    backgroundColor: '#e0e0e0',
-  },
-  mapButton: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
-    backgroundColor: '#4a90e2',
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  mapButtonText: {
-    color: '#fff',
-    marginLeft: 8,
-    fontWeight: '600',
-  },
-  buttonContainer: {
-    flexDirection: 'column',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  rescheduleButton: {
-    flex: 1,
-    marginRight: 8,
-    borderColor: '#3498db',
-  },
-  startButton: {
-    flex: 1,
-    backgroundColor: '#4a90e2',
-  },
-  actionButton: {
-    marginTop: 16,
-    backgroundColor: '#4a90e2',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-  },
-  prefetchContainer: {
-    padding: 16,
-    paddingBottom: 0,
-  },
-  rowContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    paddingBottom: 8,
-  },
-  halfWidth: {
-    flex: 1,
-    margin: 0,
-    marginHorizontal: 4,
-  },
-}); 

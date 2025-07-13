@@ -5,6 +5,7 @@ import { Card, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { enhancedApiClient } from '../../api/enhancedClient';
+import { statsCardsStyles } from '../../app/GlobalStyles';
 
 interface StatsData {
   scheduled: number;
@@ -214,35 +215,35 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
   ) => (
     <Card 
       key={cardType}
-      style={styles.card} 
+      style={statsCardsStyles.card} 
       onPress={() => handleCardPress(cardType)}
     >
       <Card.Content>
         <MaterialCommunityIcons name={icon as any} size={32} color={color} />
-        <Text style={styles.cardTitle}>{title}</Text>
-        <Text style={styles.cardCount}>{count}</Text>
+        <Text style={statsCardsStyles.cardTitle}>{title}</Text>
+        <Text style={statsCardsStyles.cardCount}>{count}</Text>
       </Card.Content>
     </Card>
   );
 
   return (
-    <View style={styles.cardsContainer}>
+    <View style={statsCardsStyles.cardsContainer}>
       {renderCard('Booked', loading ? '...' : stats.scheduled, 'calendar-clock', '#4a90e2', 'scheduled')}
       {renderCard('In Progress', loading ? '...' : stats.inProgress, 'clipboard-edit-outline', '#f39c12', 'inProgress')}
       {renderCard('Completed', loading ? '...' : stats.completed, 'clipboard-check', '#2ecc71', 'completed')}
       {renderCard('Finalise', loading ? '...' : stats.finalise, 'clipboard-check-outline', '#9b59b6', 'finalise')}
       
-      <Card style={styles.card} onPress={() => handleCardPress('sync')}>
+      <Card style={statsCardsStyles.card} onPress={() => handleCardPress('sync')}>
         <Card.Content>
           <MaterialCommunityIcons 
             name="cloud-sync" 
             size={32} 
             color={stats.pendingSync > 0 ? "#f39c12" : "#95a5a6"} 
           />
-          <Text style={styles.cardTitle}>Pending Sync</Text>
+          <Text style={statsCardsStyles.cardTitle}>Pending Sync</Text>
           <Text style={[
-            styles.cardCount,
-            stats.pendingSync > 0 && styles.pendingCount
+            statsCardsStyles.cardCount,
+            stats.pendingSync > 0 && statsCardsStyles.pendingCount
           ]}>
             {loading ? '...' : stats.pendingSync}
           </Text>
@@ -251,59 +252,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
 
       {/* Debug card - only show in development */}
       {__DEV__ && (
-        <Card style={[styles.card, styles.debugCard]} onPress={() => {
+        <Card style={[statsCardsStyles.card, statsCardsStyles.debugCard]} onPress={() => {
           console.log('Debug card pressed - opening development tools');
           alert('Debug tools available below in Development Tools section');
         }}>
           <Card.Content>
             <MaterialCommunityIcons name="bug" size={32} color="#fff" />
-            <Text style={[styles.cardTitle, { color: '#fff' }]}>Debug DB</Text>
-            <Text style={styles.debugStatus}>Dev Only</Text>
+            <Text style={[statsCardsStyles.cardTitle, { color: '#fff' }]}>Debug DB</Text>
+            <Text style={statsCardsStyles.debugStatus}>Dev Only</Text>
           </Card.Content>
         </Card>
       )}
     </View>
   );
-};
-
-const styles = StyleSheet.create({
-  cardsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 10,
-    backgroundColor: 'transparent',
-  },
-  card: {
-    width: '45%',
-    margin: '2.5%',
-    borderRadius: 12,
-    elevation: 2,
-  },
-  cardTitle: {
-    fontSize: 14,
-    color: '#34495e',
-    marginTop: 10,
-  },
-  cardCount: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 5,
-  },
-  pendingCount: {
-    color: '#f39c12',
-  },
-  syncStatus: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 5,
-  },
-  debugCard: {
-    backgroundColor: '#e74c3c',
-  },
-  debugStatus: {
-    fontSize: 14,
-    color: '#fff',
-    marginTop: 5,
-  },
-}); 
+}; 

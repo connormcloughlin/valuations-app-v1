@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
+import { appHeaderStyles } from '../../app/GlobalStyles';
 
 interface AppHeaderProps {
   title?: string;
@@ -34,62 +35,18 @@ export default function AppHeader({
   };
 
   return (
-    <View style={[styles.header, { paddingTop: insets.top }]}>
-      <View style={styles.headerLeft}>
-        <Text style={styles.headerTitle}>{title}</Text>
+    <View style={[appHeaderStyles.header, { paddingTop: insets.top }]}>
+      <View style={appHeaderStyles.headerLeft}>
+        <Text style={appHeaderStyles.headerTitle}>{title}</Text>
       </View>
       {showLogout && (
-        <View style={styles.headerRight}>
-          <Text style={styles.userName}>{user?.name || 'User'}</Text>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+        <View style={appHeaderStyles.headerRight}>
+          <Text style={appHeaderStyles.userName}>{user?.name || 'User'}</Text>
+          <TouchableOpacity onPress={handleLogout} style={appHeaderStyles.logoutButton}>
             <MaterialCommunityIcons name="logout" size={24} color="#2c3e50" />
           </TouchableOpacity>
         </View>
       )}
     </View>
   );
-}
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  headerLeft: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  userName: {
-    fontSize: 16,
-    color: '#2c3e50',
-    marginRight: 12,
-  },
-  logoutButton: {
-    padding: 4,
-  },
-}); 
+} 

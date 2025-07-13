@@ -2,6 +2,9 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Button } from 'react-native-paper';
 
+// Import GlobalStyles constants
+import { colors, spacing, borderRadius } from '../../GlobalStyles';
+
 interface SurveyActionsProps {
   progress: number;
   onContinueSurvey: () => void;
@@ -34,18 +37,18 @@ export default function SurveyActions({ progress, onContinueSurvey, onFinishSurv
 const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: spacing.lg,
+    backgroundColor: colors.white,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: colors.borderLight,
   },
   continueButton: {
     flex: 1,
-    marginRight: 8,
-    borderColor: '#f39c12',
+    marginRight: spacing.sm,
+    borderColor: colors.warning,
   },
   finishButton: {
     flex: 1,
-    backgroundColor: '#27ae60',
+    backgroundColor: colors.success,
   },
 }); 

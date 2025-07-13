@@ -9,6 +9,9 @@ import Animated, {
   interpolate
 } from 'react-native-reanimated';
 
+// Import GlobalStyles constants
+import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
+
 interface SurveyDetailsProps {
   client: string;
   orderNumber: string;
@@ -80,7 +83,7 @@ export default function SurveyDetails({
           <MaterialCommunityIcons 
             name="chevron-down" 
             size={24} 
-            color="#2c3e50" 
+            color={colors.textPrimary} 
           />
         </Animated.View>
       </TouchableOpacity>
@@ -122,39 +125,39 @@ export default function SurveyDetails({
 
 const styles = StyleSheet.create({
   sectionContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   headerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    marginBottom: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: typography.xl,
     fontWeight: '600',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     flex: 1,
   },
   detailsCard: {
-    borderRadius: 8,
-    marginTop: 4,
+    borderRadius: borderRadius.md,
+    marginTop: spacing.xs,
   },
   detailRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   detailLabel: {
     width: 120,
-    fontSize: 14,
-    color: '#7f8c8d',
+    fontSize: typography.sm,
+    color: colors.textSecondary,
   },
   detailValue: {
     flex: 1,
-    fontSize: 14,
-    color: '#2c3e50',
+    fontSize: typography.sm,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
 }); 

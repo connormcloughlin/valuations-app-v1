@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Card, Divider, Button, TextInput as PaperTextInput, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { PredefinedItemsListProps, Item } from './types';
@@ -9,6 +9,8 @@ import PhotoGalleryModal from './PhotoGalleryModal';
 import DynamicFieldRenderer from './DynamicFieldRenderer';
 import { ValidationService } from '../../../../services/validationService';
 import { FieldConfiguration, FieldValidationError } from '../../../../types/dynamicUI';
+// Import centralized styles
+import { predefinedItemsListStyles } from '../../../GlobalStyles';
 // Import required services and utilities
 import riskAssessmentSyncService from '../../../../services/riskAssessmentSyncService';
 import mediaService from '../../../../services/mediaService';
@@ -83,9 +85,9 @@ export default function PredefinedItemsList({
   
   if (isDynamicFieldConfigLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={predefinedItemsListStyles.loadingContainer}>
         <ActivityIndicator size="large" color="#4a90e2" />
-        <Text style={styles.loadingText}>Loading field configuration...</Text>
+        <Text style={predefinedItemsListStyles.loadingText}>Loading field configuration...</Text>
       </View>
     );
   }
@@ -1637,7 +1639,7 @@ export default function PredefinedItemsList({
       
       return (
         <View key={fieldName} style={[
-          styles.dynamicFieldContainer,
+          predefinedItemsListStyles.dynamicFieldContainer,
           field.field_type === 'notes' ? { width: '100%' } : { flex: 1 }
         ]}>
           {/* When no grouping strategy, do not render field label for any field */}
@@ -1668,7 +1670,7 @@ export default function PredefinedItemsList({
             )
           ) : (
             <>
-          <Text style={styles.detailLabel}>{field.field_label}:</Text>
+          <Text style={predefinedItemsListStyles.detailLabel}>{field.field_label}:</Text>
           <DynamicFieldRenderer
                 field={renderField}
             value={currentValue}
@@ -1729,14 +1731,14 @@ export default function PredefinedItemsList({
       <>
         {/* Show type field for new custom items */}
         {isNewItem && (
-          <View style={styles.detailRow}>
-            <View style={[styles.detailItem, { flex: 2 }]}>
-              <Text style={styles.detailLabel}>Item Type (Required):</Text>
+          <View style={predefinedItemsListStyles.detailRow}>
+            <View style={[predefinedItemsListStyles.detailItem, { flex: 2 }]}>
+              <Text style={predefinedItemsListStyles.detailLabel}>Item Type (Required):</Text>
               <PaperTextInput
                 value={editData.type ?? (item.type || '')}
                 onChangeText={(value) => handleEdit(itemId, 'type', value)}
                 onBlur={() => autoSaveItem(itemId)}
-                style={[styles.editInput, { borderColor: editData.type ? '#e0e0e0' : '#f44336' }]}
+                style={[predefinedItemsListStyles.editInput, { borderColor: editData.type ? '#e0e0e0' : '#f44336' }]}
                 dense
                 placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
                 autoFocus={true}
@@ -1749,8 +1751,8 @@ export default function PredefinedItemsList({
         {fieldRows.map((rowFields, rowIndex) => (
           <View key={rowIndex} style={[
             rowFields.length === 1 && (rowFields[0].field_type === 'notes' || rowFields[0].field_type === 'textarea')
-              ? styles.notesSection
-              : styles.detailRow
+              ? predefinedItemsListStyles.notesSection
+              : predefinedItemsListStyles.detailRow
           ]}>
             {rowFields.map(field => renderField(field))}
           </View>
@@ -1842,14 +1844,14 @@ export default function PredefinedItemsList({
       <>
         {/* Show type field for new custom items (not duplicates) */}
         {isNewItem && (
-          <View style={styles.detailRow}>
-            <View style={[styles.detailItem, { flex: 2 }]}>
-              <Text style={styles.detailLabel}>Item Type (Required):</Text>
+          <View style={predefinedItemsListStyles.detailRow}>
+            <View style={[predefinedItemsListStyles.detailItem, { flex: 2 }]}>
+              <Text style={predefinedItemsListStyles.detailLabel}>Item Type (Required):</Text>
               <PaperTextInput
                 value={type}
                 onChangeText={(value) => handleEdit(itemId, 'type', value)}
                 onBlur={() => autoSaveItem(itemId)}
-                style={[styles.editInput, { borderColor: type ? '#e0e0e0' : '#f44336' }]}
+                style={[predefinedItemsListStyles.editInput, { borderColor: type ? '#e0e0e0' : '#f44336' }]}
                 dense
                 placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
                 autoFocus={true}
@@ -1858,28 +1860,28 @@ export default function PredefinedItemsList({
           </View>
         )}
         
-        <View style={styles.detailRow}>
+        <View style={predefinedItemsListStyles.detailRow}>
           {isFieldVisible('description') && (
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Description:</Text>
+            <View style={predefinedItemsListStyles.detailItem}>
+              <Text style={predefinedItemsListStyles.detailLabel}>Description:</Text>
               <PaperTextInput
                 value={description}
                 onChangeText={(value) => handleEdit(itemId, 'description', value)}
                 onBlur={() => autoSaveItem(itemId)}
-                style={styles.editInput}
+                style={predefinedItemsListStyles.editInput}
                 dense
                 placeholder="Enter description"
               />
             </View>
           )}
           {isFieldVisible('model') && (
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Model:</Text>
+            <View style={predefinedItemsListStyles.detailItem}>
+              <Text style={predefinedItemsListStyles.detailLabel}>Model:</Text>
               <PaperTextInput
                 value={model}
                 onChangeText={(value) => handleEdit(itemId, 'model', value)}
                 onBlur={() => autoSaveItem(itemId)}
-                style={styles.editInput}
+                style={predefinedItemsListStyles.editInput}
                 dense
                 placeholder="Enter model"
               />
@@ -1887,30 +1889,30 @@ export default function PredefinedItemsList({
           )}
         </View>
 
-        <View style={styles.detailRow}>
+        <View style={predefinedItemsListStyles.detailRow}>
           {isFieldVisible('quantity') && (
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Quantity:</Text>
+            <View style={predefinedItemsListStyles.detailItem}>
+              <Text style={predefinedItemsListStyles.detailLabel}>Quantity:</Text>
               <PaperTextInput
                 value={quantity}
                 onChangeText={(value) => handleEdit(itemId, 'quantity', value)}
                 onBlur={() => autoSaveItem(itemId)}
                 keyboardType="numeric"
-                style={styles.editInput}
+                style={predefinedItemsListStyles.editInput}
                 dense
                 placeholder="1"
               />
             </View>
           )}
           {isFieldVisible('price') && (
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Price:</Text>
+            <View style={predefinedItemsListStyles.detailItem}>
+              <Text style={predefinedItemsListStyles.detailLabel}>Price:</Text>
               <PaperTextInput
                 value={price}
                 onChangeText={(value) => handleEdit(itemId, 'price', value)}
                 onBlur={() => autoSaveItem(itemId)}
                 keyboardType="numeric"
-                style={styles.editInput}
+                style={predefinedItemsListStyles.editInput}
                 dense
                 placeholder="0.00"
                 left={<PaperTextInput.Affix text="R" />}
@@ -1919,26 +1921,26 @@ export default function PredefinedItemsList({
           )}
         </View>
 
-        <View style={styles.detailRow}>
+        <View style={predefinedItemsListStyles.detailRow}>
           {isFieldVisible('room') && (
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Room:</Text>
+            <View style={predefinedItemsListStyles.detailItem}>
+              <Text style={predefinedItemsListStyles.detailLabel}>Room:</Text>
               <PaperTextInput
                 value={room}
                 onChangeText={(value) => handleEdit(itemId, 'room', value)}
                 onBlur={() => autoSaveItem(itemId)}
-                style={styles.editInput}
+                style={predefinedItemsListStyles.editInput}
                 dense
                 placeholder="Enter room/location"
               />
             </View>
           )}
           {isFieldVisible('photos') && (
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Photos:</Text>
-              <View style={styles.photoSection}>
+            <View style={predefinedItemsListStyles.detailItem}>
+              <Text style={predefinedItemsListStyles.detailLabel}>Photos:</Text>
+              <View style={predefinedItemsListStyles.photoSection}>
                 <TouchableOpacity
-                  style={styles.photoButton}
+                  style={predefinedItemsListStyles.photoButton}
                   onPress={() => handleViewPhotos(itemId)}
                 >
                   <MaterialCommunityIcons 
@@ -1946,7 +1948,7 @@ export default function PredefinedItemsList({
                     size={16} 
                     color="#4a90e2" 
                   />
-                  <Text style={styles.photoButtonText}>
+                  <Text style={predefinedItemsListStyles.photoButtonText}>
                     {(itemPhotos[itemId]?.length || 0) > 0 
                       ? `${itemPhotos[itemId]?.length || 0} photo${(itemPhotos[itemId]?.length || 0) !== 1 ? 's' : ''}`
                       : 'Take Photo'
@@ -1959,13 +1961,13 @@ export default function PredefinedItemsList({
         </View>
 
         {isFieldVisible('notes') && (
-          <View style={styles.notesSection}>
-            <Text style={styles.detailLabel}>Notes:</Text>
+          <View style={predefinedItemsListStyles.notesSection}>
+            <Text style={predefinedItemsListStyles.detailLabel}>Notes:</Text>
             <PaperTextInput
               value={notes}
               onChangeText={(value) => handleEdit(itemId, 'notes', value)}
               onBlur={() => autoSaveItem(itemId)}
-              style={styles.editInputMultiline}
+              style={predefinedItemsListStyles.editInputMultiline}
               multiline
               numberOfLines={2}
               dense
@@ -1979,19 +1981,19 @@ export default function PredefinedItemsList({
 
   return (
     <>
-    <Card style={styles.card}>
+    <Card style={predefinedItemsListStyles.card}>
       <Card.Title title={categoryTitle}  />
       <Divider />
       
-      <Card.Content style={styles.predefinedContent}>
-        <View style={styles.scrollIndicator}>
+      <Card.Content style={predefinedItemsListStyles.predefinedContent}>
+        <View style={predefinedItemsListStyles.scrollIndicator}>
           <MaterialCommunityIcons name="gesture-swipe-down" size={16} color="#7f8c8d" />
-          <Text style={styles.scrollHint}>Tap items to view and edit details</Text>
+          <Text style={predefinedItemsListStyles.scrollHint}>Tap items to view and edit details</Text>
         </View>
         <ScrollView 
           ref={scrollViewRef}
-          style={styles.predefinedList}
-          contentContainerStyle={styles.predefinedListContent}
+          style={predefinedItemsListStyles.predefinedList}
+          contentContainerStyle={predefinedItemsListStyles.predefinedListContent}
           nestedScrollEnabled={true}
           showsVerticalScrollIndicator={true}
           persistentScrollbar={true}
@@ -2041,26 +2043,26 @@ export default function PredefinedItemsList({
               const hasAnyDataInPrimary = totalItemsInPrimary > 0;
               
               return (
-                <View key={primaryKey} style={styles.groupContainer}>
+                <View key={primaryKey} style={predefinedItemsListStyles.groupContainer}>
                   {/* Primary Group Header */}
                   <TouchableOpacity 
                     style={[
-                      styles.groupHeader,
-                      primaryIndex % 2 === 1 ? styles.groupHeaderAlt : null,
-                      isPrimaryExpanded ? styles.groupHeaderExpanded : null
+                      predefinedItemsListStyles.groupHeader,
+                      primaryIndex % 2 === 1 ? predefinedItemsListStyles.groupHeaderAlt : null,
+                      isPrimaryExpanded ? predefinedItemsListStyles.groupHeaderExpanded : null
                     ]}
                     onPress={() => toggleGroupExpansion(primaryKey)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.groupTitle}>
+                    <Text style={predefinedItemsListStyles.groupTitle}>
                       {primaryKey}
                     </Text>
                     
-                    <View style={styles.groupIndicators}>
+                    <View style={predefinedItemsListStyles.groupIndicators}>
                       {/* Show count badge if there are items with meaningful data in primary group */}
                       {hasAnyDataInPrimary && (
-                        <View style={styles.countBadge}>
-                          <Text style={styles.countBadgeText}>{totalItemsInPrimary}</Text>
+                        <View style={predefinedItemsListStyles.countBadge}>
+                          <Text style={predefinedItemsListStyles.countBadgeText}>{totalItemsInPrimary}</Text>
                         </View>
                       )}
                       <MaterialCommunityIcons 
@@ -2073,7 +2075,7 @@ export default function PredefinedItemsList({
 
                   {/* Secondary Groups */}
                   {isPrimaryExpanded && (
-                    <View style={styles.groupItems}>
+                    <View style={predefinedItemsListStyles.groupItems}>
                       {Object.entries(secondaryGroups).sort(([a, aItems], [b, bItems]) => {
                         // Check if secondary grouping is by location
                         const strategyConfig = groupingStrategy?.strategy_config;
@@ -2102,22 +2104,22 @@ export default function PredefinedItemsList({
                         const hasAnyDataInSecondary = secondaryItemCount > 0;
                         
                         return (
-                          <View key={`${primaryKey}-${secondaryKey}`} style={styles.secondaryGroupContainer}>
+                          <View key={`${primaryKey}-${secondaryKey}`} style={predefinedItemsListStyles.secondaryGroupContainer}>
                             {/* Secondary Group Header */}
                             <TouchableOpacity 
-                              style={styles.secondaryGroupHeader}
+                              style={predefinedItemsListStyles.secondaryGroupHeader}
                               onPress={() => toggleSecondaryGroup(primaryKey, secondaryKey)}
                               activeOpacity={0.7}
                             >
-                              <Text style={styles.secondaryGroupTitle}>
+                              <Text style={predefinedItemsListStyles.secondaryGroupTitle}>
                                 {secondaryKey}
                               </Text>
                               
-                              <View style={styles.groupIndicators}>
+                              <View style={predefinedItemsListStyles.groupIndicators}>
                                 {/* Show count badge if there are items with meaningful data in secondary group */}
                                 {hasAnyDataInSecondary && (
-                                  <View style={styles.secondaryCountBadge}>
-                                    <Text style={styles.countBadgeText}>{secondaryItemCount}</Text>
+                                  <View style={predefinedItemsListStyles.secondaryCountBadge}>
+                                    <Text style={predefinedItemsListStyles.countBadgeText}>{secondaryItemCount}</Text>
                                   </View>
                                 )}
                                 
@@ -2131,7 +2133,7 @@ export default function PredefinedItemsList({
 
                             {/* Secondary Group Items */}
                             {isSecondaryExpanded && (
-                              <View style={styles.secondaryGroupItems}>
+                              <View style={predefinedItemsListStyles.secondaryGroupItems}>
                                 {items.map((item: Item, index: number) => {
                                   const isExpanded = expandedItem === item.id;
                                   const itemId = String(item.id);
@@ -2158,32 +2160,32 @@ export default function PredefinedItemsList({
                                                     : `Item #${index + 1}`;
                                   
                                   return (
-                                    <View key={item.id} style={styles.accordionContainer}>
+                                    <View key={item.id} style={predefinedItemsListStyles.accordionContainer}>
                                       {/* Main item row - show summary instead of repeating the group name */}
                                       <TouchableOpacity 
                                         style={[
-                                          styles.predefinedItem,
-                                          styles.secondaryGroupItemRow, // Different styling for items within secondary groups
-                                          index % 2 === 1 ? styles.predefinedItemAlt : null,
-                                          isExpanded ? styles.predefinedItemExpanded : null,
-                                          isAutoSaved ? styles.predefinedItemAutoSaved : null
+                                          predefinedItemsListStyles.predefinedItem,
+                                          predefinedItemsListStyles.secondaryGroupItemRow, // Different styling for items within secondary groups
+                                          index % 2 === 1 ? predefinedItemsListStyles.predefinedItemAlt : null,
+                                          isExpanded ? predefinedItemsListStyles.predefinedItemExpanded : null,
+                                          isAutoSaved ? predefinedItemsListStyles.predefinedItemAutoSaved : null
                                         ]}
                                         onPress={() => toggleExpansion(item.id)}
                                         activeOpacity={0.7}
                                       >
-                                        <View style={styles.itemSummaryContainer}>
-                                          <Text style={styles.itemSummaryText} numberOfLines={1} ellipsizeMode="tail">
+                                        <View style={predefinedItemsListStyles.itemSummaryContainer}>
+                                          <Text style={predefinedItemsListStyles.itemSummaryText} numberOfLines={1} ellipsizeMode="tail">
                                             {itemSummary}
                                           </Text>
                                           {hasData && (
-                                            <Text style={styles.itemValueText}>
+                                            <Text style={predefinedItemsListStyles.itemValueText}>
                                               {quantity}x @ R{price}
                                             </Text>
                                           )}
                                         </View>
                                         
                                         {/* Indicators container */}
-                                        <View style={styles.indicatorsContainer}>
+                                        <View style={predefinedItemsListStyles.indicatorsContainer}>
                                           {/* Data capture indicator */}
                                           {hasData && (
                                             <MaterialCommunityIcons 
@@ -2207,7 +2209,7 @@ export default function PredefinedItemsList({
                                           {/* Delete button - show for items with data or new items */}
                                           {(hasData || isNewItem) && (
                                             <TouchableOpacity
-                                              style={styles.deleteIconButton}
+                                              style={predefinedItemsListStyles.deleteIconButton}
                                               onPress={(e) => {
                                                 e.stopPropagation(); // Prevent row expansion
                                                 deleteItem(item);
@@ -2232,14 +2234,14 @@ export default function PredefinedItemsList({
 
                                       {/* Expanded details section */}
                                       {isExpanded && (
-                                        <View style={styles.expandedContent}>
-                                          <View style={styles.detailsContainer}>
+                                        <View style={predefinedItemsListStyles.expandedContent}>
+                                          <View style={predefinedItemsListStyles.detailsContainer}>
                                             {/* Dynamic Item Details Grid */}
-                                            <View style={styles.detailsGrid}>
+                                            <View style={predefinedItemsListStyles.detailsGrid}>
                                               {isDynamicFieldConfigLoading ? (
-                                                <View style={styles.fieldLoadingContainer}>
+                                                <View style={predefinedItemsListStyles.fieldLoadingContainer}>
                                                   <ActivityIndicator size="small" color="#4a90e2" />
-                                                  <Text style={styles.fieldLoadingText}>Loading fields...</Text>
+                                                  <Text style={predefinedItemsListStyles.fieldLoadingText}>Loading fields...</Text>
                                                 </View>
                                               ) : (
                                                 renderDynamicFields(itemId, editItems[itemId] || {})
@@ -2247,26 +2249,26 @@ export default function PredefinedItemsList({
                                             </View>
 
                                             {/* Action buttons */}
-                                            <View style={styles.actionButtonsContainer}>
+                                            <View style={predefinedItemsListStyles.actionButtonsContainer}>
                                               {isNewItem && (
                                                 <TouchableOpacity
-                                                  style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
+                                                  style={[predefinedItemsListStyles.saveButton, { opacity: type ? 1 : 0.5 }]}
                                                   onPress={() => autoSaveItem(itemId)}
                                                   disabled={!type}
                                                 >
                                                   <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
-                                                  <Text style={styles.saveButtonText}>Save New Item</Text>
+                                                  <Text style={predefinedItemsListStyles.saveButtonText}>Save New Item</Text>
                                                 </TouchableOpacity>
                                               )}
                                               
                                               {/* Add Another button - only show for saved items */}
                                               {!isNewItem && hasData && (
                                                 <TouchableOpacity
-                                                  style={styles.duplicateButton}
+                                                  style={predefinedItemsListStyles.duplicateButton}
                                                   onPress={() => duplicateItem(item)}
                                                 >
                                                   <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
-                                                  <Text style={styles.duplicateButtonText}>Add Another {type || item.type}</Text>
+                                                  <Text style={predefinedItemsListStyles.duplicateButtonText}>Add Another {type || item.type}</Text>
                                                 </TouchableOpacity>
                                               )}
                                             </View>
@@ -2307,29 +2309,29 @@ export default function PredefinedItemsList({
             const groupItemCount = groupItems.length;
             
             return (
-              <View key={groupKey} style={styles.groupContainer}>
+              <View key={groupKey} style={predefinedItemsListStyles.groupContainer}>
                 {/* Group Header */}
                 <TouchableOpacity 
                   style={[
-                    styles.groupHeader,
-                    groupIndex % 2 === 1 ? styles.groupHeaderAlt : null,
-                    isGroupExpanded ? styles.groupHeaderExpanded : null
+                    predefinedItemsListStyles.groupHeader,
+                    groupIndex % 2 === 1 ? predefinedItemsListStyles.groupHeaderAlt : null,
+                    isGroupExpanded ? predefinedItemsListStyles.groupHeaderExpanded : null
                   ]}
                   onPress={() => toggleGroupExpansion(groupKey)}
                   activeOpacity={0.7}
                 >
-                    <Text style={styles.groupTitle}>
+                    <Text style={predefinedItemsListStyles.groupTitle}>
                       {groupKey}
                   </Text>
                   
                   {/* Group indicators */}
-                  <View style={styles.groupIndicators}>
+                  <View style={predefinedItemsListStyles.groupIndicators}>
                     {(() => {
                       // Show count badge if more than 1 item OR if any item in group has data
                       const hasAnyDataInGroup = groupItems.some(item => hasDataCaptured(item));
                       return (groupItemCount > 1 || hasAnyDataInGroup) && (
-                        <View style={styles.countBadge}>
-                          <Text style={styles.countBadgeText}>{groupItemCount}</Text>
+                        <View style={predefinedItemsListStyles.countBadge}>
+                          <Text style={predefinedItemsListStyles.countBadgeText}>{groupItemCount}</Text>
                         </View>
                       );
                     })()}
@@ -2344,7 +2346,7 @@ export default function PredefinedItemsList({
 
                 {/* Group Items */}
                 {isGroupExpanded && (
-                  <View style={styles.groupItems}>
+                  <View style={predefinedItemsListStyles.groupItems}>
                     {groupItems.map((item: Item, index: number) => {
             const isExpanded = expandedItem === item.id;
             const itemId = String(item.id);
@@ -2371,32 +2373,32 @@ export default function PredefinedItemsList({
                               : `Item #${index + 1}`;
             
             return (
-              <View key={item.id} style={styles.accordionContainer}>
+              <View key={item.id} style={predefinedItemsListStyles.accordionContainer}>
                 {/* Main item row - show summary instead of repeating the group name */}
                 <TouchableOpacity 
                   style={[
-                    styles.predefinedItem,
-                    styles.groupItemRow, // Different styling for items within groups
-                    index % 2 === 1 ? styles.predefinedItemAlt : null,
-                    isExpanded ? styles.predefinedItemExpanded : null,
-                    isAutoSaved ? styles.predefinedItemAutoSaved : null
+                    predefinedItemsListStyles.predefinedItem,
+                    predefinedItemsListStyles.groupItemRow, // Different styling for items within groups
+                    index % 2 === 1 ? predefinedItemsListStyles.predefinedItemAlt : null,
+                    isExpanded ? predefinedItemsListStyles.predefinedItemExpanded : null,
+                    isAutoSaved ? predefinedItemsListStyles.predefinedItemAutoSaved : null
                   ]}
                   onPress={() => toggleExpansion(item.id)}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.itemSummaryContainer}>
-                    <Text style={styles.itemSummaryText} numberOfLines={1} ellipsizeMode="tail">
+                  <View style={predefinedItemsListStyles.itemSummaryContainer}>
+                    <Text style={predefinedItemsListStyles.itemSummaryText} numberOfLines={1} ellipsizeMode="tail">
                       {itemSummary}
                     </Text>
                     {hasData && (
-                      <Text style={styles.itemValueText}>
+                      <Text style={predefinedItemsListStyles.itemValueText}>
                         {quantity}x @ R{price}
                       </Text>
                     )}
                   </View>
                   
                   {/* Indicators container */}
-                  <View style={styles.indicatorsContainer}>
+                  <View style={predefinedItemsListStyles.indicatorsContainer}>
                     {/* Data capture indicator */}
                     {hasData && (
                       <MaterialCommunityIcons 
@@ -2420,7 +2422,7 @@ export default function PredefinedItemsList({
                     {/* Delete button - show for items with data or new items */}
                     {(hasData || isNewItem) && (
                       <TouchableOpacity
-                        style={styles.deleteIconButton}
+                        style={predefinedItemsListStyles.deleteIconButton}
                         onPress={(e) => {
                           e.stopPropagation(); // Prevent row expansion
                           deleteItem(item);
@@ -2445,14 +2447,14 @@ export default function PredefinedItemsList({
 
                 {/* Expanded details section */}
                 {isExpanded && (
-                  <View style={styles.expandedContent}>
-                    <View style={styles.detailsContainer}>
+                  <View style={predefinedItemsListStyles.expandedContent}>
+                    <View style={predefinedItemsListStyles.detailsContainer}>
                       {/* Dynamic Item Details Grid */}
-                      <View style={styles.detailsGrid}>
+                      <View style={predefinedItemsListStyles.detailsGrid}>
                         {isDynamicFieldConfigLoading ? (
-                          <View style={styles.fieldLoadingContainer}>
+                          <View style={predefinedItemsListStyles.fieldLoadingContainer}>
                             <ActivityIndicator size="small" color="#4a90e2" />
-                            <Text style={styles.fieldLoadingText}>Loading fields...</Text>
+                            <Text style={predefinedItemsListStyles.fieldLoadingText}>Loading fields...</Text>
                           </View>
                         ) : (
                           renderDynamicFields(itemId, editItems[itemId] || {})
@@ -2460,26 +2462,26 @@ export default function PredefinedItemsList({
                       </View>
 
                       {/* Action buttons */}
-                      <View style={styles.actionButtonsContainer}>
+                      <View style={predefinedItemsListStyles.actionButtonsContainer}>
                         {isNewItem && (
                           <TouchableOpacity
-                            style={[styles.saveButton, { opacity: type ? 1 : 0.5 }]}
+                            style={[predefinedItemsListStyles.saveButton, { opacity: type ? 1 : 0.5 }]}
                             onPress={() => autoSaveItem(itemId)}
                             disabled={!type}
                           >
                             <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
-                            <Text style={styles.saveButtonText}>Save New Item</Text>
+                            <Text style={predefinedItemsListStyles.saveButtonText}>Save New Item</Text>
                           </TouchableOpacity>
                         )}
                         
                         {/* Add Another button - only show for saved items */}
                         {!isNewItem && hasData && (
                           <TouchableOpacity
-                            style={styles.duplicateButton}
+                            style={predefinedItemsListStyles.duplicateButton}
                             onPress={() => duplicateItem(item)}
                           >
                             <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
-                            <Text style={styles.duplicateButtonText}>Add Another {type || item.type}</Text>
+                            <Text style={predefinedItemsListStyles.duplicateButtonText}>Add Another {type || item.type}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -2497,15 +2499,15 @@ export default function PredefinedItemsList({
           )}
           
           {(groupedItems === null ? items.length === 0 : (isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length === 0 : Object.keys(groupedItems as FlatGroups).length === 0)) && (
-            <View style={styles.emptyState}>
+            <View style={predefinedItemsListStyles.emptyState}>
               <MaterialCommunityIcons name="clipboard-text-outline" size={48} color="#bdc3c7" />
-              <Text style={styles.emptyStateText}>No predefined items found</Text>
-              <Text style={styles.emptyStateSubtext}>Try refreshing or add custom items</Text>
+              <Text style={predefinedItemsListStyles.emptyStateText}>No predefined items found</Text>
+              <Text style={predefinedItemsListStyles.emptyStateSubtext}>Try refreshing or add custom items</Text>
             </View>
           )}
         </ScrollView>
         {(groupedItems === null ? items.length > 10 : (isNestedGrouping(groupedItems) ? Object.keys(groupedItems).length > 3 : Object.keys(groupedItems as FlatGroups).length > 3)) && (
-          <View style={styles.scrollIndicator}>
+          <View style={predefinedItemsListStyles.scrollIndicator}>
             <MaterialCommunityIcons name="gesture-swipe-up" size={16} color="#7f8c8d" />
           </View>
         )}
@@ -2544,431 +2546,3 @@ export default function PredefinedItemsList({
   );
 }
 
-const styles = StyleSheet.create({
-  fullScreenContainer: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d',
-  },
-  fieldLoadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  fieldLoadingText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  header: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#2c3e50',
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 2,
-  },
-  card: {
-    flex: 1,
-    margin: 16,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  predefinedContent: {
-    padding: 0,
-    paddingVertical: 8,
-  },
-  predefinedListContent: {
-    paddingHorizontal: 16,
-  },
-  predefinedList: {
-    flex: 1, // Use full available space
-    minHeight: 200,
-  },
-  accordionContainer: {
-    marginBottom: 2,
-  },
-  predefinedItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    backgroundColor: '#fff',
-  },
-  predefinedItemAlt: {
-    backgroundColor: '#f9f9f9',
-  },
-  predefinedItemExpanded: {
-    borderBottomColor: '#4a90e2',
-    borderBottomWidth: 2,
-  },
-  predefinedItemAutoSaved: {
-    backgroundColor: '#f0f8f0',
-  },
-  predefinedItemType: {
-    fontSize: 16,
-    color: '#34495e',
-    flex: 1,
-    fontWeight: '500',
-  },
-  expandedContent: {
-    backgroundColor: '#f8f9fa',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  detailsContainer: {
-    padding: 16,
-  },
-  detailsGrid: {
-    marginBottom: 16,
-  },
-  dynamicFieldContainer: {
-    marginBottom: 12,
-    marginRight: 8,
-  },
-  legacyFieldWrapper: {
-    flex: 1,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  detailItem: {
-    flex: 1,
-    marginRight: 8,
-  },
-  detailLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6c757d',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  detailValue: {
-    fontSize: 14,
-    color: '#2c3e50',
-    fontWeight: '500',
-  },
-  editInput: {
-    backgroundColor: '#fff',
-    height: 36,
-    fontSize: 14,
-  },
-  editInputMultiline: {
-    backgroundColor: '#fff',
-    fontSize: 14,
-    minHeight: 50,
-  },
-  photoStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  photoSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  photoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    backgroundColor: '#f0f4f7',
-    borderWidth: 1,
-    borderColor: '#4a90e2',
-  },
-  photoButtonText: {
-    fontSize: 12,
-    color: '#4a90e2',
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  notesSection: {
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e9ecef',
-  },
-  actionButtonsContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  saveButton: {
-    backgroundColor: '#27ae60',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    flex: 1,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  selectButton: {
-    backgroundColor: '#4a90e2',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginTop: 8,
-    flex: 1,
-  },
-  selectButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  scrollIndicator: {
-    alignItems: 'center',
-    paddingVertical: 4,
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  scrollHint: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginLeft: 4,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginTop: 12,
-    textAlign: 'center',
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  indicatorsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  deleteIconButton: {
-    marginRight: 4,
-    padding: 2,
-  },
-  // Group styles
-  groupContainer: {
-    marginBottom: 4,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#e8f4f8',
-    borderBottomWidth: 1,
-    borderBottomColor: '#d0e8f0',
-  },
-  groupHeaderAlt: {
-    backgroundColor: '#f0f8f0',
-  },
-  groupHeaderExpanded: {
-    borderBottomColor: '#4a90e2',
-    borderBottomWidth: 2,
-  },
-  groupTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    flex: 1,
-  },
-  twoTierGroupTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#2c3e50',
-    flex: 1,
-    lineHeight: 20,
-  },
-  groupIndicators: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  countBadge: {
-    backgroundColor: '#4a90e2',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginRight: 8,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  countBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  groupItems: {
-    backgroundColor: '#f8f9fa',
-  },
-  duplicateButton: {
-    backgroundColor: '#f0f4f7',
-    borderColor: '#4a90e2',
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    flex: 1,
-  },
-  duplicateButtonText: {
-    color: '#4a90e2',
-    fontWeight: '600',
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  // Item summary styles
-  groupItemRow: {
-    paddingLeft: 24, // Indent items within groups
-    backgroundColor: '#fafafa',
-  },
-  itemSummaryContainer: {
-    flex: 1,
-    flexDirection: 'column',
-  },
-  itemSummaryText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#2c3e50',
-    marginBottom: 2,
-  },
-  itemValueText: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    fontWeight: '400',
-  },
-  // Secondary grouping styles
-  secondaryGroupContainer: {
-    marginBottom: 2,
-  },
-  secondaryGroupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    backgroundColor: '#f0f4f7',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e8f0',
-    marginLeft: 8,
-  },
-  secondaryGroupTitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#34495e',
-    flex: 1,
-  },
-  secondaryCountBadge: {
-    backgroundColor: '#6c757d',
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    marginRight: 6,
-    minWidth: 20,
-    alignItems: 'center',
-  },
-  secondaryGroupItems: {
-    backgroundColor: '#f8f9fa',
-    marginLeft: 8,
-  },
-  secondaryGroupItemRow: {
-    paddingLeft: 32, // Double indent for items within secondary groups
-    backgroundColor: '#f5f6fa',
-  },
-  // Display-only item styles (when no grouping strategy)
-  displayOnlyItemContainer: {
-    marginBottom: 8,
-  },
-  displayOnlyItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    backgroundColor: '#fff',
-  },
-  displayOnlyItemAlt: {
-    backgroundColor: '#f9f9f9',
-  },
-  displayOnlyItemAutoSaved: {
-    backgroundColor: '#f0f8f0',
-  },
-  itemTypeContainer: {
-    flex: 1,
-    marginRight: 12,
-  },
-  itemTypeLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6c757d',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  itemTypeText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-  },
-  itemDetailsContainer: {
-    flex: 1,
-    marginRight: 12,
-  },
-  itemDescriptionText: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 2,
-  },
-  displayOnlyFieldsContainer: {
-    backgroundColor: '#f8f9fa',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-}); 

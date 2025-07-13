@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
+import { offlineNoticeStyles } from '../app/GlobalStyles';
 
 interface OfflineNoticeProps {
   showOffline?: boolean;
@@ -79,8 +80,8 @@ const OfflineNotice: React.FC<OfflineNoticeProps> = ({
   return (
     <Animated.View 
       style={[
-        styles.container, 
-        isConnected ? styles.onlineContainer : styles.offlineContainer,
+        offlineNoticeStyles.container, 
+        isConnected ? offlineNoticeStyles.onlineContainer : offlineNoticeStyles.offlineContainer,
         { opacity: fadeAnim }
       ]}
     >
@@ -89,36 +90,11 @@ const OfflineNotice: React.FC<OfflineNoticeProps> = ({
         size={16} 
         color={isConnected ? '#fff' : '#fff'} 
       />
-      <Text style={styles.text}>
+      <Text style={offlineNoticeStyles.text}>
         {isConnected ? 'Online - Connected to server' : 'Offline - Using cached data'}
       </Text>
     </Animated.View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    padding: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    zIndex: 1000,
-  },
-  offlineContainer: {
-    backgroundColor: '#e74c3c',
-  },
-  onlineContainer: {
-    backgroundColor: '#2ecc71',
-  },
-  text: {
-    color: '#FFFFFF',
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-});
 
 export default OfflineNotice; 

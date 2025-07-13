@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 import { Text, View } from '../Themed';
 import { Card, Button } from 'react-native-paper';
 import ConfigurationService from '../../services/configurationService';
+import { developmentToolsStyles } from '../../app/GlobalStyles';
 
 export const DevelopmentTools: React.FC = () => {
   // Only render in development mode
@@ -60,14 +61,14 @@ export const DevelopmentTools: React.FC = () => {
   };
 
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>🛠️ Development Tools</Text>
-      <Card style={styles.debugSection}>
+    <View style={developmentToolsStyles.section}>
+      <Text style={developmentToolsStyles.sectionTitle}>🛠️ Development Tools</Text>
+      <Card style={developmentToolsStyles.debugSection}>
         <Card.Content>
           <Button 
             mode="contained" 
             onPress={handleCheckDBStats}
-            style={styles.debugButton}
+            style={developmentToolsStyles.debugButton}
             icon="database"
           >
             Check DB Stats
@@ -76,7 +77,7 @@ export const DevelopmentTools: React.FC = () => {
           <Button 
             mode="outlined" 
             onPress={handleClearTables}
-            style={styles.debugButton}
+            style={developmentToolsStyles.debugButton}
             icon="delete"
           >
             Clear All Tables
@@ -85,7 +86,7 @@ export const DevelopmentTools: React.FC = () => {
           <Button 
             mode="outlined" 
             onPress={handleForceReload}
-            style={styles.debugButton}
+            style={developmentToolsStyles.debugButton}
             icon="refresh"
           >
             Force API Reload
@@ -94,7 +95,7 @@ export const DevelopmentTools: React.FC = () => {
           <Button 
             mode="outlined" 
             onPress={handleClearConfigCache}
-            style={styles.debugButton}
+            style={developmentToolsStyles.debugButton}
             icon="cached"
           >
             Clear Config Cache
@@ -103,24 +104,4 @@ export const DevelopmentTools: React.FC = () => {
       </Card>
     </View>
   );
-};
-
-const styles = StyleSheet.create({
-  section: {
-    padding: 20,
-    backgroundColor: 'transparent',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 15,
-  },
-  debugSection: {
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  debugButton: {
-    marginBottom: 10,
-  },
-}); 
+}; 

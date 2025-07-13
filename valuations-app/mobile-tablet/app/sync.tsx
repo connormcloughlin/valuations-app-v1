@@ -4,6 +4,7 @@ import { View } from '../components/Themed';
 import { Text, Button, Card, ProgressBar } from 'react-native-paper';
 import { AppLayout, TabConfig } from '../components/layout';
 import riskAssessmentSyncService from '../services/riskAssessmentSyncService';
+import { syncStyles } from './GlobalStyles';
 
 const tabs: TabConfig[] = [
   {
@@ -263,35 +264,35 @@ export default function SyncScreen() {
       title="Data Sync"
       tabs={tabs}
       showHeader={true}
-      showBottomNav={true}
+      showBottomNav={false}
       showLogout={true}
     >
-      <ScrollView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Data Synchronization</Text>
-          <Text style={styles.subtitle}>
+      <ScrollView style={syncStyles.container}>
+        <View style={syncStyles.header}>
+          <Text style={syncStyles.title}>Data Synchronization</Text>
+          <Text style={syncStyles.subtitle}>
             Sync your local data with the server. All pending changes will be uploaded including 
             risk assessment items, appointments, masters, and media files.
           </Text>
         </View>
 
         {pendingCount && (
-          <Card style={styles.summaryCard}>
+          <Card style={syncStyles.summaryCard}>
             <Card.Content>
-              <Text style={styles.summaryTitle}>Pending Items</Text>
-              <Text style={styles.summaryText}>
+              <Text style={syncStyles.summaryTitle}>Pending Items</Text>
+              <Text style={syncStyles.summaryText}>
                 Risk Assessment Items: {pendingCount.riskAssessmentItems}
               </Text>
-              <Text style={styles.summaryText}>
+              <Text style={syncStyles.summaryText}>
                 Appointments: {pendingCount.appointments}
               </Text>
-              <Text style={styles.summaryText}>
+              <Text style={syncStyles.summaryText}>
                 Masters: {pendingCount.riskAssessmentMasters}
               </Text>
-              <Text style={styles.summaryText}>
+              <Text style={syncStyles.summaryText}>
                 Media Files: {pendingCount.mediaFiles}
               </Text>
-              <Text style={styles.totalText}>
+              <Text style={syncStyles.totalText}>
                 Total: {pendingCount.total} items
               </Text>
             </Card.Content>
@@ -299,18 +300,18 @@ export default function SyncScreen() {
         )}
 
         {syncing && (
-          <Card style={styles.progressCard}>
+          <Card style={syncStyles.progressCard}>
             <Card.Content>
-              <Text style={styles.progressText}>
+              <Text style={syncStyles.progressText}>
                 Syncing data... {syncProgress.total > 0 && `(${syncProgress.current}/${syncProgress.total})`}
               </Text>
               <ProgressBar 
                 progress={syncProgress.total > 0 ? syncProgress.current / syncProgress.total : 0} 
-                style={styles.progressBar}
+                style={syncStyles.progressBar}
                 color="#27ae60"
               />
               {syncProgress.total > 0 && (
-                <Text style={styles.progressPercentage}>
+                <Text style={syncStyles.progressPercentage}>
                   {Math.round((syncProgress.current / syncProgress.total) * 100)}%
                 </Text>
               )}
@@ -319,17 +320,17 @@ export default function SyncScreen() {
         )}
 
         {syncResult && (
-          <Card style={styles.resultCard}>
+          <Card style={syncStyles.resultCard}>
             <Card.Content>
-              <Text style={syncResult.success ? styles.successText : styles.errorText}>
+              <Text style={syncResult.success ? syncStyles.successText : syncStyles.errorText}>
                 {syncResult.success ? 'Sync Successful' : 'Sync Failed'}
               </Text>
-              <Text style={styles.resultMessage}>
+              <Text style={syncStyles.resultMessage}>
                 {syncResult.message || syncResult.error}
               </Text>
               {syncResult.synced && (
-                <View style={styles.syncedDetails}>
-                  <Text style={styles.syncedText}>Synced Items:</Text>
+                <View style={syncStyles.syncedDetails}>
+                  <Text style={syncStyles.syncedText}>Synced Items:</Text>
                   <Text>• Risk Assessment Items: {syncResult.synced.riskAssessmentItems}</Text>
                   <Text>• Appointments: {syncResult.synced.appointments}</Text>
                   <Text>• Masters: {syncResult.synced.riskAssessmentMasters}</Text>
@@ -340,13 +341,13 @@ export default function SyncScreen() {
           </Card>
         )}
 
-        <View style={styles.buttonContainer}>
+        <View style={syncStyles.buttonContainer}>
           <Button
             mode="contained"
             onPress={handleSync}
             disabled={syncing || (pendingCount && pendingCount.total === 0)}
             loading={syncing}
-            style={styles.syncButton}
+            style={syncStyles.syncButton}
           >
             {syncing ? 'Syncing...' : 'Start Sync'}
           </Button>
@@ -355,7 +356,7 @@ export default function SyncScreen() {
             mode="outlined"
             onPress={loadPendingCount}
             disabled={syncing}
-            style={styles.refreshButton}
+            style={syncStyles.refreshButton}
           >
             Refresh Count
           </Button>
@@ -363,110 +364,4 @@ export default function SyncScreen() {
       </ScrollView>
     </AppLayout>
   );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    marginBottom: 10,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    lineHeight: 22,
-  },
-  summaryCard: {
-    margin: 10,
-    backgroundColor: '#fff',
-  },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 10,
-  },
-  summaryText: {
-    fontSize: 14,
-    color: '#34495e',
-    marginBottom: 4,
-  },
-  totalText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 8,
-  },
-  progressCard: {
-    margin: 10,
-    backgroundColor: '#fff',
-  },
-  progressText: {
-    fontSize: 16,
-    color: '#2c3e50',
-    marginBottom: 10,
-  },
-  progressBar: {
-    height: 6,
-    borderRadius: 3,
-  },
-  progressPercentage: {
-    fontSize: 14,
-    color: '#27ae60',
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  resultCard: {
-    margin: 10,
-    backgroundColor: '#fff',
-  },
-  successText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#27ae60',
-    marginBottom: 8,
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#e74c3c',
-    marginBottom: 8,
-  },
-  resultMessage: {
-    fontSize: 14,
-    color: '#34495e',
-    marginBottom: 10,
-  },
-  syncedDetails: {
-    backgroundColor: '#f8f9fa',
-    padding: 10,
-    borderRadius: 5,
-  },
-  syncedText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 5,
-  },
-  buttonContainer: {
-    padding: 20,
-    gap: 10,
-  },
-  syncButton: {
-    backgroundColor: '#3498db',
-  },
-  refreshButton: {
-    borderColor: '#3498db',
-  },
-}); 
+} 

@@ -10,6 +10,9 @@ import RiskAssessmentTemplates from './RiskAssessmentTemplates';
 import CategoriesList from './CategoriesList';
 import SurveyActions from './SurveyActions';
 
+// Import GlobalStyles constants
+import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
+
 interface SurveyMainContentProps {
   surveyId: string;
 }
@@ -108,30 +111,30 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
 const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
-    padding: 16,
+    padding: spacing.lg,
   },
   categoriesStatus: {
-    backgroundColor: '#fff',
-    padding: 12,
-    marginBottom: 8,
-    borderRadius: 8,
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.md,
     borderLeftWidth: 4,
-    borderLeftColor: '#4a90e2',
+    borderLeftColor: colors.primary,
   },
   selectedSectionTitle: {
-    fontSize: 14,
+    fontSize: typography.sm,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 4,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
   },
   loadingText: {
-    fontSize: 12,
-    color: '#7f8c8d',
+    fontSize: typography.xs,
+    color: colors.textSecondary,
     fontStyle: 'italic',
   },
   errorText: {
-    fontSize: 12,
-    color: '#e74c3c',
+    fontSize: typography.xs,
+    color: colors.error,
     fontStyle: 'italic',
   },
 }); 

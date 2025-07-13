@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import { Card } from 'react-native-paper';
+import { surveyDetailsCardStyles } from '../../../GlobalStyles';
 
 interface SurveyDetailsCardProps {
   orderNumber: string;
@@ -12,29 +13,29 @@ interface SurveyDetailsCardProps {
 
 export default function SurveyDetailsCard({ orderNumber, policyNo, sumInsured, broker, date }: SurveyDetailsCardProps) {
   return (
-    <View style={styles.sectionContainer}>
-      <Text style={styles.sectionTitle}>Survey Details</Text>
-      <Card style={styles.detailsCard}>
+    <View style={surveyDetailsCardStyles.sectionContainer}>
+      <Text style={surveyDetailsCardStyles.sectionTitle}>Survey Details</Text>
+      <Card style={surveyDetailsCardStyles.detailsCard}>
         <Card.Content>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Order Number:</Text>
-            <Text style={styles.detailValue}>{orderNumber}</Text>
+          <View style={surveyDetailsCardStyles.detailRow}>
+            <Text style={surveyDetailsCardStyles.detailLabel}>Order Number:</Text>
+            <Text style={surveyDetailsCardStyles.detailValue}>{orderNumber}</Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Policy Number:</Text>
-            <Text style={styles.detailValue}>{policyNo}</Text>
+          <View style={surveyDetailsCardStyles.detailRow}>
+            <Text style={surveyDetailsCardStyles.detailLabel}>Policy Number:</Text>
+            <Text style={surveyDetailsCardStyles.detailValue}>{policyNo}</Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Sum Insured:</Text>
-            <Text style={styles.detailValue}>{sumInsured}</Text>
+          <View style={surveyDetailsCardStyles.detailRow}>
+            <Text style={surveyDetailsCardStyles.detailLabel}>Sum Insured:</Text>
+            <Text style={surveyDetailsCardStyles.detailValue}>{sumInsured}</Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Broker:</Text>
-            <Text style={styles.detailValue}>{broker}</Text>
+          <View style={surveyDetailsCardStyles.detailRow}>
+            <Text style={surveyDetailsCardStyles.detailLabel}>Broker:</Text>
+            <Text style={surveyDetailsCardStyles.detailValue}>{broker}</Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Date:</Text>
-            <Text style={styles.detailValue}>{date}</Text>
+          <View style={surveyDetailsCardStyles.detailRow}>
+            <Text style={surveyDetailsCardStyles.detailLabel}>Date:</Text>
+            <Text style={surveyDetailsCardStyles.detailValue}>{date}</Text>
           </View>
         </Card.Content>
       </Card>
@@ -42,32 +43,3 @@ export default function SurveyDetailsCard({ orderNumber, policyNo, sumInsured, b
   );
 }
 
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 12,
-  },
-  detailsCard: {
-    borderRadius: 8,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  detailLabel: {
-    width: 120,
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  detailValue: {
-    flex: 1,
-    fontSize: 14,
-    color: '#2c3e50',
-    fontWeight: '500',
-  },
-}); 

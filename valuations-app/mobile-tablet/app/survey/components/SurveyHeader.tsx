@@ -3,6 +3,9 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
+// Import GlobalStyles constants
+import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
+
 interface SurveyHeaderProps {
   address: string;
   completedCategories: number;
@@ -16,7 +19,7 @@ export default function SurveyHeader({ address, completedCategories, totalCatego
     <Card style={styles.headerCard}>
       <Card.Content>
         <View style={styles.addressRow}>
-          <MaterialCommunityIcons name="map-marker" size={20} color="#f39c12" />
+          <MaterialCommunityIcons name="map-marker" size={20} color={colors.warning} />
           <Text style={styles.addressText}>{address}</Text>
         </View>
         
@@ -39,52 +42,52 @@ export default function SurveyHeader({ address, completedCategories, totalCatego
 
 const styles = StyleSheet.create({
   headerCard: {
-    marginBottom: 16,
-    borderRadius: 8,
+    marginBottom: spacing.lg,
+    borderRadius: borderRadius.md,
   },
   addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   addressText: {
-    fontSize: 16,
+    fontSize: typography.lg,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginLeft: 8,
+    color: colors.textPrimary,
+    marginLeft: spacing.sm,
   },
   progressContainer: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   progressInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   progressTitle: {
-    fontSize: 14,
-    color: '#7f8c8d',
+    fontSize: typography.sm,
+    color: colors.textSecondary,
   },
   progressPercentage: {
-    fontSize: 14,
+    fontSize: typography.sm,
     fontWeight: 'bold',
-    color: '#f39c12',
+    color: colors.warning,
   },
   progressBarContainer: {
     height: 8,
-    backgroundColor: '#ecf0f1',
-    borderRadius: 4,
+    backgroundColor: colors.borderLight,
+    borderRadius: borderRadius.xs,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#f39c12',
+    backgroundColor: colors.warning,
   },
   progressDetails: {
-    fontSize: 12,
-    color: '#95a5a6',
-    marginTop: 4,
+    fontSize: typography.xs,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
     textAlign: 'right',
   },
 }); 

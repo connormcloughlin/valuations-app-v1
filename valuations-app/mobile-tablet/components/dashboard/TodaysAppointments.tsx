@@ -5,6 +5,7 @@ import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import appointmentsApi from '../../api/appointments';
 import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
+import { todaysAppointmentsStyles } from '../../app/GlobalStyles';
 
 interface Appointment {
   id: string;
@@ -121,21 +122,21 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
 
   if (loading) {
     return (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Today's Appointments</Text>
-        <Text style={styles.loadingMessage}>Loading appointments...</Text>
+      <View style={todaysAppointmentsStyles.section}>
+        <Text style={todaysAppointmentsStyles.sectionTitle}>Today's Appointments</Text>
+        <Text style={todaysAppointmentsStyles.loadingMessage}>Loading appointments...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Today's Appointments</Text>
-        <Text style={styles.errorMessage}>{error}</Text>
-        <Card style={styles.retryCard} onPress={handleRefresh}>
+      <View style={todaysAppointmentsStyles.section}>
+        <Text style={todaysAppointmentsStyles.sectionTitle}>Today's Appointments</Text>
+        <Text style={todaysAppointmentsStyles.errorMessage}>{error}</Text>
+        <Card style={todaysAppointmentsStyles.retryCard} onPress={handleRefresh}>
           <Card.Content>
-            <Text style={styles.retryText}>Tap to retry</Text>
+            <Text style={todaysAppointmentsStyles.retryText}>Tap to retry</Text>
           </Card.Content>
         </Card>
       </View>
@@ -143,102 +144,32 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
   }
 
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Today's Appointments</Text>
+    <View style={todaysAppointmentsStyles.section}>
+      <Text style={todaysAppointmentsStyles.sectionTitle}>Today's Appointments</Text>
       {appointments.length > 0 ? (
         appointments.map(appointment => (
           <Card 
             key={appointment.id} 
-            style={styles.appointmentCard}
+            style={todaysAppointmentsStyles.appointmentCard}
             onPress={() => onAppointmentPress(appointment.id)}
           >
             <Card.Content>
-              <View style={styles.appointmentItem}>
+              <View style={todaysAppointmentsStyles.appointmentItem}>
                 <MaterialCommunityIcons name="map-marker" size={24} color="#4a90e2" />
-                <View style={styles.appointmentContent}>
-                  <Text style={styles.appointmentAddress}>{appointment.address}</Text>
-                  <Text style={styles.appointmentDetails}>
+                <View style={todaysAppointmentsStyles.appointmentContent}>
+                  <Text style={todaysAppointmentsStyles.appointmentAddress}>{appointment.address}</Text>
+                  <Text style={todaysAppointmentsStyles.appointmentDetails}>
                     {appointment.client} • {formatTime(appointment.date)}
                   </Text>
-                  <Text style={styles.policyText}>Policy: {appointment.policyNo}</Text>
+                  <Text style={todaysAppointmentsStyles.policyText}>Policy: {appointment.policyNo}</Text>
                 </View>
               </View>
             </Card.Content>
           </Card>
         ))
       ) : (
-        <Text style={styles.emptyMessage}>No appointments scheduled for today</Text>
+        <Text style={todaysAppointmentsStyles.emptyMessage}>No appointments scheduled for today</Text>
       )}
     </View>
   );
-};
-
-const styles = StyleSheet.create({
-  section: {
-    padding: 20,
-    backgroundColor: 'transparent',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 15,
-  },
-  appointmentCard: {
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  appointmentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  appointmentContent: {
-    marginLeft: 15,
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  appointmentAddress: {
-    fontSize: 16,
-    color: '#2c3e50',
-    fontWeight: '500',
-  },
-  appointmentDetails: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 2,
-  },
-  policyText: {
-    fontSize: 12,
-    color: '#95a5a6',
-    marginTop: 1,
-  },
-  emptyMessage: {
-    textAlign: 'center',
-    color: '#95a5a6',
-    fontSize: 14,
-    padding: 15,
-  },
-  loadingMessage: {
-    textAlign: 'center',
-    color: '#7f8c8d',
-    fontSize: 14,
-    padding: 15,
-  },
-  errorMessage: {
-    textAlign: 'center',
-    color: '#e74c3c',
-    fontSize: 14,
-    padding: 15,
-  },
-  retryCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  retryText: {
-    textAlign: 'center',
-    color: '#6c757d',
-    fontSize: 14,
-  },
-}); 
+}; 

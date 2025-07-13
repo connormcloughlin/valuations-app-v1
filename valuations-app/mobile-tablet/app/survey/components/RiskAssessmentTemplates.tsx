@@ -7,6 +7,9 @@ import { API_BASE_URL } from '../../../constants/apiConfig';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Import GlobalStyles constants
+import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
+
 // Define types for API responses
 interface ApiResponse<T> {
   success: boolean;
@@ -190,7 +193,7 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Risk Assessment Templates</Text>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color="#4a90e2" />
+          <ActivityIndicator size="small" color={colors.primary} />
           <Text style={styles.loadingText}>Loading templates...</Text>
         </View>
       </View>
@@ -273,7 +276,7 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
                 <MaterialCommunityIcons 
                   name={isExpanded ? "chevron-down" : "chevron-right"} 
                   size={24} 
-                  color="#95a5a6" 
+                  color={colors.textMuted} 
                 />
               </View>
               
@@ -282,7 +285,7 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
                 <View style={styles.sectionsContainer}>
                   {sectionsLoading[templateId] && (
                     <View style={styles.sectionsLoadingContainer}>
-                      <ActivityIndicator size="small" color="#4a90e2" />
+                      <ActivityIndicator size="small" color={colors.primary} />
                       <Text style={styles.sectionsLoadingText}>Loading sections...</Text>
                     </View>
                   )}
@@ -306,7 +309,7 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
                             Section • Tap to view categories
                           </Text>
                         </View>
-                        <MaterialCommunityIcons name="chevron-right" size={20} color="#95a5a6" />
+                        <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textMuted} />
                       </Card.Content>
                     </Card>
                   ))}
@@ -326,28 +329,28 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
 
 const styles = StyleSheet.create({
   sectionContainer: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: typography.lg,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
   },
   templateCount: {
-    fontSize: 14,
+    fontSize: typography.sm,
     fontWeight: 'bold',
-    color: '#4a90e2',
+    color: colors.primary,
   },
   templateCard: {
     marginBottom: 3,
-    borderRadius: 6,
+    borderRadius: borderRadius.sm,
   },
   templateContent: {
     flexDirection: 'row',
@@ -362,69 +365,69 @@ const styles = StyleSheet.create({
   templateName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#2c3e50',
+    color: colors.textPrimary,
   },
   templateDescription: {
     fontSize: 11,
-    color: '#7f8c8d',
+    color: colors.textSecondary,
     marginTop: 2,
   },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.lg,
   },
   loadingText: {
-    marginLeft: 8,
-    color: '#7f8c8d',
-    fontSize: 14,
+    marginLeft: spacing.sm,
+    color: colors.textSecondary,
+    fontSize: typography.sm,
   },
   errorCard: {
     backgroundColor: '#fff5f5',
-    borderColor: '#e74c3c',
+    borderColor: colors.error,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
   },
   errorText: {
-    color: '#e74c3c',
-    fontSize: 14,
-    marginBottom: 4,
+    color: colors.error,
+    fontSize: typography.sm,
+    marginBottom: spacing.xs,
   },
   retryText: {
-    color: '#7f8c8d',
-    fontSize: 12,
+    color: colors.textSecondary,
+    fontSize: typography.xs,
   },
   emptyText: {
     textAlign: 'center',
-    color: '#95a5a6',
-    fontSize: 14,
+    color: colors.textMuted,
+    fontSize: typography.sm,
     padding: 15,
   },
   sectionsContainer: {
     marginTop: 6,
     paddingTop: 6,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: colors.border,
   },
   sectionsLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 4,
+    padding: spacing.xs,
   },
   sectionsLoadingText: {
-    marginLeft: 8,
-    color: '#7f8c8d',
-    fontSize: 12,
+    marginLeft: spacing.sm,
+    color: colors.textSecondary,
+    fontSize: typography.xs,
   },
   sectionsErrorText: {
-    color: '#e74c3c',
-    fontSize: 12,
-    padding: 8,
+    color: colors.error,
+    fontSize: typography.xs,
+    padding: spacing.sm,
   },
   sectionCard: {
     marginBottom: 2,
-    borderRadius: 6,
-    marginLeft: 12, // Indent sections under templates
+    borderRadius: borderRadius.sm,
+    marginLeft: spacing.md, // Indent sections under templates
   },
   sectionContent: {
     flexDirection: 'row',
@@ -439,18 +442,17 @@ const styles = StyleSheet.create({
   sectionName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#2c3e50',
+    color: colors.textPrimary,
   },
   sectionDetails: {
     fontSize: 10,
-    color: '#7f8c8d',
+    color: colors.textSecondary,
     marginTop: 1,
   },
   noSectionsText: {
     textAlign: 'center',
-    color: '#95a5a6',
-    fontSize: 12,
-    padding: 8,
-    fontStyle: 'italic',
+    color: colors.textMuted,
+    fontSize: typography.xs,
+    padding: spacing.sm,
   },
 }); 

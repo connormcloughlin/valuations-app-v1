@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, Text, Share, Alert } from 'react-native';
+import { View, ScrollView, Text, Share, Alert } from 'react-native';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { logNavigation } from '../../../utils/logger';
 import { AppLayout, TabConfig } from '../../../components/layout';
+import { surveySummaryStyles } from '../../GlobalStyles';
 
 // Import components
 import SurveySummaryHeader from './components/SurveySummaryHeader';
@@ -154,9 +155,9 @@ Completed on ${survey.completionDate}
         showBottomNav={true}
         showLogout={true}
       >
-        <View style={[styles.container, styles.loadingContainer]}>
+        <View style={[surveySummaryStyles.container, surveySummaryStyles.loadingContainer]}>
           <ActivityIndicator size="large" color="#2ecc71" />
-          <Text style={styles.loadingText}>Loading survey summary...</Text>
+          <Text style={surveySummaryStyles.loadingText}>Loading survey summary...</Text>
         </View>
       </AppLayout>
     );
@@ -171,16 +172,16 @@ Completed on ${survey.completionDate}
         showBottomNav={true}
         showLogout={true}
       >
-        <View style={[styles.container, styles.centeredContainer]}>
+        <View style={[surveySummaryStyles.container, surveySummaryStyles.centeredContainer]}>
           <MaterialCommunityIcons name="alert-circle-outline" size={64} color="#e74c3c" />
-          <Text style={styles.errorTitle}>Survey Not Found</Text>
-          <Text style={styles.errorMessage}>
+          <Text style={surveySummaryStyles.errorTitle}>Survey Not Found</Text>
+          <Text style={surveySummaryStyles.errorMessage}>
             {error || "The survey you're looking for doesn't exist or has been deleted."}
           </Text>
           <Button 
             mode="contained" 
             onPress={() => router.back()} 
-            style={styles.errorButton}
+            style={surveySummaryStyles.errorButton}
           >
             Go Back
           </Button>
@@ -197,8 +198,8 @@ Completed on ${survey.completionDate}
       showBottomNav={true}
       showLogout={true}
     >
-      <View style={styles.container}>
-        <ScrollView style={styles.scrollView}>
+      <View style={surveySummaryStyles.container}>
+        <ScrollView style={surveySummaryStyles.scrollView}>
           <SurveySummaryHeader
             client={survey.client}
             address={survey.address}
@@ -219,10 +220,10 @@ Completed on ${survey.completionDate}
           />
           
           {survey.notes && (
-            <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Notes</Text>
-              <View style={styles.notesCard}>
-                <Text style={styles.notesText}>{survey.notes}</Text>
+            <View style={surveySummaryStyles.sectionContainer}>
+              <Text style={surveySummaryStyles.sectionTitle}>Notes</Text>
+              <View style={surveySummaryStyles.notesCard}>
+                <Text style={surveySummaryStyles.notesText}>{survey.notes}</Text>
               </View>
             </View>
           )}
@@ -239,61 +240,3 @@ Completed on ${survey.completionDate}
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d',
-  },
-  centeredContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 16,
-  },
-  errorMessage: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  errorButton: {
-    backgroundColor: '#3498db',
-  },
-  scrollView: {
-    flex: 1,
-    padding: 16,
-  },
-  sectionContainer: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 12,
-  },
-  notesCard: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 8,
-  },
-  notesText: {
-    fontSize: 14,
-    color: '#2c3e50',
-    lineHeight: 20,
-  },
-}); 

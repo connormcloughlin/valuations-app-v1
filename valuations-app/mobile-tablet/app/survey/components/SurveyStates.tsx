@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors, spacing, typography, commonStyles } from '../../GlobalStyles';
 
 interface SurveyLoadingProps {
   title?: string;
@@ -16,7 +17,7 @@ interface SurveyErrorProps {
 export function SurveyLoading({ title = 'Loading Survey' }: SurveyLoadingProps) {
   return (
     <View style={[styles.container, styles.loadingContainer]}>
-      <ActivityIndicator size="large" color="#4a90e2" />
+      <ActivityIndicator size="large" color={colors.primary} />
       <Text style={styles.loadingText}>Loading survey data...</Text>
     </View>
   );
@@ -29,7 +30,7 @@ export function SurveyError({
 }: SurveyErrorProps) {
   return (
     <View style={[styles.container, styles.centeredContainer]}>
-      <MaterialCommunityIcons name="alert-circle-outline" size={64} color="#e74c3c" />
+      <MaterialCommunityIcons name="alert-circle-outline" size={64} color={colors.error} />
       <Text style={styles.errorTitle}>{title}</Text>
       <Text style={styles.errorMessage}>{message}</Text>
       <Button 
@@ -46,36 +47,25 @@ export function SurveyError({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: colors.background,
   },
-  loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d',
-  },
-  centeredContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
+  loadingContainer: commonStyles.loadingContainer,
+  loadingText: commonStyles.loadingText,
+  centeredContainer: commonStyles.centered,
   errorTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 16,
+    fontSize: typography.xxl,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
   },
   errorMessage: {
-    fontSize: 16,
-    color: '#7f8c8d',
+    fontSize: typography.lg,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xxl,
   },
   errorButton: {
-    backgroundColor: '#3498db',
+    backgroundColor: colors.primaryDark,
   },
 }); 

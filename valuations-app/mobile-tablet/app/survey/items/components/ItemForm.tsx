@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet } from 'reac
 import { Card, IconButton, Button } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ItemFormProps, Item } from './types';
+import { colors, spacing, borderRadius, typography, commonStyles } from '../../../GlobalStyles';
 
 export default function ItemForm({
   currentItem,
@@ -46,6 +47,19 @@ export default function ItemForm({
         )}
       />
       <Card.Content>
+        <View style={styles.headerButtons}>
+          {onOpenCamera && (
+            <Button
+              mode="outlined"
+              onPress={onOpenCamera}
+              icon="camera"
+              style={styles.cameraButton}
+            >
+              {photo ? "Change Photo" : "Add Photo"}
+            </Button>
+          )}
+        </View>
+
         {photo && (
           <View style={styles.photoPreview}>
             <Image source={{ uri: photo }} style={styles.photoImage} />
@@ -66,17 +80,17 @@ export default function ItemForm({
                 style={styles.handwritingButton}
                 onPress={() => onOpenHandwriting('description')}
               >
-                <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
+                <MaterialCommunityIcons name="pencil" size={24} color={colors.primary} />
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        {hasRooms && (
+        {hasRooms && includeRooms && (
           <View style={styles.formGroup}>
             <Text style={styles.label}>Room</Text>
             <View style={styles.roomButtons}>
-              {includeRooms.map((room) => (
+              {['Living Room', 'Kitchen', 'Bedroom', 'Bathroom', 'Office', 'Other'].map((room) => (
                 <TouchableOpacity
                   key={room}
                   style={[
@@ -85,12 +99,10 @@ export default function ItemForm({
                   ]}
                   onPress={() => updateItem('room', room)}
                 >
-                  <Text
-                    style={[
-                      styles.roomButtonText,
-                      currentItem.room === room && styles.roomButtonTextSelected
-                    ]}
-                  >
+                  <Text style={[
+                    styles.roomButtonText,
+                    currentItem.room === room && styles.roomButtonTextSelected
+                  ]}>
                     {room}
                   </Text>
                 </TouchableOpacity>
@@ -115,7 +127,7 @@ export default function ItemForm({
                   style={styles.handwritingButton}
                   onPress={() => onOpenHandwriting('quantity')}
                 >
-                  <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
+                  <MaterialCommunityIcons name="pencil" size={24} color={colors.primary} />
                 </TouchableOpacity>
               )}
             </View>
@@ -135,7 +147,7 @@ export default function ItemForm({
                   style={styles.handwritingButton}
                   onPress={() => onOpenHandwriting('price')}
                 >
-                  <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
+                  <MaterialCommunityIcons name="pencil" size={24} color={colors.primary} />
                 </TouchableOpacity>
               )}
             </View>
@@ -160,7 +172,7 @@ export default function ItemForm({
               onPress={onDelete}
               style={styles.deleteButton}
               icon="delete"
-              textColor="#e74c3c"
+              textColor={colors.error}
             >
               Delete
             </Button>
@@ -190,39 +202,42 @@ export default function ItemForm({
 
 const styles = StyleSheet.create({
   card: {
-    margin: 16,
-    borderRadius: 8,
+    margin: spacing.lg,
+    borderRadius: borderRadius.md,
     overflow: 'hidden',
   },
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
   },
+  cameraButton: {
+    marginBottom: spacing.md,
+  },
   photoPreview: {
     width: '100%',
     height: undefined,
     aspectRatio: 1,
-    marginBottom: 16,
-    borderRadius: 8,
+    marginBottom: spacing.lg,
+    borderRadius: borderRadius.md,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
   },
   photoImage: {
     width: '100%',
     height: '100%',
     resizeMode: 'contain',
-    backgroundColor: '#f9f9f9',
+    backgroundColor: colors.gray[50],
   },
   formGroup: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   handwritingButton: {
-    padding: 10,
+    padding: spacing.sm,
     marginLeft: -44,
     zIndex: 1,
   },
@@ -232,69 +247,69 @@ const styles = StyleSheet.create({
   },
   quantityField: {
     flex: 1,
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   priceField: {
     flex: 2,
   },
   label: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginBottom: 4,
+    fontSize: typography.base,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   input: {
     height: 44,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#fff',
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.white,
   },
   notesInput: {
     height: 80,
     textAlignVertical: 'top',
-    paddingTop: 12,
+    paddingTop: spacing.md,
   },
   roomButtons: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 4,
-    marginHorizontal: -4,
+    marginTop: spacing.xs,
+    marginHorizontal: -spacing.xs,
   },
   roomButton: {
-    backgroundColor: '#f0f4f7',
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    margin: 4,
+    backgroundColor: colors.gray[100],
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    margin: spacing.xs,
   },
   roomButtonSelected: {
-    backgroundColor: '#4a90e2',
+    backgroundColor: colors.primary,
   },
   roomButtonText: {
-    fontSize: 12,
-    color: '#34495e',
+    fontSize: typography.sm,
+    color: colors.secondaryLight,
   },
   roomButtonTextSelected: {
-    color: '#fff',
+    color: colors.white,
   },
   formButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   rightButtons: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   deleteButton: {
-    borderColor: '#e74c3c',
+    borderColor: colors.error,
   },
   cancelButton: {
-    marginRight: 12,
+    marginRight: spacing.md,
   },
   saveButton: {
-    backgroundColor: '#4a90e2',
+    backgroundColor: colors.primary,
   },
 }); 

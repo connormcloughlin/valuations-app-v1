@@ -7,7 +7,7 @@ import { StatsCards } from '../../components/dashboard/StatsCards';
 import { TodaysAppointments } from '../../components/dashboard/TodaysAppointments';
 import { SurveysInProgress } from '../../components/dashboard/SurveysInProgress';
 import { DevelopmentTools } from '../../components/dashboard/DevelopmentTools';
-
+import { dashboardStyles } from '../GlobalStyles';
 
 
 export default function Dashboard() {
@@ -60,7 +60,7 @@ export default function Dashboard() {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={dashboardStyles.container}>
       <DashboardHeader />
       
       <StatsCards onCardPress={handleCardPress} />
@@ -77,10 +77,3 @@ export default function Dashboard() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f6fa',
-  },
-});

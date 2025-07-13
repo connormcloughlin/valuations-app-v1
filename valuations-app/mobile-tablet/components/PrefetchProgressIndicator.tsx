@@ -4,6 +4,7 @@ import { ActivityIndicator, ProgressBar, Card, IconButton } from 'react-native-p
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import prefetchService from '../services/prefetchService';
+import { prefetchProgressIndicatorStyles } from '../app/GlobalStyles';
 
 interface PrefetchProgress {
   total: number;
@@ -51,13 +52,13 @@ export const PrefetchProgressIndicator: React.FC<PrefetchProgressIndicatorProps>
 
   if (isMinimized) {
     return (
-      <View style={[styles.minimizedContainer, style]}>
+      <View style={[prefetchProgressIndicatorStyles.minimizedContainer, style]}>
         <TouchableOpacity 
-          style={styles.minimizedContent}
+          style={prefetchProgressIndicatorStyles.minimizedContent}
           onPress={() => setIsMinimized(false)}
         >
           <ActivityIndicator size="small" color="#4CAF50" />
-          <Text style={styles.minimizedText}>
+          <Text style={prefetchProgressIndicatorStyles.minimizedText}>
             Preloading... {progress.completed}/{progress.total}
           </Text>
           <MaterialCommunityIcons name="chevron-up" size={16} color="#666" />
@@ -67,65 +68,65 @@ export const PrefetchProgressIndicator: React.FC<PrefetchProgressIndicatorProps>
   }
 
   return (
-    <Card style={[styles.container, style]} elevation={2}>
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
+    <Card style={[prefetchProgressIndicatorStyles.container, style]} elevation={2}>
+      <View style={prefetchProgressIndicatorStyles.header}>
+        <View style={prefetchProgressIndicatorStyles.headerLeft}>
           <MaterialCommunityIcons 
             name="cloud-download" 
             size={20} 
             color={progress.isActive ? "#4CAF50" : "#666"} 
           />
-          <Text style={styles.title}>
+          <Text style={prefetchProgressIndicatorStyles.title}>
             {progress.isActive ? "Preloading Survey Data" : "Preload Complete"}
           </Text>
         </View>
-        <View style={styles.headerRight}>
+        <View style={prefetchProgressIndicatorStyles.headerRight}>
           <IconButton
             icon="minus"
             size={16}
             onPress={() => setIsMinimized(true)}
-            style={styles.minimizeButton}
+            style={prefetchProgressIndicatorStyles.minimizeButton}
           />
         </View>
       </View>
 
-      <View style={styles.content}>
+      <View style={prefetchProgressIndicatorStyles.content}>
         {progress.isActive && (
-          <View style={styles.progressContainer}>
+          <View style={prefetchProgressIndicatorStyles.progressContainer}>
             <ProgressBar 
               progress={progressPercent} 
               color="#4CAF50"
-              style={styles.progressBar}
+              style={prefetchProgressIndicatorStyles.progressBar}
             />
-            <Text style={styles.progressText}>
+            <Text style={prefetchProgressIndicatorStyles.progressText}>
               {progress.completed} of {progress.total} categories loaded
             </Text>
           </View>
         )}
 
-        <View style={styles.statsContainer}>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>{progress.completed}</Text>
-            <Text style={styles.statLabel}>Completed</Text>
+        <View style={prefetchProgressIndicatorStyles.statsContainer}>
+          <View style={prefetchProgressIndicatorStyles.stat}>
+            <Text style={prefetchProgressIndicatorStyles.statValue}>{progress.completed}</Text>
+            <Text style={prefetchProgressIndicatorStyles.statLabel}>Completed</Text>
           </View>
           
           {progress.failed > 0 && (
-            <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: '#f44336' }]}>{progress.failed}</Text>
-              <Text style={styles.statLabel}>Failed</Text>
+            <View style={prefetchProgressIndicatorStyles.stat}>
+              <Text style={[prefetchProgressIndicatorStyles.statValue, { color: '#f44336' }]}>{progress.failed}</Text>
+              <Text style={prefetchProgressIndicatorStyles.statLabel}>Failed</Text>
             </View>
           )}
           
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>{successRate.toFixed(0)}%</Text>
-            <Text style={styles.statLabel}>Success Rate</Text>
+          <View style={prefetchProgressIndicatorStyles.stat}>
+            <Text style={prefetchProgressIndicatorStyles.statValue}>{successRate.toFixed(0)}%</Text>
+            <Text style={prefetchProgressIndicatorStyles.statLabel}>Success Rate</Text>
           </View>
         </View>
 
         {!progress.isActive && progress.total > 0 && (
-          <View style={styles.completedContainer}>
+          <View style={prefetchProgressIndicatorStyles.completedContainer}>
             <MaterialCommunityIcons name="check-circle" size={20} color="#4CAF50" />
-            <Text style={styles.completedText}>
+            <Text style={prefetchProgressIndicatorStyles.completedText}>
               Survey data ready for offline use
             </Text>
           </View>
@@ -157,13 +158,13 @@ export const PrefetchStatusBadge: React.FC<{ style?: any }> = ({ style }) => {
   const progressPercent = progress.total > 0 ? progress.completed / progress.total : 0;
 
   return (
-    <View style={[styles.badgeContainer, style]}>
+    <View style={[prefetchProgressIndicatorStyles.badgeContainer, style]}>
       {progress.isActive ? (
         <ActivityIndicator size="small" color="#4CAF50" />
       ) : (
         <MaterialCommunityIcons name="check-circle" size={16} color="#4CAF50" />
       )}
-      <Text style={styles.badgeText}>
+      <Text style={prefetchProgressIndicatorStyles.badgeText}>
         {progress.isActive 
           ? `Loading ${progress.completed}/${progress.total}` 
           : `${progress.completed} categories ready`
@@ -200,145 +201,11 @@ export const OfflineStatusIndicator: React.FC<{
   }
 
   return (
-    <View style={[styles.offlineContainer, style]}>
+    <View style={[prefetchProgressIndicatorStyles.offlineContainer, style]}>
       <MaterialCommunityIcons name="wifi-off" size={16} color="#ff9800" />
-      <Text style={styles.offlineText}>
+      <Text style={prefetchProgressIndicatorStyles.offlineText}>
         📴 Offline Mode - {cachedCategoriesCount} categories available
       </Text>
     </View>
   );
-};
-
-const styles = StyleSheet.create({
-  container: {
-    margin: 8,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-  },
-  minimizedContainer: {
-    marginHorizontal: 8,
-    marginVertical: 4,
-  },
-  minimizedContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f8f0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  minimizedText: {
-    marginLeft: 8,
-    marginRight: 4,
-    fontSize: 12,
-    color: '#666',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    paddingBottom: 8,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerRight: {
-    flexDirection: 'row',
-  },
-  title: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  minimizeButton: {
-    margin: 0,
-    padding: 0,
-  },
-  content: {
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-  },
-  progressContainer: {
-    marginBottom: 12,
-  },
-  progressBar: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#e0e0e0',
-  },
-  progressText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 8,
-  },
-  stat: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#666',
-    marginTop: 2,
-  },
-  currentTask: {
-    fontSize: 11,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  completedContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  completedText: {
-    marginLeft: 6,
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '500',
-  },
-  badgeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f8f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  badgeText: {
-    marginLeft: 6,
-    fontSize: 11,
-    color: '#666',
-  },
-  offlineContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff3e0',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 4,
-    margin: 8,
-  },
-  offlineText: {
-    marginLeft: 6,
-    fontSize: 12,
-    color: '#f57c00',
-  },
-});
-
-export default PrefetchProgressIndicator; 
+}; 

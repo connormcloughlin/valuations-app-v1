@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, View, ScrollView, Alert } from 'react-native';
+import { View, ScrollView, Alert } from 'react-native';
 import { Button } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import api from '../../api';
@@ -10,6 +10,7 @@ import ConnectionStatus from '../../components/ConnectionStatus';
 import connectionUtils from '../../utils/connectionUtils';
 import { AppLayout, TabConfig } from '../../components/layout';
 import { FieldConfiguration, GroupingStrategy } from '../../types/dynamicUI';
+import { surveyItemsStyles } from '../GlobalStyles';
 
 // Import components
 import {
@@ -555,10 +556,10 @@ export default function ItemsScreen() {
       title={categoryTitle as string || 'Survey Items'}
       tabs={surveyTabs}
     >
-      <View style={styles.container}>
+      <View style={surveyItemsStyles.container}>
         <ConnectionStatus showOffline={true} showOnline={false} />
         
-        <ScrollView style={styles.scrollView}>
+        <ScrollView style={surveyItemsStyles.scrollView}>
           <PredefinedItemsList
             key={predefinedListKey}
             items={predefinedItems}
@@ -651,12 +652,3 @@ export default function ItemsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  scrollView: {
-    flex: 1,
-  },
-});

@@ -6,6 +6,7 @@ import { router, Stack } from 'expo-router';
 import { logNavigation } from '../../../utils/logger';
 import api from '../../../api';
 import type { Appointment as ApiAppointment } from '../../../api/index.d';
+import { scheduledAppointmentsStyles, colors } from '../../GlobalStyles';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -162,29 +163,29 @@ export default function ScheduledAppointmentsScreen() {
 
   const renderAppointmentItem = ({ item }: { item: Appointment }) => (
     <Card 
-      style={styles.appointmentCard}
+      style={scheduledAppointmentsStyles.appointmentCard}
       onPress={() => navigateToAppointment(item.id)}
     >
       <Card.Content>
-        <View style={styles.appointmentHeader}>
-          <MaterialCommunityIcons name="map-marker" size={20} color="#4a90e2" style={styles.icon} />
-          <Text style={styles.appointmentAddress}>{item.address || 'No address'}</Text>
+        <View style={scheduledAppointmentsStyles.appointmentHeader}>
+          <MaterialCommunityIcons name="map-marker" size={20} color={colors.primary} style={scheduledAppointmentsStyles.icon} />
+          <Text style={scheduledAppointmentsStyles.appointmentAddress}>{item.address || 'No address'}</Text>
         </View>
         
-        <View style={styles.appointmentDetails}>
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="account" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>{item.client || 'No client name'}</Text>
+        <View style={scheduledAppointmentsStyles.appointmentDetails}>
+          <View style={scheduledAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="account" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
+            <Text style={scheduledAppointmentsStyles.detailText}>{item.client || 'No client name'}</Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="calendar" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>{item.date || 'No date'}</Text>
+          <View style={scheduledAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="calendar" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
+            <Text style={scheduledAppointmentsStyles.detailText}>{item.date || 'No date'}</Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="file-document-outline" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
+          <View style={scheduledAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="file-document-outline" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
+            <Text style={scheduledAppointmentsStyles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
           </View>
         </View>
       </Card.Content>
@@ -200,28 +201,28 @@ export default function ScheduledAppointmentsScreen() {
         }}
       />
       
-      <View style={styles.container}>
+      <View style={scheduledAppointmentsStyles.container}>
         <Searchbar
           placeholder="Search by client, address or order no."
           onChangeText={setSearchQuery}
           value={searchQuery}
-          style={styles.searchBar}
-          iconColor="#4a90e2"
+          style={scheduledAppointmentsStyles.searchBar}
+          iconColor={colors.primary}
         />
         
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#4a90e2" />
-            <Text style={styles.loadingText}>Loading appointments...</Text>
+          <View style={scheduledAppointmentsStyles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={scheduledAppointmentsStyles.loadingText}>Loading appointments...</Text>
           </View>
         ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={scheduledAppointmentsStyles.errorContainer}>
+            <Text style={scheduledAppointmentsStyles.errorText}>{error}</Text>
             <Button 
               mode="contained" 
               onPress={() => fetchAppointments(page)} 
-              style={styles.retryButton}
-              buttonColor="#4a90e2"
+              style={scheduledAppointmentsStyles.retryButton}
+              buttonColor={colors.primary}
             >
               <Text style={{ color: 'white' }}>Retry</Text>
             </Button>
@@ -232,22 +233,22 @@ export default function ScheduledAppointmentsScreen() {
               data={filteredAppointments}
               renderItem={renderAppointmentItem}
               keyExtractor={(item, index) => item.id ? `appointment-${item.id}-${index}` : `appointment-index-${index}`}
-              contentContainerStyle={styles.listContainer}
+              contentContainerStyle={scheduledAppointmentsStyles.listContainer}
               refreshing={loading}
               onRefresh={() => fetchAppointments(page)}
             />
-            <View style={styles.paginationContainer}>
+            <View style={scheduledAppointmentsStyles.paginationContainer}>
               <Button 
                 mode="outlined" 
                 onPress={goToPreviousPage} 
                 disabled={page <= 1 || loading}
-                style={styles.paginationButton}
+                style={scheduledAppointmentsStyles.paginationButton}
               >
                 <MaterialCommunityIcons name="chevron-left" size={16} />
                 Previous
               </Button>
               
-              <Text style={styles.paginationText}>
+              <Text style={scheduledAppointmentsStyles.paginationText}>
                 Page {page} of {paginationInfo.totalPages || 1}
               </Text>
               
@@ -255,7 +256,7 @@ export default function ScheduledAppointmentsScreen() {
                 mode="outlined" 
                 onPress={goToNextPage} 
                 disabled={page >= paginationInfo.totalPages || !paginationInfo.hasMore || loading}
-                style={styles.paginationButton}
+                style={scheduledAppointmentsStyles.paginationButton}
               >
                 Next
                 <MaterialCommunityIcons name="chevron-right" size={16} />
@@ -263,123 +264,13 @@ export default function ScheduledAppointmentsScreen() {
             </View>
           </>
         ) : (
-          <View style={styles.emptyContainer}>
+          <View style={scheduledAppointmentsStyles.emptyContainer}>
             <MaterialCommunityIcons name="calendar-search" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No appointments found</Text>
-            <Text style={styles.emptySubtext}>Try a different search term or page</Text>
+            <Text style={scheduledAppointmentsStyles.emptyText}>No appointments found</Text>
+            <Text style={scheduledAppointmentsStyles.emptySubtext}>Try a different search term or page</Text>
           </View>
         )}
       </View>
     </>
   );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f6fa',
-  },
-  searchBar: {
-    margin: 16,
-    elevation: 2,
-    borderRadius: 8,
-  },
-  listContainer: {
-    padding: 16,
-    paddingTop: 0,
-    paddingBottom: 80, // Add extra space at the bottom for pagination controls
-  },
-  appointmentCard: {
-    marginBottom: 12,
-    borderRadius: 8,
-  },
-  appointmentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  icon: {
-    marginRight: 8,
-  },
-  appointmentAddress: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    flex: 1,
-  },
-  appointmentDetails: {
-    marginTop: 8,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  detailIcon: {
-    marginRight: 8,
-    width: 16,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#7f8c8d',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    color: '#e74c3c',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 10,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4,
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  paginationButton: {
-    minWidth: 100,
-  },
-  paginationText: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-}); 
+} 

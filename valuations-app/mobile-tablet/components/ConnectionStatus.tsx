@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native
 // Using a more compatible import approach for icons
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import connectionUtils from '../utils/connectionUtils';
+import { connectionStatusStyles } from '../app/GlobalStyles';
 
 interface ConnectionStatusProps {
   showOffline?: boolean;
@@ -125,26 +126,26 @@ const ConnectionStatus: React.FC<ConnectionStatusProps> = ({
   return (
     <Animated.View 
       style={[
-        styles.container, 
-        isConnected ? styles.onlineContainer : styles.offlineContainer,
+        connectionStatusStyles.container, 
+        isConnected ? connectionStatusStyles.onlineContainer : connectionStatusStyles.offlineContainer,
         { opacity: fadeAnim }
       ]}
     >
-      <View style={styles.content}>
+      <View style={connectionStatusStyles.content}>
         <MaterialCommunityIcons 
           name={isConnected ? 'wifi-check' : 'wifi-off'} 
           size={20} 
           color={isConnected ? '#fff' : '#fff'} 
         />
-        <Text style={[styles.text, isConnected ? styles.onlineText : styles.offlineText]}>
+        <Text style={[connectionStatusStyles.text, isConnected ? connectionStatusStyles.onlineText : connectionStatusStyles.offlineText]}>
           {isConnected ? 'Online' : 'Offline'} 
-          <Text style={styles.subText}> (Last checked: {lastChecked})</Text>
+          <Text style={connectionStatusStyles.subText}> (Last checked: {lastChecked})</Text>
         </Text>
       </View>
       
       {!isConnected && (
         <TouchableOpacity 
-          style={styles.refreshButton} 
+          style={connectionStatusStyles.refreshButton} 
           onPress={handleManualCheck}
         >
           <MaterialCommunityIcons name="refresh" size={18} color="#fff" />
@@ -153,51 +154,5 @@ const ConnectionStatus: React.FC<ConnectionStatusProps> = ({
     </Animated.View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: 40, // Adjusted to be visible below status bar
-    left: 0,
-    right: 0,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    zIndex: 999,
-  },
-  offlineContainer: {
-    backgroundColor: '#e74c3c',
-  },
-  onlineContainer: {
-    backgroundColor: '#2ecc71',
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  text: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  offlineText: {
-    color: '#fff',
-  },
-  onlineText: {
-    color: '#fff',
-  },
-  subText: {
-    fontSize: 12,
-    fontWeight: 'normal',
-    opacity: 0.8,
-  },
-  refreshButton: {
-    padding: 4,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-  },
-});
 
 export default ConnectionStatus; 

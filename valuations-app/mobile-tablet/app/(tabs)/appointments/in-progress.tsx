@@ -6,6 +6,7 @@ import { router, Stack } from 'expo-router';
 import { logNavigation } from '../../../utils/logger';
 import api from '../../../api';
 import type { Appointment as ApiAppointment } from '../../../api/index.d';
+import { appointmentsInProgressStyles, colors } from '../../GlobalStyles';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -202,42 +203,42 @@ export default function InProgressAppointmentsScreen() {
     
     return (
     <Card 
-      style={styles.appointmentCard}
+      style={appointmentsInProgressStyles.appointmentCard}
       onPress={() => navigateToSurvey(item)}
     >
       <Card.Content>
-        <View style={styles.appointmentHeader}>
-          <MaterialCommunityIcons name="map-marker" size={20} color="#f39c12" style={styles.icon} />
-          <Text style={styles.appointmentAddress}>{String(item.address || 'No address')}</Text>
+        <View style={appointmentsInProgressStyles.appointmentHeader}>
+          <MaterialCommunityIcons name="map-marker" size={20} color={colors.warning} style={appointmentsInProgressStyles.icon} />
+          <Text style={appointmentsInProgressStyles.appointmentAddress}>{String(item.address || 'No address')}</Text>
         </View>
         
-        <View style={styles.appointmentDetails}>
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="account" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>{String(item.client || 'No client name')}</Text>
+        <View style={appointmentsInProgressStyles.appointmentDetails}>
+          <View style={appointmentsInProgressStyles.detailRow}>
+            <MaterialCommunityIcons name="account" size={16} color={colors.gray[500]} style={appointmentsInProgressStyles.detailIcon} />
+            <Text style={appointmentsInProgressStyles.detailText}>{String(item.client || 'No client name')}</Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="calendar-edit" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Last edited: {formatDate(item.lastEdited)}</Text>
+          <View style={appointmentsInProgressStyles.detailRow}>
+            <MaterialCommunityIcons name="calendar-edit" size={16} color={colors.gray[500]} style={appointmentsInProgressStyles.detailIcon} />
+            <Text style={appointmentsInProgressStyles.detailText}>Last edited: {formatDate(item.lastEdited)}</Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="file-document-outline" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Order: {String(item.orderNumber || 'Unknown')}</Text>
+          <View style={appointmentsInProgressStyles.detailRow}>
+            <MaterialCommunityIcons name="file-document-outline" size={16} color={colors.gray[500]} style={appointmentsInProgressStyles.detailIcon} />
+            <Text style={appointmentsInProgressStyles.detailText}>Order: {String(item.orderNumber || 'Unknown')}</Text>
           </View>
 
           {item.policyNo && String(item.policyNo).trim() !== '' && (
-            <View style={styles.detailRow}>
-              <MaterialCommunityIcons name="shield" size={16} color="#7f8c8d" style={styles.detailIcon} />
-              <Text style={styles.detailText}>Policy: {String(item.policyNo)}</Text>
+            <View style={appointmentsInProgressStyles.detailRow}>
+              <MaterialCommunityIcons name="shield" size={16} color={colors.gray[500]} style={appointmentsInProgressStyles.detailIcon} />
+              <Text style={appointmentsInProgressStyles.detailText}>Policy: {String(item.policyNo)}</Text>
             </View>
           )}
           
           {(item.sumInsured !== null && item.sumInsured !== undefined && item.sumInsured !== '') && (
-            <View style={styles.detailRow}>
-              <MaterialCommunityIcons name="currency-usd" size={16} color="#7f8c8d" style={styles.detailIcon} />
-              <Text style={styles.detailText}>Sum Insured: {formatCurrency(item.sumInsured)}</Text>
+            <View style={appointmentsInProgressStyles.detailRow}>
+              <MaterialCommunityIcons name="currency-usd" size={16} color={colors.gray[500]} style={appointmentsInProgressStyles.detailIcon} />
+              <Text style={appointmentsInProgressStyles.detailText}>Sum Insured: {formatCurrency(item.sumInsured)}</Text>
             </View>
           )}
         </View>
@@ -245,8 +246,8 @@ export default function InProgressAppointmentsScreen() {
         <Button 
           mode="contained" 
           onPress={() => navigateToSurvey(item)} 
-          style={styles.continueButton}
-          labelStyle={styles.buttonLabel}
+          style={appointmentsInProgressStyles.continueButton}
+          labelStyle={appointmentsInProgressStyles.buttonLabel}
         >
           Continue Survey
         </Button>
@@ -264,20 +265,20 @@ export default function InProgressAppointmentsScreen() {
         }}
       />
       
-      <View style={styles.container}>
-        <View style={styles.headerContainer}>
+      <View style={appointmentsInProgressStyles.container}>
+        <View style={appointmentsInProgressStyles.headerContainer}>
           <Searchbar
             placeholder="Search by client, address or order no."
             onChangeText={setSearchQuery}
             value={searchQuery}
-            style={styles.searchBar}
-            iconColor="#4a90e2"
+            style={appointmentsInProgressStyles.searchBar}
+            iconColor={colors.primary}
           />
           <Button
             mode="contained"
             onPress={() => fetchAppointments(page)}
-            style={styles.refreshButton}
-            buttonColor="#4a90e2"
+            style={appointmentsInProgressStyles.refreshButton}
+            buttonColor={colors.primary}
             icon="refresh"
           >
             Refresh
@@ -285,18 +286,18 @@ export default function InProgressAppointmentsScreen() {
         </View>
         
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#4a90e2" />
-            <Text style={styles.loadingText}>Loading appointments...</Text>
+          <View style={appointmentsInProgressStyles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={appointmentsInProgressStyles.loadingText}>Loading appointments...</Text>
           </View>
         ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={appointmentsInProgressStyles.errorContainer}>
+            <Text style={appointmentsInProgressStyles.errorText}>{error}</Text>
             <Button 
               mode="contained" 
               onPress={() => fetchAppointments(page)} 
-              style={styles.retryButton}
-              buttonColor="#4a90e2"
+              style={appointmentsInProgressStyles.retryButton}
+              buttonColor={colors.primary}
               textColor="white"
             >
               Retry
@@ -308,23 +309,23 @@ export default function InProgressAppointmentsScreen() {
               data={filteredAppointments || []}
               renderItem={renderAppointmentItem}
               keyExtractor={(item, index) => `appointment-${item.appointmentID || 'no-id'}-${index}`}
-              contentContainerStyle={styles.listContainer}
+              contentContainerStyle={appointmentsInProgressStyles.listContainer}
               refreshing={loading}
               onRefresh={() => fetchAppointments(page)}
               removeClippedSubviews={false}
             />
-            <View style={styles.paginationContainer}>
+            <View style={appointmentsInProgressStyles.paginationContainer}>
               <Button 
                 mode="outlined" 
                 onPress={goToPreviousPage} 
                 disabled={page <= 1 || loading}
-                style={styles.paginationButton}
+                style={appointmentsInProgressStyles.paginationButton}
                 icon="chevron-left"
               >
                 Previous
               </Button>
               
-              <Text style={styles.paginationText}>
+              <Text style={appointmentsInProgressStyles.paginationText}>
                 Page {String(page)} of {String(paginationInfo.totalPages || 1)}
               </Text>
               
@@ -332,7 +333,7 @@ export default function InProgressAppointmentsScreen() {
                 mode="outlined" 
                 onPress={goToNextPage} 
                 disabled={page >= paginationInfo.totalPages || !paginationInfo.hasMore || loading}
-                style={styles.paginationButton}
+                style={appointmentsInProgressStyles.paginationButton}
                 icon="chevron-right"
                 contentStyle={{ flexDirection: 'row-reverse' }}
               >
@@ -341,142 +342,13 @@ export default function InProgressAppointmentsScreen() {
             </View>
           </>
         ) : (
-          <View style={styles.emptyContainer}>
+          <View style={appointmentsInProgressStyles.emptyContainer}>
             <MaterialCommunityIcons name="calendar-search" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No appointments found</Text>
-            <Text style={styles.emptySubtext}>Try a different search term or page</Text>
+            <Text style={appointmentsInProgressStyles.emptyText}>No appointments found</Text>
+            <Text style={appointmentsInProgressStyles.emptySubtext}>Try a different search term or page</Text>
           </View>
         )}
       </View>
     </>
   );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f6fa',
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 8,
-  },
-  searchBar: {
-    flex: 1,
-    elevation: 2,
-    borderRadius: 8,
-  },
-  refreshButton: {
-    borderRadius: 8,
-  },
-  listContainer: {
-    padding: 16,
-    paddingTop: 0,
-  },
-  appointmentCard: {
-    marginBottom: 12,
-    borderRadius: 8,
-  },
-  appointmentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  icon: {
-    marginRight: 8,
-  },
-  appointmentAddress: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    flex: 1,
-  },
-  appointmentDetails: {
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  detailIcon: {
-    marginRight: 8,
-    width: 16,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  continueButton: {
-    marginTop: 4,
-    backgroundColor: '#f39c12',
-    borderRadius: 4,
-    height: 36,
-  },
-  buttonLabel: {
-    fontSize: 12,
-    marginVertical: 0,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#7f8c8d',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    color: '#e74c3c',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 10,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4,
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  paginationButton: {
-    minWidth: 100,
-  },
-  paginationText: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-}); 
+} 

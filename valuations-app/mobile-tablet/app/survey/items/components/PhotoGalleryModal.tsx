@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, TouchableOpacity, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
 import { IconButton, Button } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { MediaFile } from '../../../../utils/db';
+import { photoGalleryModalStyles } from '../../../GlobalStyles';
 
 interface PhotoGalleryModalProps {
   visible: boolean;
@@ -60,10 +61,10 @@ export default function PhotoGalleryModal({
         animationType="slide"
         onRequestClose={onClose}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Photos ({photos.length})</Text>
+        <View style={photoGalleryModalStyles.modalContainer}>
+          <View style={photoGalleryModalStyles.modalContent}>
+            <View style={photoGalleryModalStyles.modalHeader}>
+              <Text style={photoGalleryModalStyles.modalTitle}>Photos ({photos.length})</Text>
               <IconButton
                 icon="close"
                 size={20}
@@ -72,13 +73,13 @@ export default function PhotoGalleryModal({
             </View>
             
             {photos.length === 0 ? (
-              <View style={styles.emptyState}>
+              <View style={photoGalleryModalStyles.emptyState}>
                 <MaterialCommunityIcons name="camera-off" size={48} color="#bdc3c7" />
-                <Text style={styles.emptyStateText}>No photos taken yet</Text>
+                <Text style={photoGalleryModalStyles.emptyStateText}>No photos taken yet</Text>
                 <Button
                   mode="contained"
                   onPress={onTakeNewPhoto}
-                  style={styles.takePhotoButton}
+                  style={photoGalleryModalStyles.takePhotoButton}
                   icon="camera"
                 >
                   Take First Photo
@@ -86,23 +87,23 @@ export default function PhotoGalleryModal({
               </View>
             ) : (
               <>
-                <ScrollView style={styles.photosContainer} contentContainerStyle={styles.photosGrid}>
+                <ScrollView style={photoGalleryModalStyles.photosContainer} contentContainerStyle={photoGalleryModalStyles.photosGrid}>
                   {photos.map((photo, index) => (
                     <TouchableOpacity
                       key={photo.MediaID || index}
-                      style={styles.photoThumbnail}
+                      style={photoGalleryModalStyles.photoThumbnail}
                       onPress={() => viewFullImage(photo)}
                     >
                       <Image
                         source={{ uri: photo.LocalPath || photo.BlobURL }}
-                        style={styles.thumbnailImage}
+                        style={photoGalleryModalStyles.thumbnailImage}
                         resizeMode="cover"
                       />
-                      <View style={styles.photoOverlay}>
+                      <View style={photoGalleryModalStyles.photoOverlay}>
                         <MaterialCommunityIcons name="eye" size={16} color="#fff" />
                       </View>
                       <TouchableOpacity
-                        style={styles.deleteButton}
+                        style={photoGalleryModalStyles.deleteButton}
                         onPress={() => handleDeletePhoto(photo)}
                       >
                         <MaterialCommunityIcons name="close" size={16} color="#fff" />
@@ -111,11 +112,11 @@ export default function PhotoGalleryModal({
                   ))}
                 </ScrollView>
                 
-                <View style={styles.bottomActions}>
+                <View style={photoGalleryModalStyles.bottomActions}>
                   <Button
                     mode="contained"
                     onPress={onTakeNewPhoto}
-                    style={styles.addPhotoButton}
+                    style={photoGalleryModalStyles.addPhotoButton}
                     icon="camera-plus"
                   >
                     Add Another Photo
@@ -137,9 +138,9 @@ export default function PhotoGalleryModal({
           setSelectedPhoto(null);
         }}
       >
-        <View style={styles.fullImageContainer}>
+        <View style={photoGalleryModalStyles.fullImageContainer}>
           <TouchableOpacity
-            style={styles.fullImageCloseButton}
+            style={photoGalleryModalStyles.fullImageCloseButton}
             onPress={() => {
               setShowFullImage(false);
               setSelectedPhoto(null);
@@ -152,15 +153,15 @@ export default function PhotoGalleryModal({
             <>
               <Image
                 source={{ uri: selectedPhoto.LocalPath || selectedPhoto.BlobURL }}
-                style={styles.fullImage}
+                style={photoGalleryModalStyles.fullImage}
                 resizeMode="contain"
               />
               
-              <View style={styles.fullImageActions}>
+              <View style={photoGalleryModalStyles.fullImageActions}>
                 <Button
                   mode="outlined"
                   onPress={() => handleDeletePhoto(selectedPhoto)}
-                  style={styles.deletePhotoButton}
+                  style={photoGalleryModalStyles.deletePhotoButton}
                   labelStyle={{ color: '#ff4444' }}
                   icon="delete"
                 >
@@ -175,119 +176,3 @@ export default function PhotoGalleryModal({
   );
 }
 
-const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    width: '95%',
-    maxHeight: '90%',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    marginTop: 12,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  takePhotoButton: {
-    backgroundColor: '#4a90e2',
-  },
-  photosContainer: {
-    maxHeight: 400,
-  },
-  photosGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 16,
-    gap: 12,
-  },
-  photoThumbnail: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  thumbnailImage: {
-    width: '100%',
-    height: '100%',
-  },
-  photoOverlay: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 12,
-    padding: 4,
-  },
-  deleteButton: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(255, 68, 68, 0.8)',
-    borderRadius: 12,
-    padding: 4,
-  },
-  bottomActions: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-  },
-  addPhotoButton: {
-    backgroundColor: '#4a90e2',
-  },
-  fullImageContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullImageCloseButton: {
-    position: 'absolute',
-    top: 40,
-    right: 20,
-    zIndex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 20,
-    padding: 8,
-  },
-  fullImage: {
-    width: '90%',
-    height: '70%',
-  },
-  fullImageActions: {
-    position: 'absolute',
-    bottom: 40,
-    left: 20,
-    right: 20,
-  },
-  deletePhotoButton: {
-    borderColor: '#ff4444',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-  },
-}); 

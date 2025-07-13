@@ -6,6 +6,7 @@ import { router, Stack } from 'expo-router';
 import { logNavigation } from '../../../utils/logger';
 import api from '../../../api';
 import type { Appointment as ApiAppointment } from '../../../api/index.d';
+import { finaliseAppointmentsStyles, colors } from '../../GlobalStyles';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -202,42 +203,42 @@ export default function FinaliseAppointmentsScreen() {
     
     return (
     <Card 
-      style={styles.appointmentCard}
+      style={finaliseAppointmentsStyles.appointmentCard}
       onPress={() => navigateToSurvey(item)}
     >
       <Card.Content>
-        <View style={styles.appointmentHeader}>
-          <MaterialCommunityIcons name="map-marker" size={20} color="#9b59b6" style={styles.icon} />
-          <Text style={styles.appointmentAddress}>{String(item.address || 'No address')}</Text>
+        <View style={finaliseAppointmentsStyles.appointmentHeader}>
+          <MaterialCommunityIcons name="map-marker" size={20} color={colors.secondary} style={finaliseAppointmentsStyles.icon} />
+          <Text style={finaliseAppointmentsStyles.appointmentAddress}>{String(item.address || 'No address')}</Text>
         </View>
         
-        <View style={styles.appointmentDetails}>
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="account" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>{String(item.client || 'No client name')}</Text>
+        <View style={finaliseAppointmentsStyles.appointmentDetails}>
+          <View style={finaliseAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="account" size={16} color={colors.gray[500]} style={finaliseAppointmentsStyles.detailIcon} />
+            <Text style={finaliseAppointmentsStyles.detailText}>{String(item.client || 'No client name')}</Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="calendar-edit" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Last edited: {formatDate(item.lastEdited)}</Text>
+          <View style={finaliseAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="calendar-edit" size={16} color={colors.gray[500]} style={finaliseAppointmentsStyles.detailIcon} />
+            <Text style={finaliseAppointmentsStyles.detailText}>Last edited: {formatDate(item.lastEdited)}</Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="file-document-outline" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Order: {String(item.orderNumber || 'Unknown')}</Text>
+          <View style={finaliseAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="file-document-outline" size={16} color={colors.gray[500]} style={finaliseAppointmentsStyles.detailIcon} />
+            <Text style={finaliseAppointmentsStyles.detailText}>Order: {String(item.orderNumber || 'Unknown')}</Text>
           </View>
 
           {item.policyNo && String(item.policyNo).trim() !== '' && (
-            <View style={styles.detailRow}>
-              <MaterialCommunityIcons name="shield" size={16} color="#7f8c8d" style={styles.detailIcon} />
-              <Text style={styles.detailText}>Policy: {String(item.policyNo)}</Text>
+            <View style={finaliseAppointmentsStyles.detailRow}>
+              <MaterialCommunityIcons name="shield" size={16} color={colors.gray[500]} style={finaliseAppointmentsStyles.detailIcon} />
+              <Text style={finaliseAppointmentsStyles.detailText}>Policy: {String(item.policyNo)}</Text>
             </View>
           )}
           
           {(item.sumInsured !== null && item.sumInsured !== undefined && item.sumInsured !== '') && (
-            <View style={styles.detailRow}>
-              <MaterialCommunityIcons name="currency-usd" size={16} color="#7f8c8d" style={styles.detailIcon} />
-              <Text style={styles.detailText}>Sum Insured: {formatCurrency(item.sumInsured)}</Text>
+            <View style={finaliseAppointmentsStyles.detailRow}>
+              <MaterialCommunityIcons name="currency-usd" size={16} color={colors.gray[500]} style={finaliseAppointmentsStyles.detailIcon} />
+              <Text style={finaliseAppointmentsStyles.detailText}>Sum Insured: {formatCurrency(item.sumInsured)}</Text>
             </View>
           )}
         </View>
@@ -245,8 +246,8 @@ export default function FinaliseAppointmentsScreen() {
         <Button 
           mode="contained" 
           onPress={() => navigateToSurvey(item)} 
-          style={styles.finaliseButton}
-          labelStyle={styles.buttonLabel}
+          style={finaliseAppointmentsStyles.viewButton}
+          labelStyle={finaliseAppointmentsStyles.buttonLabel}
         >
           View Survey
         </Button>
@@ -264,219 +265,88 @@ export default function FinaliseAppointmentsScreen() {
         }}
       />
       
-      <View style={styles.container}>
-        <View style={styles.headerContainer}>
-          <Searchbar
-            placeholder="Search by client, address or order no."
-            onChangeText={setSearchQuery}
-            value={searchQuery}
-            style={styles.searchBar}
-            iconColor="#9b59b6"
-          />
-          <Button
-            mode="contained"
-            onPress={() => fetchAppointments(page)}
-            style={styles.refreshButton}
-            buttonColor="#9b59b6"
-            icon="refresh"
+      <View style={finaliseAppointmentsStyles.container}>
+        <Searchbar
+          placeholder="Search by client, address or order no."
+          onChangeText={setSearchQuery}
+          value={searchQuery}
+          style={finaliseAppointmentsStyles.searchBar}
+          iconColor={colors.secondary}
+        />
+        <Button
+          mode="contained"
+          onPress={() => fetchAppointments(page)}
+          style={finaliseAppointmentsStyles.viewButton}
+          buttonColor={colors.secondary}
+          icon="refresh"
+        >
+          Refresh
+        </Button>
+      </View>
+      
+      {loading ? (
+        <View style={finaliseAppointmentsStyles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.secondary} />
+          <Text style={finaliseAppointmentsStyles.emptyText}>Loading appointments...</Text>
+        </View>
+      ) : error ? (
+        <View style={finaliseAppointmentsStyles.errorContainer}>
+          <Text style={finaliseAppointmentsStyles.errorText}>{error}</Text>
+          <Button 
+            mode="contained" 
+            onPress={() => fetchAppointments(page)} 
+            style={finaliseAppointmentsStyles.viewButton}
+            buttonColor={colors.secondary}
+            textColor="white"
           >
-            Refresh
+            Retry
           </Button>
         </View>
-        
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#9b59b6" />
-            <Text style={styles.loadingText}>Loading appointments...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
+      ) : filteredAppointments.length > 0 ? (
+        <>
+          <FlatList
+            data={filteredAppointments || []}
+            renderItem={renderAppointmentItem}
+            keyExtractor={(item, index) => `appointment-${item.appointmentID || 'no-id'}-${index}`}
+            contentContainerStyle={finaliseAppointmentsStyles.listContainer}
+            refreshing={loading}
+            onRefresh={() => fetchAppointments(page)}
+            removeClippedSubviews={false}
+          />
+          <View style={finaliseAppointmentsStyles.paginationContainer}>
             <Button 
-              mode="contained" 
-              onPress={() => fetchAppointments(page)} 
-              style={styles.retryButton}
-              buttonColor="#9b59b6"
-              textColor="white"
+              mode="outlined" 
+              onPress={goToPreviousPage} 
+              disabled={page <= 1 || loading}
+              style={finaliseAppointmentsStyles.paginationButton}
+              icon="chevron-left"
             >
-              Retry
+              Previous
+            </Button>
+            
+            <Text style={finaliseAppointmentsStyles.paginationInfo}>
+              Page {String(page)} of {String(paginationInfo.totalPages || 1)}
+            </Text>
+            
+            <Button 
+              mode="outlined" 
+              onPress={goToNextPage} 
+              disabled={page >= paginationInfo.totalPages || !paginationInfo.hasMore || loading}
+              style={finaliseAppointmentsStyles.paginationButton}
+              icon="chevron-right"
+              contentStyle={{ flexDirection: 'row-reverse' }}
+            >
+              Next
             </Button>
           </View>
-        ) : filteredAppointments.length > 0 ? (
-          <>
-            <FlatList
-              data={filteredAppointments || []}
-              renderItem={renderAppointmentItem}
-              keyExtractor={(item, index) => `appointment-${item.appointmentID || 'no-id'}-${index}`}
-              contentContainerStyle={styles.listContainer}
-              refreshing={loading}
-              onRefresh={() => fetchAppointments(page)}
-              removeClippedSubviews={false}
-            />
-            <View style={styles.paginationContainer}>
-              <Button 
-                mode="outlined" 
-                onPress={goToPreviousPage} 
-                disabled={page <= 1 || loading}
-                style={styles.paginationButton}
-                icon="chevron-left"
-              >
-                Previous
-              </Button>
-              
-              <Text style={styles.paginationText}>
-                Page {String(page)} of {String(paginationInfo.totalPages || 1)}
-              </Text>
-              
-              <Button 
-                mode="outlined" 
-                onPress={goToNextPage} 
-                disabled={page >= paginationInfo.totalPages || !paginationInfo.hasMore || loading}
-                style={styles.paginationButton}
-                icon="chevron-right"
-                contentStyle={{ flexDirection: 'row-reverse' }}
-              >
-                Next
-              </Button>
-            </View>
-          </>
-        ) : (
-          <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="clipboard-check-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No appointments found</Text>
-            <Text style={styles.emptySubtext}>Try a different search term or page</Text>
-          </View>
-        )}
-      </View>
+        </>
+      ) : (
+        <View style={finaliseAppointmentsStyles.emptyContainer}>
+          <MaterialCommunityIcons name="clipboard-check-outline" size={64} color="#ccc" />
+          <Text style={finaliseAppointmentsStyles.emptyText}>No appointments found</Text>
+          <Text style={finaliseAppointmentsStyles.emptyText}>Try a different search term or page</Text>
+        </View>
+      )}
     </>
   );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f6fa',
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 8,
-  },
-  searchBar: {
-    flex: 1,
-    elevation: 2,
-    borderRadius: 8,
-  },
-  refreshButton: {
-    borderRadius: 8,
-  },
-  listContainer: {
-    padding: 16,
-    paddingTop: 0,
-  },
-  appointmentCard: {
-    marginBottom: 12,
-    borderRadius: 8,
-  },
-  appointmentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  icon: {
-    marginRight: 8,
-  },
-  appointmentAddress: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    flex: 1,
-  },
-  appointmentDetails: {
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  detailIcon: {
-    marginRight: 8,
-    width: 16,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  finaliseButton: {
-    marginTop: 4,
-    backgroundColor: '#9b59b6',
-    borderRadius: 4,
-    height: 36,
-  },
-  buttonLabel: {
-    fontSize: 12,
-    marginVertical: 0,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#7f8c8d',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    color: '#e74c3c',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 10,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4,
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  paginationButton: {
-    minWidth: 100,
-  },
-  paginationText: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-}); 
+} 

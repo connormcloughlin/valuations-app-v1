@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import { Card, DataTable, IconButton } from 'react-native-paper';
 import { UserItemsTableProps, Item } from './types';
+import { userItemsTableStyles } from '../../../GlobalStyles';
 
 export default function UserItemsTable({ items, totalValue, onDeleteItem }: UserItemsTableProps) {
   if (items.length === 0) {
@@ -9,7 +10,7 @@ export default function UserItemsTable({ items, totalValue, onDeleteItem }: User
   }
 
   return (
-    <Card style={styles.card}>
+    <Card style={userItemsTableStyles.card}>
       <Card.Title title="Added Items" />
       <DataTable>
         <DataTable.Header>
@@ -25,8 +26,8 @@ export default function UserItemsTable({ items, totalValue, onDeleteItem }: User
           return (
             <DataTable.Row key={item.id}>
               <DataTable.Cell>
-                <View style={styles.itemDescriptionCell}>
-                  {item.photo && <View style={styles.photoIndicator} />}
+                <View style={userItemsTableStyles.itemDescriptionCell}>
+                  {item.photo && <View style={userItemsTableStyles.photoIndicator} />}
                   <Text>{item.description || item.type}</Text>
                 </View>
               </DataTable.Cell>
@@ -45,11 +46,11 @@ export default function UserItemsTable({ items, totalValue, onDeleteItem }: User
           );
         })}
         
-        <DataTable.Row style={styles.totalRow}>
-          <DataTable.Cell><Text style={styles.totalLabel}>Total</Text></DataTable.Cell>
+        <DataTable.Row style={userItemsTableStyles.totalRow}>
+          <DataTable.Cell><Text style={userItemsTableStyles.totalLabel}>Total</Text></DataTable.Cell>
           <DataTable.Cell>{' '}</DataTable.Cell>
           <DataTable.Cell>{' '}</DataTable.Cell>
-          <DataTable.Cell numeric><Text style={styles.totalValue}>R{totalValue.toLocaleString()}</Text></DataTable.Cell>
+          <DataTable.Cell numeric><Text style={userItemsTableStyles.totalValue}>R{totalValue.toLocaleString()}</Text></DataTable.Cell>
           <DataTable.Cell>{' '}</DataTable.Cell>
         </DataTable.Row>
       </DataTable>
@@ -57,33 +58,3 @@ export default function UserItemsTable({ items, totalValue, onDeleteItem }: User
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    margin: 16,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  totalRow: {
-    backgroundColor: '#f0f4f7',
-  },
-  totalLabel: {
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
-  totalValue: {
-    fontWeight: 'bold',
-    fontSize: 15,
-    color: '#27ae60',
-  },
-  itemDescriptionCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  photoIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4a90e2',
-    marginRight: 6,
-  },
-}); 

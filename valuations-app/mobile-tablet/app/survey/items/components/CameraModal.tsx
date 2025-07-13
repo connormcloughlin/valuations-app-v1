@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, Modal, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Modal, TouchableOpacity } from 'react-native';
 import { IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { CameraModalProps } from './types';
+import { cameraModalStyles } from '../../../GlobalStyles';
 
 export default function CameraModal({
   visible,
@@ -18,10 +19,10 @@ export default function CameraModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add Photo</Text>
+      <View style={cameraModalStyles.modalContainer}>
+        <View style={cameraModalStyles.modalContent}>
+          <View style={cameraModalStyles.modalHeader}>
+            <Text style={cameraModalStyles.modalTitle}>Add Photo</Text>
             <IconButton
               icon="close"
               size={20}
@@ -29,21 +30,21 @@ export default function CameraModal({
             />
           </View>
           
-          <View style={styles.photoOptionsContainer}>
+          <View style={cameraModalStyles.photoOptionsContainer}>
             <TouchableOpacity
-              style={styles.photoOption}
+              style={cameraModalStyles.photoOption}
               onPress={onTakePhoto}
             >
               <MaterialCommunityIcons name="camera" size={48} color="#4a90e2" />
-              <Text style={styles.photoOptionText}>Take Photo</Text>
+              <Text style={cameraModalStyles.photoOptionText}>Take Photo</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={styles.photoOption}
+              style={cameraModalStyles.photoOption}
               onPress={onSelectFromGallery}
             >
               <MaterialCommunityIcons name="image" size={48} color="#4a90e2" />
-              <Text style={styles.photoOptionText}>Choose from Gallery</Text>
+              <Text style={cameraModalStyles.photoOptionText}>Choose from Gallery</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -52,48 +53,3 @@ export default function CameraModal({
   );
 }
 
-const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    width: '90%',
-    maxHeight: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    overflow: 'hidden',
-    padding: 16,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  photoOptionsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 32,
-  },
-  photoOption: {
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: '#f0f4f7',
-    width: '45%',
-  },
-  photoOptionText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#34495e',
-    textAlign: 'center',
-  },
-}); 

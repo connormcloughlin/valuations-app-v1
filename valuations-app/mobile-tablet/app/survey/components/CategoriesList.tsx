@@ -3,6 +3,9 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
+// Import GlobalStyles constants
+import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
+
 interface Category {
   id: string;
   name: string;
@@ -48,46 +51,46 @@ export default function CategoriesList({ categories, totalValue, onCategoryPress
 
 const styles = StyleSheet.create({
   sectionContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: typography.xl,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 12,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
   },
   totalValue: {
-    fontSize: 16,
+    fontSize: typography.lg,
     fontWeight: 'bold',
-    color: '#27ae60',
+    color: colors.success,
   },
   categoryCard: {
-    marginBottom: 8,
-    borderRadius: 8,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.md,
   },
   categoryContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   categoryInfo: {
     flex: 1,
   },
   categoryName: {
-    fontSize: 14,
+    fontSize: typography.sm,
     fontWeight: '600',
-    color: '#2c3e50',
+    color: colors.textPrimary,
   },
   categoryDetails: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 4,
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
 }); 

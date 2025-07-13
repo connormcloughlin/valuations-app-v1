@@ -6,6 +6,7 @@ import api from '../api';
 import connectionUtils from '../utils/connectionUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
+import { indexStyles } from './GlobalStyles';
 
 export default function Index() {
   const segments = useSegments();
@@ -15,9 +16,9 @@ export default function Index() {
   // Show loading while auth is checking
   if (authLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={indexStyles.loadingContainer}>
         <ActivityIndicator size="large" color="#3498db" />
-        <Text style={styles.loadingText}>Checking authentication...</Text>
+        <Text style={indexStyles.loadingText}>Checking authentication...</Text>
       </View>
     );
   }
@@ -28,141 +29,4 @@ export default function Index() {
   } else {
     return <Redirect href="/login" />;
   }
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f6fa',
-  },
-  header: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  offlineIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffeded',
-    padding: 6,
-    borderRadius: 4,
-  },
-  offlineText: {
-    fontSize: 12,
-    color: '#e74c3c',
-    marginLeft: 4,
-  },
-  buttonsContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    justifyContent: 'space-between',
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    minWidth: 150,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  refreshButton: {
-    backgroundColor: '#3498db',
-  },
-  clearButton: {
-    backgroundColor: '#e74c3c',
-  },
-  retryButton: {
-    backgroundColor: '#3498db',
-    marginTop: 16,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  errorText: {
-    marginTop: 16,
-    marginBottom: 16,
-    fontSize: 16,
-    color: '#e74c3c',
-    textAlign: 'center',
-  },
-  scrollView: {
-    flex: 1,
-    padding: 16,
-  },
-  templateCard: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  templateInfo: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  templateName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-  },
-  templateId: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 2,
-  },
-  templateDescription: {
-    fontSize: 14,
-    color: '#34495e',
-    marginTop: 4,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4,
-  },
-}); 
+} 

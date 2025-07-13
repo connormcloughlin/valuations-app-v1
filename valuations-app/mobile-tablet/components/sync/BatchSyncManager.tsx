@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text, Button, ProgressBar, Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { batchSyncManagerStyles } from '../../app/GlobalStyles';
 
 // Types for the sync configuration
 export interface SyncConfig {
@@ -307,29 +308,29 @@ export const BatchSyncManager: React.FC<BatchSyncManagerProps> = ({
   const progressPercentage = progress.total > 0 ? progress.current / progress.total : 0;
 
   return (
-    <Card style={styles.container}>
+    <Card style={batchSyncManagerStyles.container}>
       <Card.Content>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={batchSyncManagerStyles.header}>
           <MaterialCommunityIcons 
             name={isActive ? "sync" : result ? "check-circle" : "sync-off"} 
             size={24} 
             color={isActive ? "#2196F3" : result ? "#4CAF50" : "#757575"} 
           />
-          <Text style={styles.title}>
+          <Text style={batchSyncManagerStyles.title}>
             {isActive ? uiLabels.syncingText : result ? uiLabels.completeText : 'Batch Sync'}
           </Text>
         </View>
 
         {/* Progress Bar */}
         {showProgress && (
-          <View style={styles.progressSection}>
+          <View style={batchSyncManagerStyles.progressSection}>
             <ProgressBar 
               progress={progressPercentage} 
               color="#2196F3"
-              style={styles.progressBar}
+              style={batchSyncManagerStyles.progressBar}
             />
-            <Text style={styles.progressText}>
+            <Text style={batchSyncManagerStyles.progressText}>
               {progress.current} of {progress.total} items
               {progressPercentage > 0 && ` (${Math.round(progressPercentage * 100)}%)`}
             </Text>
@@ -338,8 +339,8 @@ export const BatchSyncManager: React.FC<BatchSyncManagerProps> = ({
 
         {/* Current Item */}
         {showDetails && currentItem && (
-          <View style={styles.currentItemSection}>
-            <Text style={styles.currentItemText}>
+          <View style={batchSyncManagerStyles.currentItemSection}>
+            <Text style={batchSyncManagerStyles.currentItemText}>
               Processing {currentItem.type}: {currentItem.id}
             </Text>
           </View>
@@ -347,20 +348,20 @@ export const BatchSyncManager: React.FC<BatchSyncManagerProps> = ({
 
         {/* Result Summary */}
         {result && (
-          <View style={styles.resultSection}>
-            <Text style={styles.resultText}>
+          <View style={batchSyncManagerStyles.resultSection}>
+            <Text style={batchSyncManagerStyles.resultText}>
               ✅ Success: {result.successCount} | ❌ Errors: {result.errorCount}
             </Text>
             {result.errors.length > 0 && showDetails && (
-              <View style={styles.errorsSection}>
-                <Text style={styles.errorsTitle}>Errors:</Text>
+              <View style={batchSyncManagerStyles.errorsSection}>
+                <Text style={batchSyncManagerStyles.errorsTitle}>Errors:</Text>
                 {result.errors.slice(0, 3).map((err, index) => (
-                  <Text key={index} style={styles.errorItem}>
+                  <Text key={index} style={batchSyncManagerStyles.errorItem}>
                     • {err.id}: {err.error}
                   </Text>
                 ))}
                 {result.errors.length > 3 && (
-                  <Text style={styles.moreErrors}>
+                  <Text style={batchSyncManagerStyles.moreErrors}>
                     ... and {result.errors.length - 3} more errors
                   </Text>
                 )}
@@ -371,19 +372,19 @@ export const BatchSyncManager: React.FC<BatchSyncManagerProps> = ({
 
         {/* Error Display */}
         {error && (
-          <View style={styles.errorSection}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={batchSyncManagerStyles.errorSection}>
+            <Text style={batchSyncManagerStyles.errorText}>{error}</Text>
           </View>
         )}
 
         {/* Action Buttons */}
-        <View style={styles.buttonSection}>
+        <View style={batchSyncManagerStyles.buttonSection}>
           {!isActive ? (
             <Button 
               mode="contained" 
               onPress={startSync}
               disabled={items.length === 0}
-              style={styles.startButton}
+              style={batchSyncManagerStyles.startButton}
             >
               {uiLabels.startButton} ({items.length} items)
             </Button>
@@ -391,7 +392,7 @@ export const BatchSyncManager: React.FC<BatchSyncManagerProps> = ({
             <Button 
               mode="outlined" 
               onPress={cancelSync}
-              style={styles.cancelButton}
+              style={batchSyncManagerStyles.cancelButton}
             >
               {uiLabels.cancelButton}
             </Button>
@@ -401,102 +402,5 @@ export const BatchSyncManager: React.FC<BatchSyncManagerProps> = ({
     </Card>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    margin: 16,
-    elevation: 4,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginLeft: 8,
-    color: '#212121',
-  },
-  progressSection: {
-    marginBottom: 16,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
-    marginBottom: 8,
-  },
-  progressText: {
-    fontSize: 14,
-    color: '#757575',
-    textAlign: 'center',
-  },
-  currentItemSection: {
-    backgroundColor: '#E3F2FD',
-    padding: 8,
-    borderRadius: 4,
-    marginBottom: 16,
-  },
-  currentItemText: {
-    fontSize: 12,
-    color: '#1976D2',
-    fontFamily: 'monospace',
-  },
-  resultSection: {
-    backgroundColor: '#F5F5F5',
-    padding: 12,
-    borderRadius: 4,
-    marginBottom: 16,
-  },
-  resultText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#212121',
-    marginBottom: 8,
-  },
-  errorsSection: {
-    marginTop: 8,
-  },
-  errorsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#D32F2F',
-    marginBottom: 4,
-  },
-  errorItem: {
-    fontSize: 11,
-    color: '#D32F2F',
-    marginLeft: 8,
-    marginBottom: 2,
-  },
-  moreErrors: {
-    fontSize: 11,
-    color: '#757575',
-    fontStyle: 'italic',
-    marginLeft: 8,
-  },
-  errorSection: {
-    backgroundColor: '#FFEBEE',
-    padding: 12,
-    borderRadius: 4,
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#D32F2F',
-  },
-  buttonSection: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  startButton: {
-    backgroundColor: '#2196F3',
-    flex: 1,
-  },
-  cancelButton: {
-    borderColor: '#FF5722',
-    flex: 1,
-  },
-});
 
 export default BatchSyncManager; 

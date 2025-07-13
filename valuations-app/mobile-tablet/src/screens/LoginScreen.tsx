@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { loginScreenStyles } from '../../app/GlobalStyles';
 
 const LoginScreen = () => {
   const [email, setEmail] = useState('');
@@ -21,15 +22,15 @@ const LoginScreen = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={loginScreenStyles.container}
     >
-      <View style={styles.content}>
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Sign in to continue</Text>
+      <View style={loginScreenStyles.content}>
+        <Text style={loginScreenStyles.title}>Welcome Back</Text>
+        <Text style={loginScreenStyles.subtitle}>Sign in to continue</Text>
 
-        <View style={styles.form}>
+        <View style={loginScreenStyles.form}>
           <TextInput
-            style={styles.input}
+            style={loginScreenStyles.input}
             placeholder="Email"
             value={email}
             onChangeText={setEmail}
@@ -37,79 +38,24 @@ const LoginScreen = () => {
             autoCapitalize="none"
           />
           <TextInput
-            style={styles.input}
+            style={loginScreenStyles.input}
             placeholder="Password"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
           />
 
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-            <Text style={styles.loginButtonText}>Sign In</Text>
+          <TouchableOpacity style={loginScreenStyles.loginButton} onPress={handleLogin}>
+            <Text style={loginScreenStyles.loginButtonText}>Sign In</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.forgotPassword}>
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          <TouchableOpacity style={loginScreenStyles.forgotPassword}>
+            <Text style={loginScreenStyles.forgotPasswordText}>Forgot Password?</Text>
           </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 40,
-  },
-  form: {
-    width: '100%',
-  },
-  input: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    marginBottom: 15,
-    fontSize: 16,
-  },
-  loginButton: {
-    backgroundColor: '#007AFF',
-    height: 50,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  loginButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  forgotPassword: {
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  forgotPasswordText: {
-    color: '#007AFF',
-    fontSize: 14,
-  },
-});
 
 export default LoginScreen; 

@@ -3,6 +3,8 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Modal, S
 import { Picker } from '@react-native-picker/picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { FieldConfiguration, DropdownOption, FieldValidationError } from '../../../../types/dynamicUI';
+// Import centralized styles
+import { dynamicFieldRendererStyles } from '../../../GlobalStyles';
 
 interface DynamicFieldRendererProps {
   field: FieldConfiguration;
@@ -49,15 +51,15 @@ function ModalDropdown({ value, onChange, field, hasError, onBlur, dataAttribute
   };
 
   return (
-    <View style={styles.modalDropdownContainer}>
+    <View style={dynamicFieldRendererStyles.modalDropdownContainer}>
       <TouchableOpacity
-        style={[styles.input, styles.dropdownButton, hasError && styles.inputError]}
+        style={[dynamicFieldRendererStyles.input, dynamicFieldRendererStyles.dropdownButton, hasError && dynamicFieldRendererStyles.inputError]}
         onPress={() => setShowModal(true)}
         activeOpacity={0.7}
       >
         <Text style={[
-          styles.dropdownButtonText,
-          !selectedOption && styles.dropdownButtonPlaceholder
+          dynamicFieldRendererStyles.dropdownButtonText,
+          !selectedOption && dynamicFieldRendererStyles.dropdownButtonPlaceholder
         ]}>
           {displayText}
         </Text>
@@ -74,31 +76,31 @@ function ModalDropdown({ value, onChange, field, hasError, onBlur, dataAttribute
         animationType="fade"
         onRequestClose={() => setShowModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{field.field_label}</Text>
+        <View style={dynamicFieldRendererStyles.modalOverlay}>
+          <View style={dynamicFieldRendererStyles.modalContent}>
+            <View style={dynamicFieldRendererStyles.modalHeader}>
+              <Text style={dynamicFieldRendererStyles.modalTitle}>{field.field_label}</Text>
               <TouchableOpacity
-                style={styles.closeButton}
+                style={dynamicFieldRendererStyles.closeButton}
                 onPress={() => setShowModal(false)}
               >
                 <MaterialCommunityIcons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
             
-            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={true}>
+            <ScrollView style={dynamicFieldRendererStyles.modalScrollView} showsVerticalScrollIndicator={true}>
               {field.dropdownOptions.map((item: DropdownOption) => (
                 <TouchableOpacity
                   key={item.option_value}
                   style={[
-                    styles.modalDropdownItem,
-                    value === item.option_value && styles.modalDropdownItemSelected
+                    dynamicFieldRendererStyles.modalDropdownItem,
+                    value === item.option_value && dynamicFieldRendererStyles.modalDropdownItemSelected
                   ]}
                   onPress={() => handleSelectOption(item.option_value)}
                 >
                   <Text style={[
-                    styles.modalDropdownItemText,
-                    value === item.option_value && styles.modalDropdownItemTextSelected
+                    dynamicFieldRendererStyles.modalDropdownItemText,
+                    value === item.option_value && dynamicFieldRendererStyles.modalDropdownItemTextSelected
                   ]}>
                     {item.option_label}
                   </Text>
@@ -192,9 +194,9 @@ export default function DynamicFieldRenderer({
   };
 
   const renderTextField = () => (
-    <View style={styles.inputContainer}>
+    <View style={dynamicFieldRendererStyles.inputContainer}>
       <TextInput
-        style={[styles.input, hasError && styles.inputError]}
+        style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
         value={value || ''}
         onChangeText={(text) => onChange(fieldName, text)}
         onBlur={onBlur}
@@ -204,7 +206,7 @@ export default function DynamicFieldRenderer({
       />
       {handwritingEnabled && onOpenHandwriting && (
         <TouchableOpacity
-          style={styles.handwritingButton}
+          style={dynamicFieldRendererStyles.handwritingButton}
           onPress={() => onOpenHandwriting(fieldName)}
         >
           <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
@@ -214,9 +216,9 @@ export default function DynamicFieldRenderer({
   );
 
   const renderNumberField = () => (
-    <View style={styles.inputContainer}>
+    <View style={dynamicFieldRendererStyles.inputContainer}>
       <TextInput
-        style={[styles.input, hasError && styles.inputError]}
+        style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
         value={value ? String(value) : ''}
         onChangeText={(text) => onChange(fieldName, text)}
         onBlur={onBlur}
@@ -227,7 +229,7 @@ export default function DynamicFieldRenderer({
       />
       {handwritingEnabled && onOpenHandwriting && (
         <TouchableOpacity
-          style={styles.handwritingButton}
+          style={dynamicFieldRendererStyles.handwritingButton}
           onPress={() => onOpenHandwriting(fieldName)}
         >
           <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
@@ -237,11 +239,11 @@ export default function DynamicFieldRenderer({
   );
 
   const renderCurrencyField = () => (
-    <View style={styles.inputContainer}>
-      <View style={styles.currencyContainer}>
-        <Text style={styles.currencyPrefix}>R</Text>
+    <View style={dynamicFieldRendererStyles.inputContainer}>
+      <View style={dynamicFieldRendererStyles.currencyContainer}>
+        <Text style={dynamicFieldRendererStyles.currencyPrefix}>R</Text>
         <TextInput
-          style={[styles.currencyInput, hasError && styles.inputError]}
+          style={[dynamicFieldRendererStyles.currencyInput, hasError && dynamicFieldRendererStyles.inputError]}
           value={value ? String(value) : ''}
           onChangeText={(text) => onChange(fieldName, text)}
           onBlur={onBlur}
@@ -253,7 +255,7 @@ export default function DynamicFieldRenderer({
       </View>
       {handwritingEnabled && onOpenHandwriting && (
         <TouchableOpacity
-          style={styles.handwritingButton}
+          style={dynamicFieldRendererStyles.handwritingButton}
           onPress={() => onOpenHandwriting(fieldName)}
         >
           <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
@@ -264,7 +266,7 @@ export default function DynamicFieldRenderer({
 
   const renderTextAreaField = () => (
     <TextInput
-      style={[styles.input, styles.textAreaInput, hasError && styles.inputError]}
+      style={[dynamicFieldRendererStyles.input, dynamicFieldRendererStyles.textAreaInput, hasError && dynamicFieldRendererStyles.inputError]}
       value={value || ''}
       onChangeText={(text) => onChange(fieldName, text)}
       onBlur={onBlur}
@@ -293,22 +295,22 @@ export default function DynamicFieldRenderer({
   };
 
   const renderLocationButtons = () => (
-    <View style={styles.locationButtonsContainer}>
+    <View style={dynamicFieldRendererStyles.locationButtonsContainer}>
       {field.dropdownOptions
         ?.filter(option => option.is_active !== false) // Include undefined values
         .map((option) => (
           <TouchableOpacity
             key={option.option_value}
             style={[
-              styles.locationButton,
-              value === option.option_value && styles.locationButtonSelected
+              dynamicFieldRendererStyles.locationButton,
+              value === option.option_value && dynamicFieldRendererStyles.locationButtonSelected
             ]}
             onPress={() => onChange(fieldName, option.option_value)}
           >
             <Text
               style={[
-                styles.locationButtonText,
-                value === option.option_value && styles.locationButtonTextSelected
+                dynamicFieldRendererStyles.locationButtonText,
+                value === option.option_value && dynamicFieldRendererStyles.locationButtonTextSelected
               ]}
             >
               {option.option_label}
@@ -325,36 +327,36 @@ export default function DynamicFieldRenderer({
     }
 
     return (
-      <View style={styles.locationGroupContainer}>
+      <View style={dynamicFieldRendererStyles.locationGroupContainer}>
         {/* Header with MapPin icon */}
-        <View style={styles.locationGroupHeader}>
+        <View style={dynamicFieldRendererStyles.locationGroupHeader}>
           <MaterialCommunityIcons 
             name="map-marker" 
             size={20} 
             color="#4a90e2" 
           />
-          <Text style={styles.locationGroupHeaderText}>
+          <Text style={dynamicFieldRendererStyles.locationGroupHeaderText}>
             Select Room/Location
           </Text>
         </View>
         
         {/* Location options grid */}
-        <View style={styles.locationGroupGrid}>
+        <View style={dynamicFieldRendererStyles.locationGroupGrid}>
           {field.dropdownOptions
             .filter(option => option.is_active !== false)
             .map((option) => (
               <TouchableOpacity
                 key={option.option_value}
                 style={[
-                  styles.locationGroupButton,
-                  value === option.option_value && styles.locationGroupButtonSelected
+                  dynamicFieldRendererStyles.locationGroupButton,
+                  value === option.option_value && dynamicFieldRendererStyles.locationGroupButtonSelected
                 ]}
                 onPress={() => {
                   onChange(fieldName, option.option_value);
                   onBlur?.();
                 }}
               >
-                <View style={styles.locationGroupButtonContent}>
+                <View style={dynamicFieldRendererStyles.locationGroupButtonContent}>
                   <MaterialCommunityIcons 
                     name="home-outline" 
                     size={18} 
@@ -362,8 +364,8 @@ export default function DynamicFieldRenderer({
                   />
                                      <Text
                      style={[
-                       styles.locationGroupButtonText,
-                       value === option.option_value && styles.locationGroupButtonTextSelected,
+                       dynamicFieldRendererStyles.locationGroupButtonText,
+                       value === option.option_value && dynamicFieldRendererStyles.locationGroupButtonTextSelected,
                        { textAlign: 'center' }
                      ]}
                      numberOfLines={2}
@@ -377,13 +379,13 @@ export default function DynamicFieldRenderer({
         
         {/* Selected location indicator */}
         {value && (
-          <View style={styles.selectedLocationIndicator}>
+          <View style={dynamicFieldRendererStyles.selectedLocationIndicator}>
             <MaterialCommunityIcons 
               name="check-circle" 
               size={16} 
               color="#27ae60" 
             />
-            <Text style={styles.selectedLocationText}>
+            <Text style={dynamicFieldRendererStyles.selectedLocationText}>
               Selected: {field.dropdownOptions?.find(opt => opt.option_value === value)?.option_label || value}
             </Text>
           </View>
@@ -433,10 +435,10 @@ export default function DynamicFieldRenderer({
     };
 
     return (
-      <View style={styles.comboboxContainer}>
-        <View style={styles.inputContainer}>
+      <View style={dynamicFieldRendererStyles.comboboxContainer}>
+        <View style={dynamicFieldRendererStyles.inputContainer}>
           <TextInput
-            style={[styles.input, hasError && styles.inputError]}
+            style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
             value={inputText}
             onChangeText={handleTextChange}
             onFocus={() => {
@@ -451,7 +453,7 @@ export default function DynamicFieldRenderer({
           />
           {handwritingEnabled && onOpenHandwriting && (
             <TouchableOpacity
-              style={styles.handwritingButton}
+              style={dynamicFieldRendererStyles.handwritingButton}
               onPress={() => onOpenHandwriting(fieldName)}
             >
               <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
@@ -459,17 +461,17 @@ export default function DynamicFieldRenderer({
           )}
         </View>
         {showSuggestions && (
-          <View style={styles.suggestionsContainer}>
+          <View style={dynamicFieldRendererStyles.suggestionsContainer}>
             <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
               {filteredOptions.map((item: DropdownOption) => (
                 <TouchableOpacity
                   key={item.option_value}
-                  style={styles.suggestionItem}
+                  style={dynamicFieldRendererStyles.suggestionItem}
                   onPress={() => handleSelectSuggestion(item.option_value)}
                   onPressIn={() => { selectingOption.current = true; }}
                   onPressOut={() => { setTimeout(() => { selectingOption.current = false; }, 150); }}
                 >
-                  <Text style={styles.suggestionText}>{item.option_label}</Text>
+                  <Text style={dynamicFieldRendererStyles.suggestionText}>{item.option_label}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -490,9 +492,9 @@ export default function DynamicFieldRenderer({
     const photoCount = itemPhotos?.[itemId]?.length || 0;
     
     return (
-      <View style={styles.photoSection}>
+      <View style={dynamicFieldRendererStyles.photoSection}>
         <TouchableOpacity
-          style={styles.photoButton}
+          style={dynamicFieldRendererStyles.photoButton}
           onPress={() => onTakePhoto(itemId)}
         >
           <MaterialCommunityIcons 
@@ -500,7 +502,7 @@ export default function DynamicFieldRenderer({
             size={16} 
             color="#4a90e2" 
           />
-          <Text style={styles.photoButtonText}>
+          <Text style={dynamicFieldRendererStyles.photoButtonText}>
             {photoCount > 0 
               ? `${photoCount} photo${photoCount !== 1 ? 's' : ''}`
               : 'Take Photo'
@@ -512,409 +514,19 @@ export default function DynamicFieldRenderer({
   };
 
   return (
-    <View style={styles.fieldContainer}>
+    <View style={dynamicFieldRendererStyles.fieldContainer}>
       {!hideLabel && (
-        <Text style={[styles.label, hasError && styles.labelError]}>
+        <Text style={[dynamicFieldRendererStyles.label, hasError && dynamicFieldRendererStyles.labelError]}>
           {field.field_label}
-          {isRequired && <Text style={styles.required}> *</Text>}
+          {isRequired && <Text style={dynamicFieldRendererStyles.required}> *</Text>}
         </Text>
       )}
       
       {renderFieldByType()}
       
       {hasError && (
-        <Text style={styles.errorText}>{validationError?.message}</Text>
+        <Text style={dynamicFieldRendererStyles.errorText}>{validationError?.message}</Text>
       )}
     </View>
   );
-}
-
-const styles = StyleSheet.create({
-  fieldContainer: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-  labelError: {
-    color: '#e74c3c',
-  },
-  required: {
-    color: '#e74c3c',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    backgroundColor: '#fff',
-  },
-  inputError: {
-    borderColor: '#e74c3c',
-  },
-  textAreaInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  handwritingButton: {
-    marginLeft: 8,
-    padding: 8,
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-  },
-  picker: {
-    height: 50,
-  },
-  locationButtonsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  locationButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#fff',
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  locationButtonSelected: {
-    backgroundColor: '#4a90e2',
-    borderColor: '#4a90e2',
-  },
-  locationButtonText: {
-    fontSize: 14,
-    color: '#2c3e50',
-  },
-  locationButtonTextSelected: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  errorText: {
-    color: '#e74c3c',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  photoSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  photoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    backgroundColor: '#f0f4f7',
-    borderWidth: 1,
-    borderColor: '#4a90e2',
-  },
-  photoButtonText: {
-    fontSize: 12,
-    color: '#4a90e2',
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  currencyContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-  },
-  currencyPrefix: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#7f8c8d',
-    fontWeight: '600',
-    borderRightWidth: 1,
-    borderRightColor: '#eee',
-  },
-  currencyInput: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    borderWidth: 0, // Remove border since container has it
-  },
-  // Combobox styles
-  comboboxContainer: {
-    position: 'relative',
-    zIndex: 1000,
-  },
-  dropdownButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    minHeight: 48,
-  },
-  dropdownButtonText: {
-    fontSize: 16,
-    color: '#2c3e50',
-    flex: 1,
-  },
-  dropdownButtonPlaceholder: {
-    color: '#95a5a6',
-  },
-  dropdownList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    marginTop: 2,
-    maxHeight: 200,
-    elevation: 10,
-    zIndex: 9999,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  dropdownItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  dropdownItemSelected: {
-    backgroundColor: '#f8f9fa',
-  },
-  dropdownItemText: {
-    fontSize: 16,
-    color: '#2c3e50',
-  },
-  dropdownItemTextSelected: {
-    color: '#4a90e2',
-    fontWeight: '600',
-  },
-  // Auto-suggest styles
-  autoSuggestContainer: {
-    position: 'relative',
-    zIndex: 1000,
-  },
-  suggestionsList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    borderTopWidth: 0,
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
-    maxHeight: 150,
-    zIndex: 1001,
-    elevation: 5, // Android shadow
-    shadowColor: '#000', // iOS shadow
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  suggestionsContent: {
-    maxHeight: 150,
-  },
-  suggestionItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  suggestionItemText: {
-    fontSize: 14,
-    color: '#2c3e50',
-  },
-  // Location group styles
-  locationGroupContainer: {
-    marginBottom: 8,
-  },
-  locationGroupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  locationGroupHeaderText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginLeft: 8,
-  },
-  locationGroupGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  locationGroupButton: {
-    minWidth: 80,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#4a90e2',
-    backgroundColor: '#fff',
-    marginRight: 8,
-    marginBottom: 8,
-    alignItems: 'center',
-    elevation: 2, // Android shadow
-    shadowColor: '#000', // iOS shadow
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.22,
-    shadowRadius: 2.22,
-  },
-  locationGroupButtonSelected: {
-    backgroundColor: '#4a90e2',
-    borderColor: '#4a90e2',
-  },
-  locationGroupButtonContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  locationGroupButtonText: {
-    fontSize: 12,
-    color: '#4a90e2',
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  locationGroupButtonTextSelected: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  selectedLocationIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8fff8',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#27ae60',
-  },
-  selectedLocationText: {
-    fontSize: 14,
-    color: '#27ae60',
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-  // Modal dropdown styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    width: '100%',
-    maxHeight: '80%',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  modalScrollView: {
-    maxHeight: 400,
-  },
-  modalDropdownContainer: {
-    position: 'relative',
-    zIndex: 1000,
-  },
-  modalDropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  modalDropdownItemSelected: {
-    backgroundColor: '#f8f9fa',
-  },
-  modalDropdownItemText: {
-    fontSize: 16,
-    color: '#2c3e50',
-    flex: 1,
-  },
-  modalDropdownItemTextSelected: {
-    color: '#4a90e2',
-    fontWeight: '600',
-  },
-  suggestionsContainer: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    borderTopWidth: 0,
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
-    maxHeight: 150,
-    zIndex: 1001,
-    elevation: 5, // Android shadow
-    shadowColor: '#000', // iOS shadow
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  suggestionText: {
-    fontSize: 14,
-    color: '#2c3e50',
-  },
-}); 
+} 

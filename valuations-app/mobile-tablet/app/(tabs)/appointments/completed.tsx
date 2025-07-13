@@ -6,6 +6,7 @@ import { router, Stack } from 'expo-router';
 import { logNavigation } from '../../../utils/logger';
 import api from '../../../api';
 import type { Appointment as ApiAppointment } from '../../../api/index.d';
+import { completedAppointmentsStyles, colors } from '../../GlobalStyles';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -148,44 +149,44 @@ export default function CompletedAppointmentsScreen() {
 
   const renderAppointmentItem = ({ item }: { item: Appointment }) => (
     <Card 
-      style={styles.appointmentCard}
+      style={completedAppointmentsStyles.appointmentCard}
       onPress={() => navigateToSummary(item.id)}
     >
       <Card.Content>
-        <View style={styles.appointmentHeader}>
-          <MaterialCommunityIcons name="map-marker" size={20} color="#2ecc71" style={styles.icon} />
-          <Text style={styles.appointmentAddress}>{item.address || 'No address'}</Text>
+        <View style={completedAppointmentsStyles.appointmentHeader}>
+          <MaterialCommunityIcons name="map-marker" size={20} color={colors.success} style={completedAppointmentsStyles.icon} />
+          <Text style={completedAppointmentsStyles.appointmentAddress}>{item.address || 'No address'}</Text>
           <Chip 
-            style={styles.statusChip} 
-            textStyle={styles.statusChipText}
+            style={completedAppointmentsStyles.statusChip} 
+            textStyle={completedAppointmentsStyles.statusChipText}
             icon="check-circle"
           >
             Completed
           </Chip>
         </View>
         
-        <View style={styles.appointmentDetails}>
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="account" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>{item.client || 'No client name'}</Text>
+        <View style={completedAppointmentsStyles.appointmentDetails}>
+          <View style={completedAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="account" size={16} color={colors.gray[500]} style={completedAppointmentsStyles.detailIcon} />
+            <Text style={completedAppointmentsStyles.detailText}>{item.client || 'No client name'}</Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="calendar-check" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Submitted: {item.submitted || 'Unknown'}</Text>
+          <View style={completedAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="calendar-check" size={16} color={colors.gray[500]} style={completedAppointmentsStyles.detailIcon} />
+            <Text style={completedAppointmentsStyles.detailText}>Submitted: {item.submitted || 'Unknown'}</Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="file-document-outline" size={16} color="#7f8c8d" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
+          <View style={completedAppointmentsStyles.detailRow}>
+            <MaterialCommunityIcons name="file-document-outline" size={16} color={colors.gray[500]} style={completedAppointmentsStyles.detailIcon} />
+            <Text style={completedAppointmentsStyles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
           </View>
         </View>
         
         <Button 
           mode="outlined" 
           onPress={() => navigateToSummary(item.id)} 
-          style={styles.viewButton}
-          labelStyle={styles.buttonLabel}
+          style={completedAppointmentsStyles.viewButton}
+          labelStyle={completedAppointmentsStyles.buttonLabel}
         >
           View Summary
         </Button>
@@ -202,28 +203,28 @@ export default function CompletedAppointmentsScreen() {
         }}
       />
       
-      <View style={styles.container}>
+      <View style={completedAppointmentsStyles.container}>
         <Searchbar
           placeholder="Search by client, address or order no."
           onChangeText={setSearchQuery}
           value={searchQuery}
-          style={styles.searchBar}
-          iconColor="#2ecc71"
+          style={completedAppointmentsStyles.searchBar}
+          iconColor={colors.success}
         />
         
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#2ecc71" />
-            <Text style={styles.loadingText}>Loading appointments...</Text>
+          <View style={completedAppointmentsStyles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.success} />
+            <Text style={completedAppointmentsStyles.emptyText}>Loading appointments...</Text>
           </View>
         ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={completedAppointmentsStyles.errorContainer}>
+            <Text style={completedAppointmentsStyles.errorText}>{error}</Text>
             <Button 
               mode="contained" 
               onPress={() => fetchAppointments(page)} 
-              style={styles.retryButton}
-              buttonColor="#2ecc71"
+              style={completedAppointmentsStyles.viewButton}
+              buttonColor={colors.success}
             >
               <Text style={{ color: 'white' }}>Retry</Text>
             </Button>
@@ -234,22 +235,22 @@ export default function CompletedAppointmentsScreen() {
               data={filteredAppointments}
               renderItem={renderAppointmentItem}
               keyExtractor={(item, index) => item.id ? `appointment-${item.id}-${index}` : `appointment-index-${index}`}
-              contentContainerStyle={styles.listContainer}
+              contentContainerStyle={completedAppointmentsStyles.listContainer}
               refreshing={loading}
               onRefresh={() => fetchAppointments(page)}
             />
-            <View style={styles.paginationContainer}>
+            <View style={completedAppointmentsStyles.paginationContainer}>
               <Button 
                 mode="outlined" 
                 onPress={goToPreviousPage} 
                 disabled={page <= 1 || loading}
-                style={styles.paginationButton}
+                style={completedAppointmentsStyles.paginationButton}
               >
                 <MaterialCommunityIcons name="chevron-left" size={16} />
                 Previous
               </Button>
               
-              <Text style={styles.paginationText}>
+              <Text style={completedAppointmentsStyles.paginationInfo}>
                 Page {page} of {paginationInfo.totalPages || 1}
               </Text>
               
@@ -257,7 +258,7 @@ export default function CompletedAppointmentsScreen() {
                 mode="outlined" 
                 onPress={goToNextPage} 
                 disabled={page >= paginationInfo.totalPages || !paginationInfo.hasMore || loading}
-                style={styles.paginationButton}
+                style={completedAppointmentsStyles.paginationButton}
               >
                 Next
                 <MaterialCommunityIcons name="chevron-right" size={16} />
@@ -265,143 +266,13 @@ export default function CompletedAppointmentsScreen() {
             </View>
           </>
         ) : (
-          <View style={styles.emptyContainer}>
+          <View style={completedAppointmentsStyles.emptyContainer}>
             <MaterialCommunityIcons name="clipboard-check" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No completed appointments found</Text>
-            <Text style={styles.emptySubtext}>Try a different search term or page</Text>
+            <Text style={completedAppointmentsStyles.emptyText}>No completed appointments found</Text>
+            <Text style={completedAppointmentsStyles.emptyText}>Try a different search term or page</Text>
           </View>
         )}
       </View>
     </>
   );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f6fa',
-  },
-  searchBar: {
-    margin: 16,
-    elevation: 2,
-    borderRadius: 8,
-  },
-  listContainer: {
-    padding: 16,
-    paddingTop: 0,
-    paddingBottom: 80, // Add extra space at the bottom for pagination controls
-  },
-  appointmentCard: {
-    marginBottom: 12,
-    borderRadius: 8,
-  },
-  appointmentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  icon: {
-    marginRight: 8,
-  },
-  appointmentAddress: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    flex: 1,
-  },
-  statusChip: {
-    backgroundColor: '#e8f6ef',
-    height: 24,
-  },
-  statusChipText: {
-    fontSize: 10,
-    color: '#27ae60',
-  },
-  appointmentDetails: {
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  detailIcon: {
-    marginRight: 8,
-    width: 16,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  viewButton: {
-    marginTop: 4,
-    borderColor: '#2ecc71',
-    borderRadius: 4,
-    height: 36,
-  },
-  buttonLabel: {
-    fontSize: 12,
-    marginVertical: 0,
-    color: '#2ecc71',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#7f8c8d',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    color: '#e74c3c',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 10,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4,
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  paginationButton: {
-    minWidth: 100,
-  },
-  paginationText: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-}); 
+} 

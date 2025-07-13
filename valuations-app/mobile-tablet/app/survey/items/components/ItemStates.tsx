@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { Button } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ItemStatesProps } from './types';
+import { itemStatesStyles } from '../../../GlobalStyles';
 
 export default function ItemStates({ 
   loading, 
@@ -15,33 +16,33 @@ export default function ItemStates({
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={itemStatesStyles.loadingContainer}>
         <ActivityIndicator size="large" color="#4a90e2" />
-        <Text style={styles.loadingText}>Loading items...</Text>
+        <Text style={itemStatesStyles.loadingText}>Loading items...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{error}</Text>
+      <View style={itemStatesStyles.errorContainer}>
+        <Text style={itemStatesStyles.errorText}>{error}</Text>
         {onRetry && (
           <Button 
             mode="contained" 
             onPress={onRetry}
-            style={styles.retryButton}
+            style={itemStatesStyles.retryButton}
           >
             Retry
           </Button>
         )}
         {isOffline && (
-          <Text style={styles.offlineHint}>
+          <Text style={itemStatesStyles.offlineHint}>
             You are currently offline. Showing cached data if available.
           </Text>
         )}
         {fromCache && !isOffline && (
-          <Text style={styles.offlineHint}>
+          <Text style={itemStatesStyles.offlineHint}>
             Using cached data. Items were loaded from local storage.
           </Text>
         )}
@@ -51,10 +52,10 @@ export default function ItemStates({
 
   if (isEmpty) {
     return (
-      <View style={styles.emptyState}>
+      <View style={itemStatesStyles.emptyState}>
         <MaterialCommunityIcons name="clipboard-text-outline" size={64} color="#bdc3c7" />
-        <Text style={styles.emptyStateText}>No items added yet</Text>
-        <Text style={styles.emptyStateSubtext}>Tap the 'Add Item' button to get started</Text>
+        <Text style={itemStatesStyles.emptyStateText}>No items added yet</Text>
+        <Text style={itemStatesStyles.emptyStateSubtext}>Tap the 'Add Item' button to get started</Text>
       </View>
     );
   }
@@ -62,53 +63,3 @@ export default function ItemStates({
   return null;
 }
 
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  errorText: {
-    marginBottom: 16,
-    fontSize: 16,
-    color: '#e74c3c',
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: '#3498db',
-  },
-  offlineHint: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#7f8c8d',
-    textAlign: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-  },
-  emptyStateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginTop: 16,
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4,
-  },
-}); 

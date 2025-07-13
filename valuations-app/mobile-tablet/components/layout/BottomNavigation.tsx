@@ -9,6 +9,7 @@ import Animated, {
   interpolateColor
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { bottomNavigationStyles } from '../../app/GlobalStyles';
 
 // Define the tab configuration type
 export type TabConfig = {
@@ -47,7 +48,7 @@ export default function BottomNavigation({
 
   return (
     <View style={[
-      styles.tabBar, 
+      bottomNavigationStyles.tabBar, 
       { paddingBottom: Math.max(insets.bottom, 10) }
     ]}>
       {tabs.map(tab => (
@@ -118,10 +119,10 @@ function TabButton({ icon, label, active, onPress }: TabButtonProps) {
   return (
     <TouchableOpacity 
       onPress={onPress} 
-      style={styles.tabButton}
+      style={bottomNavigationStyles.tabButton}
       activeOpacity={0.7}
     >
-      <Animated.View style={[styles.tabButtonContainer, animatedColorStyle]}>
+      <Animated.View style={[bottomNavigationStyles.tabButtonContainer, animatedColorStyle]}>
         <Animated.View style={animatedIconStyle}>
           <MaterialCommunityIcons
             name={icon}
@@ -130,41 +131,12 @@ function TabButton({ icon, label, active, onPress }: TabButtonProps) {
           />
         </Animated.View>
         
-        <Animated.View style={[styles.labelContainer, animatedLabelStyle]}>
-          <Text style={[styles.label, { color: getIconColor() }]}>
+        <Animated.View style={[bottomNavigationStyles.labelContainer, animatedLabelStyle]}>
+          <Text style={[bottomNavigationStyles.label, { color: getIconColor() }]}>
             {label}
           </Text>
         </Animated.View>
       </Animated.View>
     </TouchableOpacity>
   );
-}
-
-const styles = StyleSheet.create({
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 8,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 8,
-  },
-  tabButtonContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-    borderRadius: 16,
-  },
-  labelContainer: {
-    marginTop: 4,
-    overflow: 'hidden',
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '500',
-    textAlign: 'center',
-  }
-}); 
+} 

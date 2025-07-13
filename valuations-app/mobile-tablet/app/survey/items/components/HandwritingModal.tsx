@@ -3,6 +3,7 @@ import { View, Text, Modal, StyleSheet } from 'react-native';
 import { Button, IconButton } from 'react-native-paper';
 import Svg, { Path } from 'react-native-svg';
 import { HandwritingModalProps } from './types';
+import { colors, spacing, borderRadius, typography, commonStyles } from '../../../GlobalStyles';
 
 export default function HandwritingModal({
   visible,
@@ -97,63 +98,53 @@ export default function HandwritingModal({
 }
 
 const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
+  modalContainer: commonStyles.modalContainer,
   modalContent: {
     width: '90%',
     maxHeight: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
-    padding: 16,
+    padding: spacing.lg,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
+  modalHeader: commonStyles.modalHeader,
   modalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2c3e50',
+    fontSize: typography.lg,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
   },
   canvasContainer: {
     width: '100%',
     height: 300,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    marginBottom: 16,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.lg,
     overflow: 'hidden',
   },
   canvas: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#f9f9f9',
+    backgroundColor: colors.gray[50],
   },
   canvasButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   recognizedTextContainer: {
-    backgroundColor: '#f0f4f7',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    backgroundColor: colors.gray[100],
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.lg,
   },
   recognizedTextLabel: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginBottom: 4,
+    fontSize: typography.base,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   recognizedText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
+    fontSize: typography.xl,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
   },
 }); 

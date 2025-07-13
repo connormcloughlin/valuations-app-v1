@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, Text, TouchableOpacity, Share } from 'react-native';
-import { Card, Button, Chip, ActivityIndicator, Divider } from 'react-native-paper';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, Share } from 'react-native';
+import { Card, Chip, Button, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { logNavigation } from '../../../utils/logger';
+import { useLocalSearchParams, router, Stack } from 'expo-router';
 import api from '../../../api';
+import { logNavigation } from '../../../utils/logger';
+
+// Import GlobalStyles constants
+import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
 
 // Define the types for our data
 interface CategorySummary {
@@ -442,34 +445,38 @@ Completed on ${survey.completionDate}
   
   if (loading) {
     return (
-      <>
+      <View style={styles.container}>
         <Stack.Screen
           options={{
             title: 'Survey Summary',
             headerTitleStyle: { fontWeight: '600' }
           }}
         />
+        
         <View style={[styles.container, styles.loadingContainer]}>
-          <ActivityIndicator size="large" color="#2ecc71" />
+          <ActivityIndicator size="large" color={colors.success} />
           <Text style={styles.loadingText}>Loading survey summary...</Text>
         </View>
-      </>
+      </View>
     );
   }
-  
-  if (!survey) {
+
+  if (error || !survey) {
     return (
-      <>
+      <View style={styles.container}>
         <Stack.Screen
           options={{
             title: 'Survey Not Found',
             headerTitleStyle: { fontWeight: '600' }
           }}
         />
+        
         <View style={[styles.container, styles.centeredContainer]}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={64} color="#e74c3c" />
+          <MaterialCommunityIcons name="alert-circle-outline" size={64} color={colors.error} />
           <Text style={styles.errorTitle}>Survey Not Found</Text>
-          <Text style={styles.errorMessage}>The survey you're looking for doesn't exist or has been deleted.</Text>
+          <Text style={styles.errorMessage}>
+            {error || "The survey you're looking for doesn't exist or has been deleted."}
+          </Text>
           <Button 
             mode="contained" 
             onPress={() => router.back()} 
@@ -478,7 +485,7 @@ Completed on ${survey.completionDate}
             Go Back
           </Button>
         </View>
-      </>
+      </View>
     );
   }
 
@@ -508,7 +515,7 @@ Completed on ${survey.completionDate}
               
               <Text style={styles.clientName}>{survey.client}</Text>
               <View style={styles.addressRow}>
-                <MaterialCommunityIcons name="map-marker" size={20} color="#2ecc71" />
+                <MaterialCommunityIcons name="map-marker" size={20} color={colors.success} />
                 <Text style={styles.addressText}>{survey.address}</Text>
               </View>
             </Card.Content>
@@ -633,83 +640,83 @@ Completed on ${survey.completionDate}
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d',
+    marginTop: spacing.lg,
+    fontSize: typography.lg,
+    color: colors.textSecondary,
   },
   centeredContainer: {
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   errorTitle: {
-    fontSize: 20,
+    fontSize: typography.xxl,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 16,
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
   },
   errorMessage: {
-    fontSize: 16,
-    color: '#7f8c8d',
+    fontSize: typography.lg,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xxl,
   },
   errorButton: {
-    backgroundColor: '#3498db',
+    backgroundColor: colors.primaryDark,
   },
   scrollView: {
     flex: 1,
-    padding: 16,
+    padding: spacing.lg,
   },
   headerCard: {
-    marginBottom: 16,
-    borderRadius: 8,
+    marginBottom: spacing.lg,
+    borderRadius: borderRadius.md,
   },
   statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   statusChip: {
     backgroundColor: '#e8f6ef',
     height: 28,
   },
   statusChipText: {
-    fontSize: 12,
-    color: '#27ae60',
+    fontSize: typography.xs,
+    color: colors.success,
   },
   completionDate: {
-    fontSize: 14,
-    color: '#7f8c8d',
+    fontSize: typography.sm,
+    color: colors.textSecondary,
   },
   clientName: {
-    fontSize: 20,
+    fontSize: typography.xxl,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 8,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
   },
   addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   addressText: {
-    fontSize: 16,
-    color: '#2c3e50',
-    marginLeft: 8,
+    fontSize: typography.lg,
+    color: colors.textPrimary,
+    marginLeft: spacing.sm,
   },
   sectionContainer: {
-    marginLeft: 16,
-    marginTop: 12,
-    paddingLeft: 12,
+    marginLeft: spacing.lg,
+    marginTop: spacing.md,
+    paddingLeft: spacing.md,
     borderLeftWidth: 2,
     borderLeftColor: '#e8f6ef',
   },
@@ -719,39 +726,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: typography.xl,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 12,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
   },
   totalValue: {
-    fontSize: 16,
+    fontSize: typography.lg,
     fontWeight: 'bold',
-    color: '#27ae60',
+    color: colors.success,
   },
   detailsCard: {
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
   },
   detailRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   detailLabel: {
     width: 120,
-    fontSize: 14,
-    color: '#7f8c8d',
+    fontSize: typography.sm,
+    color: colors.textSecondary,
   },
   detailValue: {
     flex: 1,
-    fontSize: 14,
-    color: '#2c3e50',
+    fontSize: typography.sm,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   summaryCard: {
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
   },
   assessmentTypeSummary: {
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   assessmentTypeHeader: {
     flexDirection: 'row',
@@ -761,85 +768,84 @@ const styles = StyleSheet.create({
   assessmentTypeName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#2c3e50',
+    color: colors.textPrimary,
   },
   assessmentTypeValue: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#27ae60',
+    color: colors.success,
   },
   assessmentTypeItemCount: {
     fontSize: 13,
-    color: '#7f8c8d',
-    marginTop: 4,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   divider: {
-    marginVertical: 8,
+    marginVertical: spacing.sm,
   },
   totalDivider: {
     height: 1.5,
-    backgroundColor: '#27ae60',
-    marginVertical: 16,
+    backgroundColor: colors.success,
+    marginVertical: spacing.lg,
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   totalLabel: {
-    fontSize: 16,
+    fontSize: typography.lg,
     fontWeight: 'bold',
-    color: '#2c3e50',
+    color: colors.textPrimary,
   },
   totalValueBold: {
-    fontSize: 18,
+    fontSize: typography.xl,
     fontWeight: 'bold',
-    color: '#27ae60',
+    color: colors.success,
   },
   notesCard: {
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
   },
   notesText: {
-    fontSize: 14,
-    color: '#2c3e50',
+    fontSize: typography.sm,
+    color: colors.textPrimary,
     lineHeight: 20,
   },
   buttonContainer: {
     flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: spacing.lg,
+    backgroundColor: colors.white,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: colors.borderLight,
   },
   shareButton: {
     flex: 1,
-    marginRight: 8,
-    borderColor: '#2ecc71',
+    marginRight: spacing.sm,
+    borderColor: colors.success,
   },
   pdfButton: {
     flex: 1,
-    backgroundColor: '#2ecc71',
+    backgroundColor: colors.success,
   },
   sectionName: {
-    fontSize: 14,
+    fontSize: typography.sm,
     fontWeight: '500',
-    color: '#34495e',
+    color: colors.textPrimary,
   },
   sectionValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#27ae60',
+    fontSize: typography.sm,
+    fontWeight: '600',
+    color: colors.success,
   },
   sectionItemCount: {
-    fontSize: 12,
-    color: '#95a5a6',
-    marginTop: 2,
+    fontSize: typography.xs,
+    color: colors.textSecondary,
   },
   categoryContainer: {
-    marginLeft: 16,
-    marginTop: 8,
-    paddingLeft: 12,
+    marginLeft: spacing.lg,
+    marginTop: spacing.md,
+    paddingLeft: spacing.md,
     borderLeftWidth: 1,
     borderLeftColor: '#ecf0f1',
   },
@@ -849,18 +855,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   categoryName: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#7f8c8d',
+    fontSize: typography.xs,
+    fontWeight: '500',
+    color: colors.textPrimary,
   },
   categoryValue: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#27ae60',
+    fontSize: typography.xs,
+    fontWeight: '600',
+    color: colors.success,
   },
   categoryItemCount: {
-    fontSize: 11,
-    color: '#bdc3c7',
-    marginTop: 2,
+    fontSize: 10,
+    color: colors.textSecondary,
   },
 }); 

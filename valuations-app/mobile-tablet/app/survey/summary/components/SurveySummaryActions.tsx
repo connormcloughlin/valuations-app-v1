@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { Button } from 'react-native-paper';
+import { surveySummaryActionsStyles } from '../../../GlobalStyles';
 
 interface SurveySummaryActionsProps {
   onShare: () => void;
@@ -11,12 +12,12 @@ interface SurveySummaryActionsProps {
 
 export default function SurveySummaryActions({ onShare, onDownloadPdf, onComplete, completing }: SurveySummaryActionsProps) {
   return (
-    <View style={styles.buttonContainer}>
-      <View style={styles.topRow}>
+    <View style={surveySummaryActionsStyles.buttonContainer}>
+      <View style={surveySummaryActionsStyles.topRow}>
         <Button
           mode="outlined"
           onPress={onShare}
-          style={styles.shareButton}
+          style={surveySummaryActionsStyles.shareButton}
           icon="share-variant"
         >
           Share Summary
@@ -24,7 +25,7 @@ export default function SurveySummaryActions({ onShare, onDownloadPdf, onComplet
         <Button
           mode="outlined"
           onPress={onDownloadPdf}
-          style={styles.pdfButton}
+          style={surveySummaryActionsStyles.pdfButton}
           icon="file-pdf-box"
         >
           Download PDF
@@ -35,7 +36,7 @@ export default function SurveySummaryActions({ onShare, onDownloadPdf, onComplet
         <Button
           mode="contained"
           onPress={onComplete}
-          style={styles.completeButton}
+          style={surveySummaryActionsStyles.completeButton}
           icon="check-circle"
           loading={completing}
           disabled={completing}
@@ -47,29 +48,3 @@ export default function SurveySummaryActions({ onShare, onDownloadPdf, onComplet
   );
 }
 
-const styles = StyleSheet.create({
-  buttonContainer: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  topRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  shareButton: {
-    flex: 1,
-    marginRight: 8,
-    borderColor: '#3498db',
-  },
-  pdfButton: {
-    flex: 1,
-    marginLeft: 8,
-    borderColor: '#9b59b6',
-  },
-  completeButton: {
-    backgroundColor: '#2ecc71',
-    marginTop: 8,
-  },
-}); 
