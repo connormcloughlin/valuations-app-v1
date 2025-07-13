@@ -532,9 +532,8 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    // Only set pending_sync if the item has been modified locally
-    // For items loaded from server (issynced = 1), set pending_sync = 0
-    const pendingSync = i.issynced ? 0 : (i.pending_sync ?? 1);
+    // Respect explicitly set pending_sync value, otherwise determine based on issynced
+    const pendingSync = i.pending_sync !== undefined ? i.pending_sync : (i.issynced ? 0 : 1);
 
     const params = [
       i.riskassessmentitemid,

@@ -374,6 +374,14 @@ export default function ItemsScreen() {
             selectedanswer: item.selectedanswer || '',
           };
           
+          // Debug logging for ALL items to see what's being loaded
+          console.log(`🔍 [fetchCategoryItems] Item ${mappedItem.id} mapping:`, {
+            sqliteSelectedAnswer: item.selectedanswer,
+            mappedSelectedAnswer: mappedItem.selectedanswer,
+            itemId: mappedItem.id,
+            hasSelectedAnswer: !!item.selectedanswer
+          });
+          
           // Log any items with empty types for debugging
           if (!mappedItem.type && item.riskassessmentitemid > 1000000000000) {
             console.warn(`⚠️ Item ${mappedItem.id} has empty type - itemprompt was: "${item.itemprompt}"`);
@@ -383,8 +391,19 @@ export default function ItemsScreen() {
         });
         
         console.log(`✅ FETCH: Mapped ${formattedItems.length} items for UI`);
+        
+        // Debug: Log the final items being set in state
+        const finalItems = [...formattedItems, ...newItemsInProgress];
+        console.log(`🔍 [fetchCategoryItems] Final items being set in state:`, 
+          finalItems.map(item => ({
+            id: item.id,
+            selectedanswer: item.selectedanswer,
+            hasSelectedAnswer: !!item.selectedanswer
+          }))
+        );
+        
         // Combine with preserved new items
-        setPredefinedItems([...formattedItems, ...newItemsInProgress]);
+        setPredefinedItems(finalItems);
       }
     } catch (err) {
       console.error('Error fetching category items:', err);
@@ -529,6 +548,8 @@ export default function ItemsScreen() {
   //   // Functionality moved to inline editing in PredefinedItemsList
   // };
   
+  const [predefinedListKey, setPredefinedListKey] = useState(0);
+  
   return (
     <AppLayout
       title={categoryTitle as string || 'Survey Items'}
@@ -539,6 +560,7 @@ export default function ItemsScreen() {
         
         <ScrollView style={styles.scrollView}>
           <PredefinedItemsList
+            key={predefinedListKey}
             items={predefinedItems}
             loading={loading}
             error={error}
@@ -566,6 +588,8 @@ export default function ItemsScreen() {
               setCategoryItemCount(itemCount);
               setCategoryTotalValue(totalValue);
             }}
+            onRefresh={fetchCategoryItems}
+            onForceRemount={() => setPredefinedListKey(k => k + 1)}
           />
           
           {/* {userItems.length === 0 && (

@@ -13,6 +13,7 @@ import {
   markRiskAssessmentMastersAsSynced,
   markMediaFilesAsSynced,
   updateMediaFile,
+  updateRiskAssessmentItem,
   RiskAssessmentItem,
   RiskAssessmentMaster,
   Appointment,
@@ -301,6 +302,53 @@ const riskAssessmentSyncService = {
 
       if (response.success) {
         console.log('✅ Batch sync successful');
+        
+        // Update local database with backend response data
+        if (response.data?.results?.riskAssessmentItems?.updated > 0) {
+          console.log('🔄 Updating local database with backend response data...');
+          
+          // Get the updated items from the response
+          const updatedItems = response.data.results.riskAssessmentItems.updatedItems || [];
+          
+          for (const updatedItem of updatedItems) {
+            try {
+              // Update the local database with the backend data
+              await updateRiskAssessmentItem({
+                riskassessmentitemid: updatedItem.riskassessmentitemid,
+                riskassessmentcategoryid: updatedItem.riskassessmentcategoryid,
+                itemprompt: updatedItem.itemprompt,
+                itemtype: updatedItem.itemtype,
+                rank: updatedItem.rank,
+                commaseparatedlist: updatedItem.commaseparatedlist,
+                selectedanswer: updatedItem.selectedanswer,
+                qty: updatedItem.qty,
+                price: updatedItem.price,
+                description: updatedItem.description,
+                model: updatedItem.model,
+                location: updatedItem.location,
+                assessmentregisterid: updatedItem.assessmentregisterid,
+                assessmentregistertypeid: updatedItem.assessmentregistertypeid,
+                datecreated: updatedItem.datecreated,
+                createdbyid: updatedItem.createdbyid,
+                dateupdated: updatedItem.dateupdated,
+                updatedbyid: updatedItem.updatedbyid,
+                issynced: 1,
+                syncversion: updatedItem.syncversion || 1,
+                deviceid: updatedItem.deviceid,
+                syncstatus: updatedItem.syncstatus,
+                synctimestamp: updatedItem.synctimestamp,
+                hasphoto: updatedItem.hasphoto,
+                latitude: updatedItem.latitude,
+                longitude: updatedItem.longitude,
+                notes: updatedItem.notes,
+                pending_sync: 0
+              });
+              console.log(`✅ Updated local item ${updatedItem.riskassessmentitemid} with backend data`);
+            } catch (error) {
+              console.error(`❌ Error updating local item ${updatedItem.riskassessmentitemid}:`, error);
+            }
+          }
+        }
         
         // Mark items as synced
         const itemIds = batch.map(item => item.riskassessmentitemid);

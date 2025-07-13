@@ -66,6 +66,7 @@ export interface PredefinedItemsListProps {
   onSyncRequest?: (syncFunction: () => void) => void;
   // Totals calculation exposure
   onTotalsChange?: (itemCount: number, totalValue: number) => void;
+  onForceRemount?: () => void;
 }
 
 export interface ItemFormProps {

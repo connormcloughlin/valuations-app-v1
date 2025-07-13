@@ -38,7 +38,8 @@ export default function PredefinedItemsList({
   onAddNewItem,
   onSyncStatusChange,
   onSyncRequest,
-  onTotalsChange
+  onTotalsChange,
+  onForceRemount
 }: PredefinedItemsListProps) {
   
   // Handle loading and error states BEFORE any hooks
@@ -365,6 +366,29 @@ export default function PredefinedItemsList({
         const count = await riskAssessmentSyncService.getPendingChangesCount();
         setPendingChangesCount(count.total);
         
+        // --- FLAT STRUCTURE REFRESH LOGIC ---
+        if (
+          !groupingStrategy &&
+          typeof onRefresh === 'function'
+        ) {
+          console.log('🔄 Flat structure detected after sync, calling onRefresh to reload data from SQLite');
+          await onRefresh();
+          // --- FORCE FULL LOCAL STATE RESET ---
+          console.log('🔄 Forcing full local state reset after refresh. propsItems:', propsItems);
+          setItems(propsItems);
+          setEditItems({});
+          setAutoSavedItems({});
+          setExpandedItem(null);
+          setExpandedGroup(null);
+          setExpandedSecondaryGroups({});
+          // --- END FULL LOCAL STATE RESET ---
+          if (typeof onForceRemount === 'function') {
+            console.log('🔄 Forcing full component remount after sync/refresh');
+            onForceRemount();
+          }
+        }
+        // --- END FLAT STRUCTURE REFRESH LOGIC ---
+        
         // Show success alert
         Alert.alert(
           'Sync Complete',
@@ -466,273 +490,52 @@ export default function PredefinedItemsList({
     }
   }, [pendingFocusRestore]);
 
-
+  // --- FORCE LOCAL STATE TO MATCH PROPS AFTER REFRESH ---
+  useEffect(() => {
+    setItems(propsItems);
+  }, [propsItems]);
+  // --- END FORCE LOCAL STATE TO MATCH PROPS ---
 
   // Handle editing a field - updated for dynamic fields
-  const handleEdit = (id: string, field: string, value: string) => {
-    console.log(`🔧 Editing field "${field}" for item ${id}:`, value);
-    
-    // Track the currently focused field for focus restoration after auto-save
-    setFocusedField({ itemId: id, fieldName: field });
-    
+  const handleEdit = (itemId: string, fieldName: string, value: string) => {
     setEditItems(prev => ({
       ...prev,
-      [id]: {
-        ...prev[id],
-        [field]: value,
-      },
+      [itemId]: {
+        ...prev[itemId],
+        [fieldName]: value,
+      }
     }));
 
-    // Validate the field if we have dynamic field configuration
-    if (dynamicFieldConfig && dynamicFieldConfig.length > 0) {
-      const fieldConfig = dynamicFieldConfig.find(f => f.item_fields === field);
-      if (fieldConfig) {
-        const error = ValidationService.validateField(fieldConfig, value);
-        
-        setValidationErrors(prev => {
-          const newErrors = { ...prev };
-          if (!newErrors[id]) newErrors[id] = [];
-          
-          // Remove existing error for this field
-          newErrors[id] = newErrors[id].filter(e => e.fieldName !== field);
-          
-          // Add new error if validation failed
-          if (error) {
-            newErrors[id].push(error);
-          }
-          
-          // Clean up if no errors for this item
-          if (newErrors[id].length === 0) {
-            delete newErrors[id];
-          }
-          
-          return newErrors;
-        });
-      }
-    }
+    // Save immediately for all fields
+    console.log('🔄 handleEdit: calling autoSaveItem for', itemId, fieldName, value);
+    autoSaveItem(itemId);
   };
 
   // Auto-save function that saves changes to SQLite
   const autoSaveItem = async (id: string) => {
-    const changes = editItems[id];
-    if (!changes) {
-      console.log('❌ No changes to save for item:', id);
-      return; // No changes to save
-    }
-
-    try {
-      const item = items.find(i => String(i.id) === id);
+    console.log('🔄 [autoSaveItem] Called for item:', id);
+    const item = items.find(i => String(i.id) === String(id));
       if (!item) {
-        console.log('❌ No item found for ID:', id);
+      console.error('❌ [autoSaveItem] No item found in local state for id:', id);
         return;
       }
+    const changes = editItems[id] || {};
+    console.log('🔄 [autoSaveItem] Changes to save:', changes);
 
-      console.log('🔥 === PREDEFINED ITEMS: Auto-saving item ===');
-      console.log('🆔 Item ID:', id);
-      console.log('📝 Changes being saved:', JSON.stringify(changes, null, 2));
-      console.log('🏷️ Type being saved:', changes.type);
-      console.log('📋 Original item:', JSON.stringify(item, null, 2));
-
-      const isNewItem = id.startsWith('custom-new-') || id.startsWith('duplicate-');
-      let sqliteId: string = id; // Default to original ID
-      
-      if (isNewItem) {
-        // Handle new custom items - insert them into SQLite
-        console.log('Inserting new custom item into SQLite');
-        
-        // For new items, require at least the type to be filled
-        if (!changes.type || changes.type.trim() === '') {
-          console.log('New item requires type field - skipping save');
-          return;
-        }
-        
-        // Check if this is the first time the type is being saved (i.e., item creation)
-        const isFirstTypeSave = !item.type || item.type.trim() === '';
-        
-        const { insertRiskAssessmentItem } = await import('../../../../utils/db');
-        
-        console.log('🗄️ CREATING SQLITE RECORD - Input data:');
-        console.log('🗄️ Original item:', item);
-        console.log('🗄️ Changes:', changes);
-        console.log('🗄️ Room field - item.room:', item.room, 'changes.room:', changes.room);
-        console.log('🗄️ Type field - item.type:', item.type, 'changes.type:', changes.type);
-        
-        // Create a new SQLite record for the custom item
-        const newSqliteItem = {
-          riskassessmentitemid: Date.now(), // Use timestamp as unique ID
-          riskassessmentcategoryid: Number(item.categoryId) || 0,
-          itemprompt: changes.type || item.type || '',
-          itemtype: 1, // Custom item type
-          rank: 0,
-          commaseparatedlist: '',
-          selectedanswer: '',
-          qty: Number(changes.quantity) || Number(item.quantity) || 1,
-          price: Number(changes.price) || Number(item.price) || 0,
-          description: changes.description || item.description || '',
-          model: changes.model || item.model || '',
-          location: changes.room || item.room || '',
-          assessmentregisterid: 0,
-          assessmentregistertypeid: 0,
-          datecreated: new Date().toISOString(),
-          createdbyid: '',
-          dateupdated: new Date().toISOString(),
-          updatedbyid: '',
-          issynced: 0,
-          syncversion: 0,
-          deviceid: '',
-          syncstatus: '',
-          synctimestamp: new Date().toISOString(),
-          hasphoto: 0,
-          latitude: 0,
-          longitude: 0,
-          notes: changes.notes || item.notes || '',
-          pending_sync: 1 // Mark for sync
-        };
-        
-        console.log('🗄️ SQLITE RECORD FINAL VALUES:');
-        console.log('🗄️ itemprompt (type):', `"${newSqliteItem.itemprompt}"`);
-        console.log('🗄️ location (room):', `"${newSqliteItem.location}"`);
-        console.log('🗄️ description:', `"${newSqliteItem.description}"`);
-        console.log('🗄️ model:', `"${newSqliteItem.model}"`);
-        
-        console.log('🗄️ SQLite record being created:');
-        console.log('🆔 riskassessmentitemid:', newSqliteItem.riskassessmentitemid);
-        console.log('🏷️ itemprompt (type):', `"${newSqliteItem.itemprompt}"`);
-        console.log('📋 Full record:', JSON.stringify(newSqliteItem, null, 2));
-        
-        await insertRiskAssessmentItem(newSqliteItem);
-        
-        // Use the SQLite ID we already set
-        sqliteId = String(newSqliteItem.riskassessmentitemid);
-        console.log('Item saved to SQLite with ID:', sqliteId);
-        console.log('Item details:', { 
-          id: sqliteId, 
-          type: newSqliteItem.itemprompt, 
-          categoryId: newSqliteItem.riskassessmentcategoryid 
-        });
-        
-        // Update local items state to reflect the saved changes immediately
-        setItems(prevItems => {
-          const updatedItems = prevItems.map(prevItem => 
-            prevItem.id === id ? {
-              ...prevItem,
-              id: sqliteId,
-              type: changes.type || prevItem.type || '',
-              quantity: String(changes.quantity || prevItem.quantity || 1),
-              price: String(changes.price || prevItem.price || 0),
-              description: changes.description || prevItem.description || '',
-              model: changes.model || prevItem.model || '',
-              room: changes.room || prevItem.room || '',
-              notes: changes.notes || prevItem.notes || ''
-            } : prevItem
-          );
-          
-          console.log('🔄 Items state updated after auto-save:');
-          console.log('🔄 Old ID:', id, '→ New ID:', sqliteId);
-          console.log('🔄 Updated items count:', updatedItems.length);
-          
-          // Find the updated item for debugging
-          const updatedItem = updatedItems.find(item => item.id === sqliteId);
-          if (updatedItem) {
-            console.log('🔄 Updated item details:', {
-              id: updatedItem.id,
-              type: updatedItem.type,
-              description: updatedItem.description,
-              model: updatedItem.model,
-              room: updatedItem.room
-            });
-          }
-          
-          return updatedItems;
-        });
-        
-        // Update edit items with new ID
-        setEditItems(prev => {
-          const newEditItems = { ...prev };
-          if (newEditItems[id]) {
-            newEditItems[sqliteId] = newEditItems[id];
-            delete newEditItems[id];
-          }
-          return newEditItems;
-        });
-        
-        // Update expanded item if needed
-        if (expandedItem === id) {
-          setExpandedItem(sqliteId);
-        }
-        
-        // Handle focus restoration for the field that was being edited
-        if (focusedField && focusedField.itemId === id) {
-          console.log('🔧 Setting up focus restoration:', focusedField.fieldName, 'for new ID:', sqliteId);
-          setPendingFocusRestore({ newItemId: sqliteId, fieldName: focusedField.fieldName });
-          setFocusedField(null); // Clear the old focus state
-        }
-        
-        // For nested grouping, ensure secondary group expansion is maintained
-        if (isNestedGrouping(groupedItems)) {
-          const strategyConfig = groupingStrategy?.strategy_config;
-          let parsedConfig: any = null;
-          try {
-            parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
-          } catch (error) {
-            parsedConfig = null;
-          }
-          
-          if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
-            // Create a temporary updated item with the changes applied to get correct grouping values
-            const updatedItemForGrouping = {
-              ...item,
-              type: changes.type ?? item.type,
-              description: changes.description ?? item.description,
-              model: changes.model ?? item.model,
-              room: changes.room ?? item.room,
-              quantity: changes.quantity ?? item.quantity,
-              price: changes.price ?? item.price,
-              notes: changes.notes ?? item.notes
-            };
-            
-            // Find which groups this item belongs to using the updated values
-            const primaryValue = getItemFieldValue(updatedItemForGrouping, parsedConfig.primary_group);
-            const secondaryValue = getItemFieldValue(updatedItemForGrouping, parsedConfig.secondary_group);
-            
-            console.log('🔄 Maintaining group expansion after ID change:');
-            console.log('🔄 Primary:', primaryValue, 'Secondary:', secondaryValue);
-            console.log('🔄 Updated item for grouping:', updatedItemForGrouping);
-            
-            // Ensure primary group stays expanded
-            setExpandedGroup(primaryValue);
-            
-            // Ensure secondary group stays expanded
-            const secondaryCompositeKey = `${primaryValue}::${secondaryValue}`;
-            setExpandedSecondaryGroups(prev => ({
-              ...prev,
-              [secondaryCompositeKey]: true
-            }));
-          }
-        }
-        
-        console.log('New custom item inserted successfully with ID:', sqliteId);
-        
-        // Keep the edit state active so user can continue editing
-        // Don't clear edit state - let user continue editing
-        console.log('New custom item saved successfully - keeping edit state active for continued editing');
-        
-      } else {
-        // Handle existing items - update them in SQLite
+    // Only perform updates in flat structure (no inserts)
         const existingItems = await getAllRiskAssessmentItems();
         const existingItem = existingItems.find(dbItem => 
           String(dbItem.riskassessmentitemid) === String(item.id)
         );
-
         if (!existingItem) {
-          console.error('No existing SQLite record found for predefined item:', id);
+      console.error('❌ [autoSaveItem] No existing SQLite record found for predefined item:', id, '— update skipped.');
           return;
         }
-        
-        // Preserve existing data and only update changed fields (like ItemComponents.tsx)
+    // Prepare updated object
         const updated: RiskAssessmentItem = {
-          ...existingItem,  // Preserve all existing database fields
+      ...existingItem,
           itemprompt: changes.type ?? existingItem.itemprompt ?? '',
+      selectedanswer: changes.selectedanswer ?? existingItem.selectedanswer ?? '',
           qty: Number(changes.quantity ?? existingItem.qty) || 1,
           price: Number(changes.price ?? existingItem.price) || 0,
           description: changes.description ?? existingItem.description ?? '',
@@ -740,10 +543,8 @@ export default function PredefinedItemsList({
           location: changes.room ?? existingItem.location ?? '',
           notes: changes.notes ?? existingItem.notes ?? '',
           pending_sync: 1,
-          issynced: 0,
-          dateupdated: new Date().toISOString(),
         };
-        
+    console.log('🔄 [autoSaveItem] updateRiskAssessmentItem called with:', updated);
         await updateRiskAssessmentItem(updated);
         
                     // Update local items state immediately after database update (following ItemsTable pattern)
@@ -762,11 +563,10 @@ export default function PredefinedItemsList({
                 } : prevItem
               )
             );
-      }
 
       // Mark as auto-saved but keep the changes visible
       // For new items, use the new SQLite ID if it was created
-      const finalId = (isNewItem && sqliteId) ? sqliteId : id;
+    const finalId = (id.startsWith('custom-new-') || id.startsWith('duplicate-')) ? id : id;
       setAutoSavedItems(prev => ({ ...prev, [finalId]: true }));
 
       // Update pending changes count immediately after database update
@@ -776,9 +576,6 @@ export default function PredefinedItemsList({
       console.log('=== PREDEFINED ITEMS: Auto-save completed successfully ===');
       console.log('Item ID:', id);
       console.log('Changes applied:', JSON.stringify(changes, null, 2));
-    } catch (error) {
-      console.error('Auto-save failed for predefined item:', id, error);
-    }
   };
 
   // Photo functions
@@ -1384,61 +1181,61 @@ export default function PredefinedItemsList({
                 
               } else {
                 // Proceed with normal deletion
-                
-                // If it's not a new item, mark it as deleted in the database
-                if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
-                  // Get existing SQLite record
-                  const existingItems = await getAllRiskAssessmentItems();
-                  const existingItem = existingItems.find(dbItem => 
-                    String(dbItem.riskassessmentitemid) === String(itemToDelete.id)
-                  );
+              
+              // If it's not a new item, mark it as deleted in the database
+              if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
+                // Get existing SQLite record
+                const existingItems = await getAllRiskAssessmentItems();
+                const existingItem = existingItems.find(dbItem => 
+                  String(dbItem.riskassessmentitemid) === String(itemToDelete.id)
+                );
 
-                  if (existingItem) {
-                    // Mark as deleted and pending sync
-                    const updated: RiskAssessmentItem = {
-                      ...existingItem,
-                      qty: 0, // Set quantity to 0 to effectively "delete"
-                      price: 0, // Clear price
-                      description: '', // Clear description
-                      model: '', // Clear model
-                      location: '', // Clear location
-                      notes: '', // Clear notes
-                      pending_sync: 1,
-                      issynced: 0,
-                      dateupdated: new Date().toISOString(),
-                    };
-                    
-                    await updateRiskAssessmentItem(updated);
-                    
-                    // Update pending changes count
-                    const count = await riskAssessmentSyncService.getPendingChangesCount();
-                    setPendingChangesCount(count.total);
-                  }
+                if (existingItem) {
+                  // Mark as deleted and pending sync
+                  const updated: RiskAssessmentItem = {
+                    ...existingItem,
+                    qty: 0, // Set quantity to 0 to effectively "delete"
+                    price: 0, // Clear price
+                    description: '', // Clear description
+                    model: '', // Clear model
+                    location: '', // Clear location
+                    notes: '', // Clear notes
+                    pending_sync: 1,
+                    issynced: 0,
+                    dateupdated: new Date().toISOString(),
+                  };
+                  
+                  await updateRiskAssessmentItem(updated);
+                  
+                  // Update pending changes count
+                  const count = await riskAssessmentSyncService.getPendingChangesCount();
+                  setPendingChangesCount(count.total);
                 }
-                
-                // Remove from local state
-                setItems(prevItems => prevItems.filter(item => item.id !== itemToDelete.id));
-                
-                // Clear any edit state for this item
-                setEditItems(prev => {
-                  const newEditItems = { ...prev };
-                  delete newEditItems[itemId];
-                  return newEditItems;
-                });
-                
-                // Clear auto-saved state
-                setAutoSavedItems(prev => {
-                  const newAutoSaved = { ...prev };
-                  delete newAutoSaved[itemId];
-                  return newAutoSaved;
-                });
-                
-                // If this item was expanded, collapse it
-                if (expandedItem === itemId) {
-                  setExpandedItem(null);
-                }
-                
-                console.log('Item deleted successfully:', itemId);
+              }
+              
+              // Remove from local state
+              setItems(prevItems => prevItems.filter(item => item.id !== itemToDelete.id));
+              
+              // Clear any edit state for this item
+              setEditItems(prev => {
+                const newEditItems = { ...prev };
+                delete newEditItems[itemId];
+                return newEditItems;
+              });
+              
+              // Clear auto-saved state
+              setAutoSavedItems(prev => {
+                const newAutoSaved = { ...prev };
+                delete newAutoSaved[itemId];
+                return newAutoSaved;
+              });
+              
+              // If this item was expanded, collapse it
+              if (expandedItem === itemId) {
+                setExpandedItem(null);
+              }
+              
+              console.log('Item deleted successfully:', itemId);
               }
               
             } catch (error) {
@@ -1516,8 +1313,8 @@ export default function PredefinedItemsList({
               // Try to set the field directly
               (duplicatedItem as any)[fieldName] = value;
               console.log('🔧 Set', fieldName, 'to:', (duplicatedItem as any)[fieldName]);
-              break;
-          }
+        break;
+      }
         };
         
         // Get and preserve the primary grouping field value
@@ -1593,7 +1390,7 @@ export default function PredefinedItemsList({
         console.log('🔄 Expanded primary group:', primaryValue);
         console.log('🔄 Expanded secondary group:', secondaryCompositeKey);
       }
-    } else {
+        } else {
       // For flat grouping, use the original logic
       setExpandedGroup(originalItem.type);
       console.log('🔄 Expanded group set to:', originalItem.type);
@@ -1814,7 +1611,13 @@ export default function PredefinedItemsList({
           case 'room': return item.room || '';
           case 'notes': return item.notes || '';
           case 'type': return item.type || '';
-          case 'selectedanswer': return item.selectedanswer || '';
+          case 'selectedanswer': 
+            console.log(`🔍 [getFieldValue] selectedanswer for item ${itemId}:`, {
+              itemSelectedAnswer: item.selectedanswer,
+              itemId: item.id,
+              itemType: typeof item.selectedanswer
+            });
+            return item.selectedanswer || '';
           default: return '';
         }
       };
@@ -1837,9 +1640,37 @@ export default function PredefinedItemsList({
           styles.dynamicFieldContainer,
           field.field_type === 'notes' ? { width: '100%' } : { flex: 1 }
         ]}>
+          {/* When no grouping strategy, do not render field label for any field */}
+          {(!groupingStrategy) ? (
+            (fieldName === 'type' || fieldName === 'ItemPrompt') ? (
+              <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 6 }}>
+                {currentValue}
+              </Text>
+            ) : (
+              <DynamicFieldRenderer
+                field={renderField}
+                value={currentValue}
+                onChange={(fieldName, value) => handleEdit(itemId, fieldName, value)}
+                validationError={fieldError}
+                handwritingEnabled={false}
+                onOpenHandwriting={() => {}}
+                itemId={itemId}
+                itemPhotos={itemPhotos}
+                onTakePhoto={handleViewPhotos}
+                hideLabel={true}
+                onBlur={() => autoSaveItem(itemId)}
+                // Add data attributes for focus restoration
+                dataAttributes={{
+                  'data-item-id': itemId,
+                  'data-field': fieldName
+                }}
+              />
+            )
+          ) : (
+            <>
           <Text style={styles.detailLabel}>{field.field_label}:</Text>
           <DynamicFieldRenderer
-            field={renderField}
+                field={renderField}
             value={currentValue}
             onChange={(fieldName, value) => handleEdit(itemId, fieldName, value)}
             validationError={fieldError}
@@ -1856,6 +1687,8 @@ export default function PredefinedItemsList({
               'data-field': fieldName
             }}
           />
+            </>
+          )}
         </View>
       );
     };
