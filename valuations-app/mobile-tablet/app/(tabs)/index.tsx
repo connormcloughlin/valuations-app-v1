@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, ActivityIndicator, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Button } from 'react-native-paper';
 import { router } from 'expo-router';
@@ -8,9 +8,11 @@ import { TodaysAppointments } from '../../components/dashboard/TodaysAppointment
 import { SurveysInProgress } from '../../components/dashboard/SurveysInProgress';
 import { DevelopmentTools } from '../../components/dashboard/DevelopmentTools';
 import { dashboardStyles } from '../GlobalStyles';
-
+import { useAuth } from '../../context/AuthContext';
 
 export default function Dashboard() {
+  const { isAuthenticated, isLoading } = useAuth();
+
   const navigateToAppointment = (id: string, status: 'scheduled' | 'inProgress' | 'completed') => {
     // Route to different screens based on appointment status
     if (status === 'scheduled') {
@@ -59,20 +61,29 @@ export default function Dashboard() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <DashboardHeader />
+        <Button mode="contained" onPress={() => router.push('/auth')}>Sign In</Button>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={dashboardStyles.container}>
       <DashboardHeader />
-      
       <StatsCards onCardPress={handleCardPress} />
-      
-      <TodaysAppointments 
-        onAppointmentPress={navigateToAppointmentDetails} 
-      />
-
-      <SurveysInProgress 
-        onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} 
-      />
-
+      <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} />
+      <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} />
       <DevelopmentTools />
     </ScrollView>
   );

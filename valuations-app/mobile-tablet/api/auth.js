@@ -23,19 +23,26 @@ const authApi = {
   /**
    * Exchange Azure AD token for API token
    * @param {string} azureToken - Azure AD access token
+   * @param {Object} userInfo - Additional user information from Azure AD
    * @returns {Promise<Object>} Response with API token
    */
-  exchangeToken: async (azureToken) => {
+  exchangeToken: async (azureToken, userInfo = null) => {
     try {
       console.log('🔄 Starting token exchange...');
+      console.log('🔄 User info being sent:', userInfo);
       
       // Temporarily set the Azure AD token for this request
       const originalAuth = apiClient.defaults.headers.common['Authorization'];
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${azureToken}`;
       
-      const response = await apiClient.post('/auth/token-exchange', {
-        azureToken: azureToken
-      });
+      const requestData = {
+        azureToken: azureToken,
+        userInfo: userInfo || {}
+      };
+      
+      console.log('🔄 Token exchange request data:', requestData);
+      
+      const response = await apiClient.post('/auth/token-exchange', requestData);
       
       // Restore original auth header
       if (originalAuth) {

@@ -32,4 +32,26 @@ config.transformer = {
   unstable_esModuleInterop: true,
 };
 
+// Add Android-specific optimizations
+config.resolver.platforms = ['native', 'android', 'ios', 'web'];
+
+// Configure transformer for better Android performance
+config.transformer = {
+  ...config.transformer,
+  minifierConfig: {
+    keep_fnames: true,
+    mangle: {
+      keep_fnames: true,
+    },
+  },
+};
+
+// Add resolver configuration for better module resolution
+config.resolver = {
+  ...config.resolver,
+  alias: {
+    // Add any module aliases here if needed
+  },
+};
+
 module.exports = config; 

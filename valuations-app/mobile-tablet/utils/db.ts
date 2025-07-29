@@ -304,6 +304,8 @@ export async function createTables() {
     
     // Test database access
     console.log('Testing database access...');
+    // Ensure no duplicate test record
+    await db.runAsync('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = 0');
     await db.runAsync(
       `INSERT INTO risk_assessment_items (
         riskassessmentitemid,

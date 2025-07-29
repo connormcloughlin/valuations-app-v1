@@ -97,7 +97,15 @@ module.exports = {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "runtimeVersion": "1.0.0"
+      "runtimeVersion": "1.0.0",
+      "softwareKeyboardLayoutMode": "pan",
+      "allowBackup": true,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -113,6 +121,7 @@ module.exports = {
       "expo-sqlite",
       "expo-web-browser",
       "expo-system-ui",
+      "expo-updates",
       [
         "react-native-msal",
         {

@@ -7,6 +7,7 @@ import { logNavigation } from '../../../utils/logger';
 import api from '../../../api';
 import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { appointmentsInProgressStyles, colors } from '../../GlobalStyles';
+import { useAuth } from '../../../context/AuthContext';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -23,6 +24,7 @@ interface PaginationInfo {
 }
 
 export default function InProgressAppointmentsScreen() {
+  const { isAuthenticated, user } = useAuth();
   logNavigation('In Progress Appointments');
   const [searchQuery, setSearchQuery] = useState('');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -40,8 +42,15 @@ export default function InProgressAppointmentsScreen() {
 
   // Fetch appointments from API
   useEffect(() => {
-    fetchAppointments(page);
-  }, [page]);
+    // Only fetch appointments if user is authenticated
+    if (isAuthenticated && user) {
+      console.log('🔐 User authenticated, fetching in-progress appointments...');
+      fetchAppointments(page);
+    } else {
+      console.log('⏳ Waiting for authentication before fetching in-progress appointments...');
+      setLoading(false);
+    }
+  }, [page, isAuthenticated, user]);
 
   const fetchAppointments = async (pageNum: number) => {
     try {

@@ -8,7 +8,8 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "development"
     },
     "staging": {
       "distribution": "internal",
@@ -18,15 +19,17 @@
       "env": {
         "APP_ENV": "staging",
         "ENV_FILE": ".env.staging"
-      }
+      },
+      "channel": "performance-refactor"
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {
     "production": {}
   }
-} 
+}

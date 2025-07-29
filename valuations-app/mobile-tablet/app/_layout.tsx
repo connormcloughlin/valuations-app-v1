@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Updates from 'expo-updates';
 import ConnectionStatus from '../components/ConnectionStatus';
 import connectionUtils from '../utils/connectionUtils';
 import { initializeDatabase } from '../utils/db';
@@ -73,6 +74,29 @@ export default function RootLayout() {
     return () => {
       clearInterval(intervalId);
     };
+  }, []);
+
+  // Automatic update checking
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        // Only check for updates if we're not in development
+        if (!__DEV__) {
+          const update = await Updates.checkForUpdateAsync();
+          if (update.isAvailable) {
+            await Updates.fetchUpdateAsync();
+            // Reload the app to apply the update
+            await Updates.reloadAsync();
+          }
+        }
+      } catch (error) {
+        console.log('Error checking for updates:', error);
+        // Don't show error to user for automatic checks
+      }
+    };
+
+    // Check for updates when app starts
+    checkForUpdates();
   }, []);
 
   if (!loaded) {

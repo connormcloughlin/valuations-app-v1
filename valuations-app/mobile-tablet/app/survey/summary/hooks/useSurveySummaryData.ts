@@ -81,299 +81,160 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
           throw new Error('Order number could not be determined for this appointment.');
         }
 
-        // 2. First, get the risk assessment masters to determine what data we need to fetch
+        // 2. Use composite API to get all assessment data at once
         let assessmentTypeSummaries: AssessmentTypeSummary[] = [];
         let totalValue = 0;
-
+        
+        console.log(`🚀 Using composite API for order: ${orderNumber}`);
+        
         try {
-          console.log('🔍 Fetching risk assessment masters from API for order:', orderNumber);
+          // Use composite hierarchy API
+          const compositeResponse = await api.getRiskAssessmentCompleteHierarchy(orderNumber);
           
-          // Use the same API approach as RiskAssessmentTemplates component
-          const { API_BASE_URL } = await import('../../../../constants/apiConfig');
-          const AsyncStorage = await import('@react-native-async-storage/async-storage');
-          const axios = await import('axios');
-          
-          const token = await AsyncStorage.default.getItem('authToken');
-          const axiosInstance = axios.default.create({
-            baseURL: API_BASE_URL,
-            timeout: 10000,
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token && { 'Authorization': `Bearer ${token}` })
-            }
-          });
-          
-          const mastersResponse = await axiosInstance.get(`/risk-assessment-master/by-order/${orderNumber}?page=1&pageSize=20`);
-          console.log('✅ Risk assessment masters API response:', mastersResponse.data);
-          
-          // Handle both single object and array responses (same as RiskAssessmentTemplates)
-          const mastersData = Array.isArray(mastersResponse.data) ? mastersResponse.data : 
-                             mastersResponse.data && Array.isArray(mastersResponse.data.data) ? mastersResponse.data.data :
-                             mastersResponse.data && Array.isArray(mastersResponse.data.templates) ? mastersResponse.data.templates : [];
-          
-          console.log(`📋 Found ${mastersData.length} risk assessment masters:`, mastersData);
-          
-          // Filter out "Domestic Risk" assessment template
-          const filteredMastersData = mastersData.filter((master: any) => {
-            const assessmentTypeName = master.assessmenttypename || master.assessmentTypeName || '';
-            const isDomsticRisk = assessmentTypeName.toLowerCase().includes('domestic risk');
-            if (isDomsticRisk) {
-              console.log('🚫 Filtering out Domestic Risk template:', assessmentTypeName);
-            }
-            return !isDomsticRisk;
-          });
-          
-          console.log(`📋 After filtering: ${filteredMastersData.length} risk assessment masters (removed Domestic Risk)`);
-          
-          if (filteredMastersData.length === 0) {
-            throw new Error(`No valid risk assessment masters found for order ${orderNumber} after filtering. Cannot generate summary without masters data.`);
-          }
-
-          // Now that we have filtered masters, fetch the detailed data for each master
-          for (const master of filteredMastersData) {
-            console.log('🔍 Processing master:', master);
+          if (compositeResponse?.success && compositeResponse?.data?.assessmentMasters) {
+            console.log('✅ Composite API response received');
             
-            const masterAssessmentTypeName = master.assessmenttypename || master.assessmentTypeName || `Assessment ${master.riskassessmentid || master.id}`;
-            const riskAssessmentId = master.riskassessmentid || master.id;
-            
-            if (!riskAssessmentId) {
-              console.warn('⚠️ No risk assessment ID found for master, skipping');
-              continue;
-            }
-            
-            console.log('🔍 Fetching sections for risk assessment ID:', riskAssessmentId);
-            
-            // Get sections for this specific risk assessment
-            const sectionsResponse = await api.getRiskAssessmentSections(riskAssessmentId);
-            console.log('✅ getRiskAssessmentSections response:', sectionsResponse);
-            
-            if (!sectionsResponse.success || !sectionsResponse.data) {
-              console.warn('⚠️ Failed to load sections for risk assessment:', riskAssessmentId);
-              continue;
-            }
-            
-            const sections = sectionsResponse.data.map((s: any) => ({
-              id: s.id || s.sectionid || s.riskassessmentsectionid,
-              title: s.sectionname || s.name || 'Unnamed Section',
-            }));
-            
-            console.log('📋 Found sections:', sections);
-            
-            // For each section, get categories and their items
-            const sectionSummaries: SectionSummary[] = [];
-            
-            for (const section of sections) {
-              console.log('🔍 Processing section:', section.title);
+            // Process all assessment masters from composite data
+            for (const master of compositeResponse.data.assessmentMasters) {
+              const assessmentTypeName = master.assessmenttypename || master.templateName || 'Unknown Assessment';
+              const assessmentTypeId = master.riskassessmentid;
               
-              try {
-                // Get categories for this section (same approach as detail screen)
-                const categoriesResponse = await api.getRiskAssessmentCategories(section.id);
-                console.log('✅ getRiskAssessmentCategories response for section', section.id, ':', categoriesResponse);
-                
-                if (!categoriesResponse.success || !categoriesResponse.data) {
-                  console.warn('⚠️ Failed to load categories for section:', section.id);
-                  continue;
-                }
-                
-                // For each category, get items using the same pattern as detail screen
-                const categorySummaries: CategorySummary[] = [];
-                
-                for (const c of categoriesResponse.data) {
-                  const categoryId = c.id || c.categoryid || c.riskassessmentcategoryid;
-                  const categoryName = c.name || c.categoryname || 'Unnamed Category';
+              console.log(`📋 Processing assessment type: ${assessmentTypeName} (ID: ${assessmentTypeId})`);
+              
+              const sectionSummaries: SectionSummary[] = [];
+              
+              if (master.sections) {
+                for (const section of master.sections) {
+                  const sectionName = section.sectionName || section.sectionname || 'Unknown Section';
+                  const sectionId = section.riskassessmentsectionid;
                   
-                  console.log('🔍 Processing category:', categoryName);
+                  console.log(`📂 Processing section: ${sectionName} (ID: ${sectionId})`);
                   
-                  try {
-                    // Check SQLite first, then API (same pattern as detail screen)
-                    const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
-                    const localItems = await getAllRiskAssessmentItems();
-                    const categoryItems = localItems.filter(item => 
-                      String(item.riskassessmentcategoryid) === String(categoryId)
-                    );
-                    
-                    let itemCount = 0;
-                    let categoryValue = 0;
-                    
-                    if (categoryItems.length === 0) {
-                      // No items in SQLite, fetch from API (same as detail screen)
-                      console.log('No items in SQLite for category, fetching from API:', categoryId);
-                      const apiResponse = await api.getRiskAssessmentItems(categoryId);
+                  const categorySummaries: CategorySummary[] = [];
+                  
+                  if (section.categories) {
+                    for (const category of section.categories) {
+                      const categoryId = category.riskassessmentcategoryid || category.categoryId;
+                      const categoryName = category.categoryName || category.categoryname || 'Unnamed Category';
                       
-                      if (apiResponse?.success && Array.isArray(apiResponse.data)) {
-                        console.log('Got items from API:', apiResponse.data.length);
-                        itemCount = apiResponse.data.length;
-                        categoryValue = apiResponse.data.reduce((sum: number, item: any) => {
-                          const price = Number(item.price) || 0;
-                          const qty = Number(item.qty) || 1;
-                          return sum + (price * qty);
-                        }, 0);
-                        
-                        // Store in SQLite for future use (Step 1.2 - Batch Insert Optimization)
-                        const { batchInsertRiskAssessmentItems } = await import('../../../../utils/db');
-                        const sqliteItems = apiResponse.data.map((item: any) => ({
-                          riskassessmentitemid: Number(item.riskassessmentitemid),
-                          riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
-                          itemprompt: item.itemprompt || '',
-                          itemtype: Number(item.itemtype) || 0,
-                          rank: Number(item.rank) || 0,
-                          commaseparatedlist: item.commaseparatedlist || '',
-                          selectedanswer: item.selectedanswer || '',
-                          qty: Number(item.qty) || 1,
-                          price: Number(item.price) || 0,
-                          description: item.description || '',
-                          model: item.model || '',
-                          location: item.location || '',
-                          assessmentregisterid: Number(item.assessmentregisterid) || 0,
-                          assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
-                          datecreated: item.datecreated || new Date().toISOString(),
-                          createdbyid: item.createdbyid || '',
-                          dateupdated: item.dateupdated || new Date().toISOString(),
-                          updatedbyid: item.updatedbyid || '',
-                          issynced: Number(item.issynced) || 0,
-                          syncversion: Number(item.syncversion) || 0,
-                          deviceid: item.deviceid || '',
-                          syncstatus: item.syncstatus || '',
-                          synctimestamp: item.synctimestamp || new Date().toISOString(),
-                          hasphoto: Number(item.hasphoto) || 0,
-                          latitude: Number(item.latitude) || 0,
-                          longitude: Number(item.longitude) || 0,
-                          notes: item.notes || '',
-                          pending_sync: 0
-                        }));
-                        
-                        try {
-                          await batchInsertRiskAssessmentItems(sqliteItems);
-                        } catch (insertError) {
-                          console.warn('Failed to batch insert items to SQLite:', insertError);
-                        }
-                      }
-                    } else {
-                      // Use SQLite items (same as detail screen)
-                      console.log('Using existing SQLite items for category:', categoryItems.length);
-                      itemCount = categoryItems.length;
-                      categoryValue = categoryItems.reduce((sum, item) => {
+                      console.log(`🔍 Processing category: ${categoryName} (ID: ${categoryId})`);
+                      
+                      // Calculate totals from items in composite data
+                      const items = category.items || [];
+                      const itemCount = items.length;
+                      const categoryValue = items.reduce((sum: number, item: any) => {
                         const price = Number(item.price) || 0;
                         const qty = Number(item.qty) || 1;
                         return sum + (price * qty);
                       }, 0);
+                      
+                      categorySummaries.push({
+                        id: categoryId,
+                        name: categoryName,
+                        items: itemCount,
+                        value: categoryValue
+                      });
+                      
+                      console.log(`📊 Category ${categoryName}: ${itemCount} items, value: ${categoryValue}`);
                     }
-                    
-                    categorySummaries.push({
-                      id: String(categoryId),
-                      name: categoryName,
-                      items: itemCount,
-                      value: categoryValue
-                    });
-                    
-                  } catch (itemError) {
-                    console.warn(`Failed to fetch items for category ${categoryId}:`, itemError);
-                    // Add category with zero values if item fetch fails (same as detail screen)
-                    categorySummaries.push({
-                      id: String(categoryId),
-                      name: categoryName,
-                      items: 0,
-                      value: 0
-                    });
                   }
+                  
+                  // Calculate section totals
+                  const sectionTotalItems = categorySummaries.reduce((sum, cat) => sum + cat.items, 0);
+                  const sectionTotalValue = categorySummaries.reduce((sum, cat) => sum + cat.value, 0);
+                  
+                  sectionSummaries.push({
+                    id: sectionId,
+                    name: sectionName,
+                    categories: categorySummaries,
+                    totalItems: sectionTotalItems,
+                    totalValue: sectionTotalValue
+                  });
+                  
+                  console.log(`📊 Section ${sectionName}: ${sectionTotalItems} items, value: ${sectionTotalValue}`);
                 }
-                
-                // Calculate section totals
-                const sectionTotalItems = categorySummaries.reduce((sum, cat) => sum + cat.items, 0);
-                const sectionTotalValue = categorySummaries.reduce((sum, cat) => sum + cat.value, 0);
-                
-                sectionSummaries.push({
-                  id: section.id,
-                  name: section.title,
-                  categories: categorySummaries,
-                  totalItems: sectionTotalItems,
-                  totalValue: sectionTotalValue
-                });
-                
-              } catch (sectionError) {
-                console.warn('⚠️ Error processing section:', section.title, sectionError);
               }
+              
+              // Calculate assessment type totals
+              const assessmentTypeTotalItems = sectionSummaries.reduce((sum, section) => sum + section.totalItems, 0);
+              const assessmentTypeTotalValue = sectionSummaries.reduce((sum, section) => sum + section.totalValue, 0);
+              
+              assessmentTypeSummaries.push({
+                id: assessmentTypeId,
+                name: assessmentTypeName,
+                sections: sectionSummaries,
+                totalItems: assessmentTypeTotalItems,
+                totalValue: assessmentTypeTotalValue
+              });
+              
+              console.log(`📊 Assessment Type ${assessmentTypeName}: ${assessmentTypeTotalItems} items, value: ${assessmentTypeTotalValue}`);
             }
             
-            // Create assessment type summary for this master
-            const masterTotalItems = sectionSummaries.reduce((sum, section) => sum + section.totalItems, 0);
-            const masterTotalValue = sectionSummaries.reduce((sum, section) => sum + section.totalValue, 0);
+            // Calculate overall total
+            totalValue = assessmentTypeSummaries.reduce((sum, assessmentType) => sum + assessmentType.totalValue, 0);
             
-            assessmentTypeSummaries.push({
-              id: String(riskAssessmentId),
-              name: masterAssessmentTypeName,
-              sections: sectionSummaries,
-              totalItems: masterTotalItems,
-              totalValue: masterTotalValue
-            });
-            
-            console.log(`✅ Added assessment type: ${masterAssessmentTypeName} with ${masterTotalItems} items, value: ${masterTotalValue}`);
+            console.log(`✅ Processed ${assessmentTypeSummaries.length} assessment types from composite API with total value: ${totalValue}`);
+          } else {
+            console.warn('⚠️ Composite API failed or no data, using fallback approach');
+            throw new Error('Composite API returned invalid data');
           }
+        } catch (compositeError) {
+          console.warn('⚠️ Composite API failed, using fallback approach:', compositeError);
           
-          totalValue = assessmentTypeSummaries.reduce((sum, type) => sum + type.totalValue, 0);
-          console.log(`✅ Final summary: ${assessmentTypeSummaries.length} assessment types, total value: ${totalValue}`);
-          
-        } catch (dbError) {
-          console.warn('⚠️ Could not fetch survey data using API pattern:', dbError);
-          // Fallback to SQLite-only approach if API fails
-          console.log('🔄 Falling back to SQLite-only data...');
-          
+          // Fallback: Try to get data from SQLite
           try {
+            console.log('🔄 Attempting fallback SQLite approach...');
             const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
-            const localItems = await getAllRiskAssessmentItems();
+            const allItems = await getAllRiskAssessmentItems();
             
-            if (localItems.length > 0) {
-              // Group items by category only as fallback
-              const categoryMap = new Map<string, { name: string; items: any[]; value: number }>();
-              
-              for (const item of localItems) {
-                const categoryId = String(item.riskassessmentcategoryid);
-                const price = Number(item.price) || 0;
-                const qty = Number(item.qty) || 1;
-                const itemValue = price * qty;
-                
-                if (!categoryMap.has(categoryId)) {
-                  categoryMap.set(categoryId, {
-                    name: `Category ${categoryId}`,
-                    items: [],
-                    value: 0
-                  });
-                }
-                
-                const category = categoryMap.get(categoryId)!;
-                category.items.push(item);
-                category.value += itemValue;
+            // Group items by category and calculate totals
+            const categoryMap = new Map<string, { items: any[], totalValue: number }>();
+            
+            for (const item of allItems) {
+              const categoryId = String(item.riskassessmentcategoryid);
+              if (!categoryMap.has(categoryId)) {
+                categoryMap.set(categoryId, { items: [], totalValue: 0 });
               }
               
-              const fallbackCategories: CategorySummary[] = Array.from(categoryMap.entries()).map(([id, data]) => ({
-                id,
-                name: data.name,
+              const categoryData = categoryMap.get(categoryId)!;
+              categoryData.items.push(item);
+              categoryData.totalValue += (Number(item.price) || 0) * (Number(item.qty) || 1);
+            }
+            
+            const fallbackCategories: CategorySummary[] = [];
+            let fallbackSectionTotalItems = 0;
+            let fallbackSectionTotalValue = 0;
+            
+            for (const [categoryId, data] of categoryMap) {
+              fallbackCategories.push({
+                id: categoryId,
+                name: `Category ${categoryId}`,
                 items: data.items.length,
-                value: data.value
-              }));
-              
-              const fallbackSectionTotalItems = fallbackCategories.reduce((sum, cat) => sum + cat.items, 0);
-              const fallbackSectionTotalValue = fallbackCategories.reduce((sum, cat) => sum + cat.value, 0);
-              
-              assessmentTypeSummaries = [{
-                id: 'fallback',
-                name: 'Property Assessment',
-                sections: [{
-                  id: 'fallback-section',
-                  name: 'Assessment Items',
-                  categories: fallbackCategories,
-                  totalItems: fallbackSectionTotalItems,
-                  totalValue: fallbackSectionTotalValue
-                }],
+                value: data.totalValue
+              });
+              fallbackSectionTotalItems += data.items.length;
+              fallbackSectionTotalValue += data.totalValue;
+            }
+            
+            assessmentTypeSummaries = [{
+              id: 'fallback',
+              name: 'Property Assessment',
+              sections: [{
+                id: 'fallback-section',
+                name: 'Assessment Items',
+                categories: fallbackCategories,
                 totalItems: fallbackSectionTotalItems,
                 totalValue: fallbackSectionTotalValue
-              }];
-              
-              totalValue = fallbackSectionTotalValue;
-              console.log('✅ Using fallback SQLite data with total value:', totalValue);
-            }
+              }],
+              totalItems: fallbackSectionTotalItems,
+              totalValue: fallbackSectionTotalValue
+            }];
+            
+            totalValue = fallbackSectionTotalValue;
+            console.log('✅ Using fallback SQLite data with total value:', totalValue);
           } catch (fallbackError) {
             console.error('❌ Fallback SQLite approach also failed:', fallbackError);
+            throw new Error('Failed to load survey data from any source');
           }
         }
 
@@ -395,11 +256,10 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
         };
 
         setSurvey(completedSurvey);
-
-      } catch (err: any) {
+        setLoading(false);
+      } catch (err) {
         console.error('Error fetching survey summary:', err);
-        setError(err.message || 'An unexpected error occurred while loading the summary.');
-      } finally {
+        setError(err instanceof Error ? err.message : 'Failed to fetch survey summary');
         setLoading(false);
       }
     };
@@ -407,5 +267,5 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
     fetchSurveySummary();
   }, [surveyId, orderNumberFromParams]);
 
-  return { loading, survey, error };
+  return { survey, loading, error };
 } 

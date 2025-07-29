@@ -111,10 +111,12 @@ class AzureAdService {
         // Parse user info from token
         const userInfo = this.parseIdToken(tokenResult.idToken || '');
         
+        console.log('🔐 Parsed ID token claims:', userInfo);
+        
         const authResult: AuthResult = {
           accessToken: tokenResult.accessToken,
           account: {
-            identifier: userInfo.sub || 'user_' + Date.now(),
+            identifier: userInfo.oid || userInfo.sub || 'user_' + Date.now(), // Use Object ID (oid) as primary identifier
             username: userInfo.preferred_username || userInfo.email || 'user@company.com',
             name: userInfo.name || 'User',
           }

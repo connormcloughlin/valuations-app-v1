@@ -5,6 +5,35 @@ import offlineStorage from '../utils/offlineStorage';
  */
 const offlineApi = {
   /**
+   * Store data for offline use
+   * @param {string} key - Storage key
+   * @param {any} data - Data to store
+   * @returns {Promise<void>}
+   */
+  storeData: async (key, data) => {
+    try {
+      await offlineStorage.storeDataForKey(key, data);
+    } catch (error) {
+      console.error('Error storing data:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get stored data
+   * @param {string} key - Storage key
+   * @returns {Promise<any>} Stored data or null
+   */
+  getData: async (key) => {
+    try {
+      return await offlineStorage.getDataForKey(key);
+    } catch (error) {
+      console.error('Error getting data:', error);
+      return null;
+    }
+  },
+
+  /**
    * Clear all cached API data
    * @returns {Promise<Object>} Response indicating success/failure
    */

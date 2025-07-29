@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../../api';
 import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
 import { surveysInProgressStyles } from '../../app/GlobalStyles';
+import { useAuth } from '../../context/AuthContext';
 
 interface Survey {
   id: string;
@@ -21,13 +22,26 @@ interface SurveysInProgressProps {
 }
 
 export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPress }) => {
+  const { isAuthenticated, user } = useAuth();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchInProgressSurveys();
-  }, []);
+    // Only fetch surveys if user is authenticated
+    if (isAuthenticated && user) {
+      console.log('🔐 User authenticated, fetching in-progress surveys...');
+      fetchInProgressSurveys();
+    } else {
+      console.log('⏳ Waiting for authentication before fetching in-progress surveys...');
+      setLoading(false);
+    }
+  }, [isAuthenticated, user]);
+
+  // Don't render anything if not authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
 
   const fetchInProgressSurveys = async () => {
     try {

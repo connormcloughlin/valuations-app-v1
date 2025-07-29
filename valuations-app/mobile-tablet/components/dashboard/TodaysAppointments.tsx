@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import appointmentsApi from '../../api/appointments';
 import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
 import { todaysAppointmentsStyles } from '../../app/GlobalStyles';
+import { useAuth } from '../../context/AuthContext';
 
 interface Appointment {
   id: string;
@@ -22,13 +23,26 @@ interface TodaysAppointmentsProps {
 }
 
 export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppointmentPress }) => {
+  const { isAuthenticated, user } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchTodaysAppointments();
-  }, []);
+    // Only fetch appointments if user is authenticated
+    if (isAuthenticated && user) {
+      console.log('🔐 User authenticated, fetching today\'s appointments...');
+      fetchTodaysAppointments();
+    } else {
+      console.log('⏳ Waiting for authentication before fetching today\'s appointments...');
+      setLoading(false);
+    }
+  }, [isAuthenticated, user]);
+
+  // Don't render anything if not authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
 
   const fetchTodaysAppointments = async () => {
     try {

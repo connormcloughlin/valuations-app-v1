@@ -322,6 +322,23 @@ class ConfigurationService {
       if (!cachedData) return null;
       
       const parsed = JSON.parse(cachedData);
+      
+      // Handle new cache format from order endpoint pre-loading
+      if (parsed.data) {
+        console.log(`📦 Found pre-cached configuration for category ${categoryId} from order endpoint`);
+        const categoryConfig = parsed.data;
+        
+        // Convert the order endpoint format to our expected CategoryConfiguration format
+        return {
+          categoryId: categoryConfig.category?.categoryId || categoryId,
+          categoryName: categoryConfig.category?.categoryName || 'Unknown Category',
+          fields: categoryConfig.fields || [],
+          groupingStrategy: categoryConfig.groupingStrategy || null,
+          locationTemplate: categoryConfig.locationTemplate || null
+        };
+      }
+      
+      // Handle old cache format
       return parsed.config;
     } catch (error) {
       console.error('Error reading cached configuration:', error);
@@ -354,6 +371,40 @@ class ConfigurationService {
       }
     } catch (error) {
       console.error('Error clearing configuration cache:', error);
+    }
+  }
+
+  /**
+   * Cache field configurations from order endpoint
+   */
+  async cacheOrderFieldConfigurations(orderId: string, configData: any): Promise<void> {
+    try {
+      console.log(`🚀 Caching field configurations for order ${orderId}`);
+      
+      if (!configData?.categories) {
+        console.log('❌ No categories data to cache');
+        return;
+      }
+      
+      // Cache each category's configuration individually for fast lookup
+      for (const categoryConfig of configData.categories) {
+        const categoryId = categoryConfig.category?.categoryId;
+        if (categoryId) {
+          const cacheKey = `${this.cachePrefix}${categoryId}`;
+          const cacheData = {
+            data: categoryConfig,
+            timestamp: Date.now(),
+            orderId: orderId
+          };
+          
+          await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
+          console.log(`📦 Cached config for category ${categoryId}`);
+        }
+      }
+      
+      console.log(`✅ Successfully cached configurations for ${configData.categories.length} categories`);
+    } catch (error) {
+      console.error('❌ Error caching field configurations:', error);
     }
   }
 

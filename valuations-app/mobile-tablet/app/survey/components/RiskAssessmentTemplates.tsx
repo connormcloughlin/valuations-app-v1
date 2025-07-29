@@ -20,9 +20,11 @@ interface ApiResponse<T> {
 
 interface RiskTemplate {
   riskassessmentid?: string;
+  riskAssessmentId?: string; // camelCase from hierarchy API
   assessmentid?: number;
   assessmenttypeid?: number;
   assessmenttypename?: string;
+  assessmentTypeName?: string; // camelCase from hierarchy API
   templatename?: string;
   prefix?: string;
   comments?: string;
@@ -97,14 +99,120 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
   const [sections, setSections] = useState<Record<string, Section[]>>({});
   const [sectionsLoading, setSectionsLoading] = useState<Record<string, boolean>>({});
   const [sectionsError, setSectionsError] = useState<Record<string, string | null>>({});
+  const [hierarchyData, setHierarchyData] = useState<any>(null);
 
   useEffect(() => {
-    fetchTemplates();
+    fetchTemplatesAndHierarchy();
   }, [orderNumber]);
 
-  // Fetch sections for a template
+  // Fetch both templates and complete hierarchy
+  const fetchTemplatesAndHierarchy = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // First, fetch the complete hierarchy if we have an order number
+      if (orderNumber) {
+        console.log(`🚀 Fetching complete hierarchy for order: ${orderNumber}`);
+        try {
+          // Fetch hierarchy and field configurations in parallel
+          const [hierarchyResponse, fieldConfigResponse] = await Promise.all([
+            api.getRiskAssessmentCompleteHierarchy(orderNumber),
+            api.getOrderCategoryFieldConfigurations(orderNumber)
+          ]);
+          
+          console.log('🚀 Hierarchy response:', hierarchyResponse);
+          console.log('🚀 Field config response:', fieldConfigResponse);
+          
+          if (hierarchyResponse.success && hierarchyResponse.data) {
+            console.log('🚀 Complete hierarchy loaded successfully');
+            setHierarchyData(hierarchyResponse.data);
+            
+            // Cache field configurations if available
+            if (fieldConfigResponse?.success && fieldConfigResponse?.data?.categories) {
+              console.log(`🚀 Pre-loading field configurations for ${fieldConfigResponse.data.categories.length} categories`);
+              
+              // Store field configurations in a format that can be used by ConfigurationService
+              const configurationService = await import('../../../services/configurationService');
+              await configurationService.default.cacheOrderFieldConfigurations(orderNumber, fieldConfigResponse.data);
+            }
+            
+            // Extract templates from hierarchy data - handle nested structure
+            const templatesFromHierarchy = hierarchyResponse.data.assessmentMasters || hierarchyResponse.data.data?.assessmentMasters || [];
+            console.log('🚀 Templates from hierarchy:', templatesFromHierarchy);
+            
+            if (templatesFromHierarchy.length > 0) {
+              console.log(`🚀 Found ${templatesFromHierarchy.length} templates in hierarchy`);
+              setTemplates(templatesFromHierarchy);
+              
+              // Pre-populate sections from hierarchy data
+              const sectionsFromHierarchy: Record<string, Section[]> = {};
+              templatesFromHierarchy.forEach((template: any) => {
+                // Handle different field name cases from the API response
+                const templateId = template.riskAssessmentId || template.riskassessmentid || String(template.assessmentid);
+                console.log(`🚀 Processing template ${templateId}, sections:`, template.sections);
+                
+                if (templateId && template.sections) {
+                  // Sections are nested within each template
+                  const templateSections = template.sections.map((section: any) => ({
+                    id: section.riskAssessmentSectionId || section.riskassessmentsectionid,
+                    title: section.sectionName || section.sectionname || 'Unnamed Section',
+                  }));
+                  sectionsFromHierarchy[templateId] = templateSections;
+                  console.log(`🚀 Added ${templateSections.length} sections for template ${templateId}`);
+                }
+              });
+              setSections(sectionsFromHierarchy);
+              console.log('🚀 All sections populated:', sectionsFromHierarchy);
+              setLoading(false);
+              return; // Exit early since we have hierarchy data
+            }
+          }
+        } catch (hierarchyError) {
+          console.error('Failed to fetch complete hierarchy:', hierarchyError);
+        }
+      }
+      
+      // Fallback: fetch templates the old way if hierarchy fails or no order number
+      await fetchTemplates();
+    } catch (err) {
+      console.error('Error in fetchTemplatesAndHierarchy:', err);
+      setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setTemplates([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch sections for a template (now only used as fallback)
   const fetchSections = (templateId: string) => {
-    console.log('[RiskAssessmentTemplates] Fetching sections for template:', templateId);
+    // If we have hierarchy data, use it instead of making API calls
+    if (hierarchyData) {
+      console.log('[RiskAssessmentTemplates] Using hierarchy data for sections');
+      
+      // Find the template in hierarchy data
+      const templatesData = hierarchyData.assessmentMasters || hierarchyData.data?.assessmentMasters || [];
+      const template = templatesData.find((t: any) => 
+        (t.riskAssessmentId || t.riskassessmentid || String(t.assessmentid)) === templateId
+      );
+      
+      if (template && template.sections) {
+        const templateSections = template.sections.map((section: any) => ({
+          id: section.riskAssessmentSectionId || section.riskassessmentsectionid,
+          title: section.sectionName || section.sectionname || 'Unnamed Section',
+        }));
+        
+        setSections(prev => ({ 
+          ...prev, 
+          [templateId]: templateSections
+        }));
+        console.log(`🚀 Used hierarchy data: ${templateSections.length} sections for template ${templateId}`);
+        return;
+      }
+    }
+    
+    // Fallback to individual API call only if no hierarchy data
+    console.log('[RiskAssessmentTemplates] Fallback: Fetching sections for template:', templateId);
     setSectionsLoading(prev => ({ ...prev, [templateId]: true }));
     setSectionsError(prev => ({ ...prev, [templateId]: null }));
     
@@ -231,13 +339,16 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
       </View>
       
       {templates.map((template: RiskTemplate, index: number) => {
-        // Get the template ID using the correct field names
-        const templateId = template.riskassessmentid || String(template.assessmentid);
+        // Get the template ID using the correct field names (handle both camelCase and lowercase)
+        const templateId = template.riskAssessmentId || template.riskassessmentid || String(template.assessmentid);
         
-        // Get the template name using the correct field name
-        const templateName = template.templatename || template.assessmenttypename;
+        // Get the template name using the correct field names (handle both camelCase and lowercase)
+        const templateName = template.assessmentTypeName || template.templatename || template.assessmenttypename;
+        
+        console.log(`🎯 Rendering template ${index}:`, { templateId, templateName, template });
         
         if (!templateId || !templateName) {
+          console.log(`❌ Skipping template ${index}: missing ID or name`);
           return null;
         }
         

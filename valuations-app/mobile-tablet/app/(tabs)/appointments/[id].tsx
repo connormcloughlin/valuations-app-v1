@@ -8,6 +8,7 @@ import api from '../../../api';
 import prefetchService from '../../../services/prefetchService';
 import { PrefetchProgressIndicator } from '../../../components/PrefetchProgressIndicator';
 import { appointmentDetailsStyles } from '../../GlobalStyles';
+import { useAuth } from '../../../context/AuthContext';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../../types/api';
@@ -69,6 +70,7 @@ export default function AppointmentDetails() {
   logNavigation('Appointment Details');
   const params = useLocalSearchParams();
   const { id } = params;
+  const { isAuthenticated, user } = useAuth();
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,13 +149,15 @@ export default function AppointmentDetails() {
     fetchAppointmentDetails();
   }, [id]);
   
-  // Start prefetch when appointment data is loaded
+  // Start prefetch when appointment data is loaded AND user is authenticated
   useEffect(() => {
-    if (appointment) {
-      console.log(`Starting prefetch for appointment ${appointment.id}`);
+    if (appointment && isAuthenticated && user) {
+      console.log(`🔐 User authenticated, starting prefetch for appointment ${appointment.id}`);
       prefetchService.startAppointmentPrefetch(appointment.id, appointment.orderNumber);
+    } else if (appointment && !isAuthenticated) {
+      console.log(`⏳ Waiting for authentication before starting prefetch for appointment ${appointment.id}`);
     }
-  }, [appointment]);
+  }, [appointment, isAuthenticated, user]);
   
   const startSurvey = () => {
     if (!appointment) return;

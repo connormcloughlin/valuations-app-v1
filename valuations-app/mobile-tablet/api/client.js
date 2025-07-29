@@ -153,6 +153,23 @@ apiClient.interceptors.request.use(
       const token = await getCachedToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        
+        // Log user information for debugging
+        try {
+          const userData = await AsyncStorage.getItem('userData');
+          if (userData) {
+            const user = JSON.parse(userData);
+            console.log('🔐 API Request - User Info:', {
+              userId: user.id,
+              userName: user.name,
+              userEmail: user.email,
+              endpoint: config.url,
+              method: config.method
+            });
+          }
+        } catch (userError) {
+          console.log('🔐 API Request - No user data available');
+        }
       }
       
     } catch (error) {

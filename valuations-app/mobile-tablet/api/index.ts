@@ -444,6 +444,80 @@ export default {
       return handleApiError(error);
     }
   },
+
+  // Function to get complete risk assessment hierarchy (composite API)
+  getRiskAssessmentCompleteHierarchy: async (orderId: string): Promise<ApiResponse> => {
+    try {
+      console.log('🚀 Fetching complete risk assessment hierarchy for order:', orderId);
+      const response = await axiosInstance.get(`/mobile/risk-assessment/${orderId}/complete-hierarchy`);
+      
+      console.log('📦 Composite API response structure:', {
+        success: response.data?.success,
+        hasAssessmentMasters: !!response.data?.data?.assessmentMasters,
+        mastersCount: response.data?.data?.assessmentMasters?.length || 0
+      });
+      
+      if (response.data?.success) {
+        // Cache for offline use
+        await storeData(`risk_assessment_hierarchy_${orderId}`, response.data);
+        return response.data;
+      }
+      
+      throw new Error('Invalid response format from composite API');
+    } catch (error) {
+      console.error('❌ Error fetching complete hierarchy:', error);
+      
+      // Try cache if API fails
+      try {
+        const cachedData = await getData(`risk_assessment_hierarchy_${orderId}`);
+        if (cachedData) {
+          console.log('📦 Using cached hierarchy data');
+          return { ...cachedData, fromCache: true };
+        }
+      } catch (cacheError) {
+        console.error('❌ Cache retrieval error:', cacheError);
+      }
+      
+      return handleApiError(error);
+    }
+  },
+  
+  // Function to get all category field configurations for an order
+  getOrderCategoryFieldConfigurations: async (orderId: string): Promise<ApiResponse> => {
+    try {
+      console.log('🚀 Fetching category field configurations for order:', orderId);
+      const response = await axiosInstance.get(`/api/mobile/config/order/${orderId}/categories/complete`);
+      
+      console.log('📦 Field config response structure:', {
+        success: response.data?.success,
+        totalCategories: response.data?.data?.summary?.totalCategories || 0,
+        totalFields: response.data?.data?.summary?.totalFields || 0
+      });
+      
+      if (response.data?.success) {
+        // Cache for offline use
+        await storeData(`order_field_configurations_${orderId}`, response.data);
+        return response.data;
+      }
+      
+      throw new Error('Invalid response format from field config API');
+    } catch (error) {
+      console.error('❌ Error fetching order field configurations:', error);
+      
+      // Try cache if API fails
+      try {
+        const cachedData = await getData(`order_field_configurations_${orderId}`);
+        if (cachedData) {
+          console.log('📦 Using cached field configuration data');
+          return { ...cachedData, fromCache: true };
+        }
+      } catch (cacheError) {
+        console.error('❌ Cache retrieval error:', cacheError);
+      }
+      
+      return handleApiError(error);
+    }
+  },
   
   // Updated Media API endpoints - Sync API integration
   uploadMedia: async (mediaData: {

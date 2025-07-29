@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { enhancedApiClient } from '../../api/enhancedClient';
 import { statsCardsStyles } from '../../app/GlobalStyles';
+import { useAuth } from '../../context/AuthContext';
 
 interface StatsData {
   scheduled: number;
@@ -27,6 +28,7 @@ interface StatsCardsProps {
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
+  const { isAuthenticated, user } = useAuth();
   const [stats, setStats] = useState<StatsData>({
     scheduled: 0,
     inProgress: 0,
@@ -36,10 +38,25 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     lastSync: 'Never'
   });
   const [loading, setLoading] = useState(true);
+  const [waitingForAuth, setWaitingForAuth] = useState(false);
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    // Only fetch stats if user is authenticated
+    if (isAuthenticated && user) {
+      console.log('🔐 User authenticated, fetching dashboard stats...');
+      setWaitingForAuth(false);
+      fetchStats();
+    } else {
+      console.log('⏳ Waiting for authentication before fetching dashboard stats...');
+      setWaitingForAuth(true);
+      setLoading(false);
+    }
+  }, [isAuthenticated, user]);
+
+  // Don't render anything if not authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
 
   const fetchStats = async () => {
     try {
@@ -228,10 +245,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
 
   return (
     <View style={statsCardsStyles.cardsContainer}>
-      {renderCard('Booked', loading ? '...' : stats.scheduled, 'calendar-clock', '#4a90e2', 'scheduled')}
-      {renderCard('In Progress', loading ? '...' : stats.inProgress, 'clipboard-edit-outline', '#f39c12', 'inProgress')}
-      {renderCard('Completed', loading ? '...' : stats.completed, 'clipboard-check', '#2ecc71', 'completed')}
-      {renderCard('Finalise', loading ? '...' : stats.finalise, 'clipboard-check-outline', '#9b59b6', 'finalise')}
+      {renderCard('Booked', waitingForAuth ? 'Auth...' : (loading ? '...' : stats.scheduled), 'calendar-clock', '#4a90e2', 'scheduled')}
+      {renderCard('In Progress', waitingForAuth ? 'Auth...' : (loading ? '...' : stats.inProgress), 'clipboard-edit-outline', '#f39c12', 'inProgress')}
+      {renderCard('Completed', waitingForAuth ? 'Auth...' : (loading ? '...' : stats.completed), 'clipboard-check', '#2ecc71', 'completed')}
+      {renderCard('Finalise', waitingForAuth ? 'Auth...' : (loading ? '...' : stats.finalise), 'clipboard-check-outline', '#9b59b6', 'finalise')}
       
       <Card style={statsCardsStyles.card} onPress={() => handleCardPress('sync')}>
         <Card.Content>
@@ -245,7 +262,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
             statsCardsStyles.cardCount,
             stats.pendingSync > 0 && statsCardsStyles.pendingCount
           ]}>
-            {loading ? '...' : stats.pendingSync}
+            {waitingForAuth ? 'Auth...' : (loading ? '...' : stats.pendingSync)}
           </Text>
         </Card.Content>
       </Card>

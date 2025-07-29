@@ -21,6 +21,7 @@ interface PrefetchTask {
   assessmentId?: string;
   priority: 'high' | 'medium' | 'low';
   status: 'pending' | 'running' | 'completed' | 'failed';
+  categoryData?: any; // Added for composite API data
 }
 
 interface PrefetchProgress {
@@ -51,6 +52,7 @@ class PrefetchService {
   private progressListeners: PrefetchEventListener[] = [];
   private categoryListeners: CategoryCompletedListener[] = [];
   private abortController: AbortController | null = null;
+  private completeHierarchyData: any | null = null; // Added for composite API data
 
   // Event subscription methods
   onProgress(listener: PrefetchEventListener): () => void {
@@ -193,47 +195,130 @@ class PrefetchService {
     try {
       console.log(`📋 Building prefetch queue for appointment ${appointmentId}`);
       
-      let templates: any[] = [];
+      if (!orderNumber) {
+        console.log('❌ No order number available for composite API call');
+        return false;
+      }
 
-      // Try to get templates from order number if available
-      if (orderNumber) {
-        console.log(`🔍 Fetching templates for order: ${orderNumber}`);
-        const templatesResponse = await this.fetchTemplatesByOrderId(orderNumber);
-        if (templatesResponse.success && templatesResponse.data) {
-          templates = templatesResponse.data;
+      // Use composite hierarchy API instead of individual calls
+      console.log(`🚀 Using composite hierarchy API for order: ${orderNumber}`);
+      
+      const fullUrl = `${API_BASE_URL}/mobile/risk-assessment/${orderNumber}/complete-hierarchy`;
+      const fieldConfigUrl = `${API_BASE_URL}/api/mobile/config/order/${orderNumber}/categories/complete`;
+      console.log(`🌐 COMPOSITE API - FULL URL: ${fullUrl}`);
+      console.log(`🌐 FIELD CONFIG API - FULL URL: ${fieldConfigUrl}`);
+      
+      // Get authentication token
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        console.log('❌ COMPOSITE API - No auth token available, skipping prefetch');
+        return false;
+      }
+      
+      console.log(`🔑 COMPOSITE API - AUTH TOKEN: ${token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN'}`);
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+      
+      // Fetch both hierarchy and field configurations in parallel
+      const [hierarchyResponse, fieldConfigResponse] = await Promise.all([
+        fetch(fullUrl, { method: 'GET', headers }),
+        fetch(fieldConfigUrl, { method: 'GET', headers })
+      ]);
+      
+      console.log(`📡 COMPOSITE API - Response status: ${hierarchyResponse.status} ${hierarchyResponse.statusText}`);
+      console.log(`📡 FIELD CONFIG API - Response status: ${fieldConfigResponse.status} ${fieldConfigResponse.statusText}`);
+      
+      // Handle authentication errors
+      if (hierarchyResponse.status === 401 || hierarchyResponse.status === 403) {
+        console.log(`❌ COMPOSITE API - Authentication required, skipping...`);
+        return false;
+      }
+      
+      if (!hierarchyResponse.ok) {
+        console.log(`❌ COMPOSITE API - Failed with status ${hierarchyResponse.status}`);
+        return false;
+      }
+      
+      const hierarchyData = await hierarchyResponse.json();
+      const fieldConfigData = fieldConfigResponse.ok ? await fieldConfigResponse.json() : null;
+      
+      console.log(`📦 COMPOSITE API - Response data structure:`, {
+        success: hierarchyData?.success,
+        hasAssessmentMasters: !!hierarchyData?.data?.assessmentMasters,
+        mastersCount: hierarchyData?.data?.assessmentMasters?.length || 0,
+        totalSections: hierarchyData?.data?.assessmentMasters?.reduce((sum: number, master: any) => 
+          sum + (master.sections?.length || 0), 0) || 0,
+        totalCategories: hierarchyData?.data?.assessmentMasters?.reduce((sum: number, master: any) => 
+          sum + master.sections?.reduce((sectionSum: number, section: any) => 
+            sectionSum + (section.categories?.length || 0), 0), 0) || 0,
+        totalItems: hierarchyData?.data?.assessmentMasters?.reduce((sum: number, master: any) => 
+          sum + master.sections?.reduce((sectionSum: number, section: any) => 
+            sectionSum + section.categories?.reduce((categorySum: number, category: any) => 
+              categorySum + (category.items?.length || 0), 0), 0), 0) || 0
+      });
+      
+      if (fieldConfigData) {
+        console.log(`📦 FIELD CONFIG API - Response data structure:`, {
+          success: fieldConfigData?.success,
+          totalCategories: fieldConfigData?.data?.summary?.totalCategories || 0,
+          totalFields: fieldConfigData?.data?.summary?.totalFields || 0
+        });
+        
+        // Cache field configurations if available
+        if (fieldConfigData?.success && fieldConfigData?.data?.categories) {
+          console.log(`🚀 Pre-loading field configurations for ${fieldConfigData.data.categories.length} categories`);
+          
+          // Store field configurations in a format that can be used by ConfigurationService
+          const configurationService = await import('./configurationService');
+          await configurationService.default.cacheOrderFieldConfigurations(orderNumber, fieldConfigData.data);
         }
       }
-
-      // If no templates found, try to get from appointment
-      if (templates.length === 0) {
-        console.log(`🔍 No order templates found, trying appointment-based templates`);
-        // You might need to implement this based on your API structure
-        templates = await this.getDefaultTemplates();
+      
+      if (!hierarchyData?.success || !hierarchyData?.data?.assessmentMasters) {
+        console.log('❌ COMPOSITE API - Invalid response format or no assessment masters');
+        return false;
       }
 
-      // Build tasks for each template
-      for (const template of templates) {
-        const assessmentId = template.riskassessmentid || template.assessmentid;
-        if (!assessmentId) continue;
-
-        console.log(`📝 Processing template: ${template.assessmenttypename} (ID: ${assessmentId})`);
+      // Process the composite response and build tasks
+      const assessmentMasters = hierarchyData.data.assessmentMasters;
+      console.log(`✅ COMPOSITE API - Processing ${assessmentMasters.length} assessment masters`);
+      
+      // Store the complete hierarchy data for processing
+      this.completeHierarchyData = hierarchyData.data;
+      
+      for (const master of assessmentMasters) {
+        console.log(`📝 Processing master: ${master.templateName || master.assessmenttypename} (ID: ${master.riskassessmentid})`);
         
-        // Get sections for this template
-        const sections = await this.getTemplateSections(assessmentId);
+        if (!master.sections) {
+          console.log(`⚠️ No sections found for master ${master.riskassessmentid}`);
+          continue;
+        }
         
-        for (const section of sections) {
-          // Get categories for this section
-          const categories = await this.getSectionCategories(section.riskassessmentsectionid);
+        for (const section of master.sections) {
+          console.log(`📂 Processing section: ${section.sectionName || section.sectionname} (ID: ${section.riskassessmentsectionid})`);
           
-          for (const category of categories) {
-            const priority = this.getCategoryPriority(category, template.assessmenttypename);
+          if (!section.categories) {
+            console.log(`⚠️ No categories found for section ${section.riskassessmentsectionid}`);
+            continue;
+          }
+          
+          for (const category of section.categories) {
+            const categoryId = category.riskassessmentcategoryid || category.categoryId;
+            const priority = this.getCategoryPriority(category, master.assessmenttypename || master.templateName);
+            
+            console.log(`📋 Adding category task: ${category.categoryName || category.categoryname} (ID: ${categoryId}, Priority: ${priority})`);
             
             const task: PrefetchTask = {
-              id: `category-${category.riskassessmentcategoryid}`,
+              id: `category-${categoryId}`,
               type: 'category',
-              categoryId: category.riskassessmentcategoryid.toString(),
+              categoryId: categoryId.toString(),
               priority,
-              status: 'pending'
+              status: 'pending',
+              // Store the category data from composite API
+              categoryData: category
             };
 
             this.queue.push(task);
@@ -247,7 +332,7 @@ class PrefetchService {
         return priorityOrder[a.priority] - priorityOrder[b.priority];
       });
 
-      console.log(`✅ Built prefetch queue with ${this.queue.length} tasks`);
+      console.log(`✅ Built prefetch queue with ${this.queue.length} tasks from composite API`);
       console.log(`Priority breakdown:`, {
         high: this.queue.filter(t => t.priority === 'high').length,
         medium: this.queue.filter(t => t.priority === 'medium').length,
@@ -261,7 +346,7 @@ class PrefetchService {
       return true;
 
     } catch (error) {
-      console.error('❌ Error building prefetch queue:', error);
+      console.error('❌ Error building prefetch queue with composite API:', error);
       return false;
     }
   }
@@ -330,10 +415,11 @@ class PrefetchService {
     try {
       switch (task.type) {
         case 'category':
-          if (task.categoryId) {
-            await this.prefetchCategoryItems(task.categoryId);
-            await this.prefetchFieldConfiguration(task.categoryId);
-            this.emitCategoryCompleted(task.categoryId);
+          if (task.categoryData) {
+            // Process category data from composite API instead of making individual API calls
+            await this.processCategoryFromCompositeAPI(task.categoryData);
+            await this.prefetchFieldConfiguration(task.categoryData.riskassessmentcategoryid || task.categoryData.categoryId);
+            this.emitCategoryCompleted(task.categoryData.riskassessmentcategoryid || task.categoryData.categoryId);
           }
           break;
         // Add other task types as needed
@@ -352,6 +438,86 @@ class PrefetchService {
     }
   }
 
+  // Process category data from composite API (no individual API calls)
+  private async processCategoryFromCompositeAPI(category: any): Promise<void> {
+    const categoryId = category.riskassessmentcategoryid || category.categoryId;
+    console.log(`📦 PREFETCH - Processing category ${categoryId} from composite API data`);
+    
+    // Ensure database is ready before proceeding
+    if (!isDatabaseReady()) {
+      console.log(`⏳ Database not ready, waiting for initialization...`);
+      await waitForDatabase();
+      console.log(`✅ Database ready, proceeding with category ${categoryId}`);
+    }
+    
+    // Check if already cached for this appointment
+    const existingItems = await getAllRiskAssessmentItems();
+    const categoryItems = existingItems.filter(item => 
+      String(item.riskassessmentcategoryid) === String(categoryId) &&
+      String(item.appointmentid) === String(this.currentStats?.appointmentId)
+    );
+
+    if (categoryItems.length > 0) {
+      console.log(`📦 PREFETCH - Category ${categoryId} already cached for appointment ${this.currentStats?.appointmentId} (${categoryItems.length} items)`);
+      return;
+    }
+
+    // Process items from composite API data
+    const items = category.items || [];
+    console.log(`📦 PREFETCH - Processing ${items.length} items for category ${categoryId} from composite API`);
+    
+    if (items.length === 0) {
+      console.log(`ℹ️ PREFETCH - No items found for category ${categoryId} in composite API data`);
+      return;
+    }
+
+    // Prepare all items for batch insert
+    const sqliteItems: RiskAssessmentItem[] = items.map((item: any, index: number) => {
+      console.log(`📝 PREFETCH - Preparing item ${index + 1}/${items.length}:`, {
+        riskassessmentitemid: item.riskassessmentitemid,
+        riskassessmentcategoryid: item.riskassessmentcategoryid,
+        itemprompt: item.itemprompt,
+        itemtype: item.itemtype,
+        rank: item.rank
+      });
+      
+      return {
+        riskassessmentitemid: Number(item.riskassessmentitemid),
+        riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
+        itemprompt: item.itemprompt || '',
+        itemtype: Number(item.itemtype) || 0,
+        rank: Number(item.rank) || 0,
+        commaseparatedlist: item.commaseparatedlist || '',
+        selectedanswer: item.selectedanswer || '',
+        qty: Number(item.qty) || 1,
+        price: Number(item.price) || 0,
+        description: item.description || '',
+        model: item.model || '',
+        location: item.location || '',
+        assessmentregisterid: Number(item.assessmentregisterid) || 0,
+        assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
+        datecreated: item.datecreated || new Date().toISOString(),
+        createdbyid: item.createdbyid || '',
+        dateupdated: item.dateupdated || new Date().toISOString(),
+        updatedbyid: item.updatedbyid || '',
+        issynced: Number(item.issynced) || 0,
+        syncversion: Number(item.syncversion) || 0,
+        deviceid: item.deviceid || '',
+        syncstatus: item.syncstatus || '',
+        synctimestamp: item.synctimestamp || new Date().toISOString(),
+        hasphoto: Number(item.hasphoto) || 0,
+        latitude: Number(item.latitude) || 0,
+        longitude: Number(item.longitude) || 0,
+        notes: item.notes || '',
+        appointmentid: this.currentStats?.appointmentId || ''
+      };
+    });
+    
+    // Batch insert all items at once
+    await batchInsertRiskAssessmentItems(sqliteItems);
+    console.log(`✅ PREFETCH - Successfully processed ${items.length} items for category ${categoryId} from composite API`);
+  }
+
   // Prefetch field configuration for a specific category
   private async prefetchFieldConfiguration(categoryId: string): Promise<void> {
     console.log(`📋 PREFETCH - Fetching field configuration for category ${categoryId}`);
@@ -366,10 +532,10 @@ class PrefetchService {
         return;
       }
 
-      // Fetch from API
+      // Fetch from API - requires authentication
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {
-        console.log('❌ PREFETCH - No auth token available for field configuration');
+        console.log('❌ PREFETCH - No auth token available for field configuration, skipping...');
         return;
       }
 
@@ -396,166 +562,20 @@ class PrefetchService {
         console.log(`ℹ️ PREFETCH - No field configuration found for category ${categoryId}`);
         return;
       }
+      // Handle authentication errors
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        console.log(`❌ PREFETCH - Authentication required for field configuration, skipping category ${categoryId}`);
+        return;
+      }
       console.error(`❌ PREFETCH - Error fetching field configuration for category ${categoryId}:`, error);
     }
   }
 
-  // Prefetch items for a specific category
-  private async prefetchCategoryItems(categoryId: string): Promise<void> {
-    // Ensure database is ready before proceeding
-    if (!isDatabaseReady()) {
-      console.log(`⏳ Database not ready, waiting for initialization...`);
-      await waitForDatabase();
-      console.log(`✅ Database ready, proceeding with category ${categoryId}`);
-    }
-    
-    // Check if already cached for this appointment
-    const existingItems = await getAllRiskAssessmentItems();
-    const categoryItems = existingItems.filter(item => 
-      String(item.riskassessmentcategoryid) === String(categoryId) &&
-      String(item.appointmentid) === String(this.currentStats?.appointmentId)
-    );
-
-    if (categoryItems.length > 0) {
-      console.log(`📦 PREFETCH - Category ${categoryId} already cached for appointment ${this.currentStats?.appointmentId} (${categoryItems.length} items)`);
-      return;
-    }
-
-    console.log(`📡 PREFETCH - Fetching items for category ${categoryId}`);
-    
-    try {
-      const response = await api.getRiskAssessmentItems(categoryId);
-      
-      console.log(`🔍 PREFETCH DEBUG - API Response:`, {
-        success: response?.success,
-        status: response?.status,
-        fromCache: response?.fromCache,
-        dataType: typeof response?.data,
-        isArray: Array.isArray(response?.data),
-        dataLength: Array.isArray(response?.data) ? response.data.length : 'N/A'
-      });
-
-      // Handle 404 - No items found for category
-      if (response?.status === 404) {
-        console.log(`ℹ️ PREFETCH - No items found for category ${categoryId}, skipping...`);
-        return;
-      }
-
-      if (!response.success || !Array.isArray(response.data)) {
-        console.error('❌ PREFETCH - Invalid response format:', response);
-        return;
-      }
-
-      const itemsToProcess = response.data;
-      console.log(`📦 PREFETCH - Processing ${itemsToProcess.length} items for category ${categoryId}`);
-      
-      // Prepare all items for batch insert (Step 1.2 Performance Optimization)
-      const sqliteItems: RiskAssessmentItem[] = itemsToProcess.map((item, index) => {
-        console.log(`📝 PREFETCH - Preparing item ${index + 1}/${itemsToProcess.length}:`, {
-          riskassessmentitemid: item.riskassessmentitemid,
-          riskassessmentcategoryid: item.riskassessmentcategoryid,
-          itemprompt: item.itemprompt,
-          itemtype: item.itemtype,
-          rank: item.rank
-        });
-        
-        return {
-          riskassessmentitemid: Number(item.riskassessmentitemid),
-          riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
-          itemprompt: item.itemprompt || '',
-          itemtype: Number(item.itemtype) || 0,
-          rank: Number(item.rank) || 0,
-          commaseparatedlist: item.commaseparatedlist || '',
-          selectedanswer: item.selectedanswer || '',
-                          qty: Number(item.qty) || 1,
-          price: Number(item.price) || 0,
-          description: item.description || '',
-          model: item.model || '',
-          location: item.location || '',
-          assessmentregisterid: Number(item.assessmentregisterid) || 0,
-          assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
-          datecreated: item.datecreated || new Date().toISOString(),
-          createdbyid: item.createdbyid || '',
-          dateupdated: item.dateupdated || new Date().toISOString(),
-          updatedbyid: item.updatedbyid || '',
-          issynced: Number(item.issynced) || 0,
-          syncversion: Number(item.syncversion) || 0,
-          deviceid: item.deviceid || '',
-          syncstatus: item.syncstatus || '',
-          synctimestamp: item.synctimestamp || new Date().toISOString(),
-          hasphoto: Number(item.hasphoto) || 0,
-          latitude: Number(item.latitude) || 0,
-          longitude: Number(item.longitude) || 0,
-          notes: item.notes || '',
-          appointmentid: this.currentStats?.appointmentId || ''
-        };
-      });
-      
-      // Batch insert all items at once (10-50x faster than individual inserts)
-      await batchInsertRiskAssessmentItems(sqliteItems);
-    } catch (error: any) {
-      // Handle API errors gracefully
-      if (error?.response?.status === 404) {
-        console.log(`ℹ️ PREFETCH - No items found for category ${categoryId}, skipping...`);
-        return;
-      }
-      console.error(`❌ PREFETCH - Error processing category ${categoryId}:`, error);
-      throw error;
-    }
-  }
-
-  // Helper methods
-  private async fetchTemplatesByOrderId(orderId: string): Promise<any> {
-    try {
-      const fullUrl = `${API_BASE_URL}/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`;
-      console.log(`🌐 PREFETCH SERVICE - FULL URL: ${fullUrl}`);
-      
-      // Get authentication token
-      const token = await AsyncStorage.getItem('authToken');
-      console.log(`🔑 PREFETCH SERVICE - AUTH TOKEN: ${token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN'}`);
-      
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
-      const response = await fetch(fullUrl, {
-        method: 'GET',
-        headers,
-      });
-      
-      console.log(`📡 PREFETCH SERVICE - Response status: ${response.status} ${response.statusText}`);
-      
-      const data = await response.json();
-      console.log(`📦 PREFETCH SERVICE - Response data: ${JSON.stringify(data, null, 2)}`);
-      
-      return {
-        success: response.ok,
-        data: Array.isArray(data) ? data : data.data || []
-      };
-    } catch (error) {
-      console.error(`❌ PREFETCH SERVICE - Error fetching templates:`, error);
-      return { success: false, data: [] };
-    }
-  }
-
-  private async getDefaultTemplates(): Promise<any[]> {
-    // Implement based on your default template logic
-    return [];
-  }
-
-  private async getTemplateSections(assessmentId: string): Promise<any[]> {
-    const response = await api.getRiskAssessmentSections(assessmentId);
-    return response?.success && response.data ? response.data : [];
-  }
-
-  private async getSectionCategories(sectionId: string): Promise<any[]> {
-    const response = await api.getRiskAssessmentCategories(sectionId);
-    return response?.success && response.data ? response.data : [];
-  }
+  // Helper methods - REMOVED: No longer needed with composite API
+  // private async fetchTemplatesByOrderId(orderId: string): Promise<any> { ... }
+  // private async getDefaultTemplates(): Promise<any[]> { ... }
+  // private async getTemplateSections(assessmentId: string): Promise<any[]> { ... }
+  // private async getSectionCategories(sectionId: string): Promise<any[]> { ... }
 
   private getCategoryPriority(category: any, templateType: string): 'high' | 'medium' | 'low' {
     // High priority categories that users typically access first

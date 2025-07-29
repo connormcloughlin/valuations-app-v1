@@ -163,6 +163,113 @@ const api = {
     }
   },
 
+  // Function to get risk assessment master by order ID
+  getRiskAssessmentMasterByOrder: async (orderId) => {
+    try {
+      console.log('Fetching risk assessment master for order:', orderId);
+      const response = await apiClient.get(`/risk-assessment-master/by-order/${orderId}`);
+      
+      if (response.data) {
+        return {
+          success: true,
+          data: response.data,
+          status: response.status,
+        };
+      }
+      
+      throw new Error('Empty response from API');
+    } catch (error) {
+      console.error('Error fetching risk assessment master by order:', error);
+      return {
+        success: false,
+        status: error.response?.status || 500,
+        message: error.response?.data?.message || error.message || 'Failed to fetch risk assessment master'
+      };
+    }
+  },
+
+  // Function to get complete risk assessment hierarchy (composite API)
+  getRiskAssessmentCompleteHierarchy: async (orderId) => {
+    try {
+      console.log('🚀 Fetching complete risk assessment hierarchy for order:', orderId);
+      const response = await apiClient.get(`/mobile/risk-assessment/${orderId}/complete-hierarchy`);
+      
+      console.log('📦 Composite API response structure:', {
+        success: response.data?.success,
+        hasAssessmentMasters: !!response.data?.data?.assessmentMasters,
+        mastersCount: response.data?.data?.assessmentMasters?.length || 0
+      });
+      
+      if (response.data?.success) {
+        // Cache for offline use
+        await offlineApi.storeData(`risk_assessment_hierarchy_${orderId}`, response.data);
+        return response.data;
+      }
+      
+      throw new Error('Invalid response format from composite API');
+    } catch (error) {
+      console.error('❌ Error fetching complete hierarchy:', error);
+      
+      // Try cache if API fails
+      try {
+        const cachedData = await offlineApi.getData(`risk_assessment_hierarchy_${orderId}`);
+        if (cachedData) {
+          console.log('📦 Using cached hierarchy data');
+          return { ...cachedData, fromCache: true };
+        }
+      } catch (cacheError) {
+        console.error('❌ Cache retrieval error:', cacheError);
+      }
+      
+      return {
+        success: false,
+        status: error.response?.status || 500,
+        message: error.response?.data?.message || error.message || 'Failed to fetch complete hierarchy'
+      };
+    }
+  },
+
+  // Function to get all category field configurations for an order
+  getOrderCategoryFieldConfigurations: async (orderId) => {
+    try {
+      console.log('🚀 Fetching category field configurations for order:', orderId);
+      const response = await apiClient.get(`/api/mobile/config/order/${orderId}/categories/complete`);
+      
+      console.log('📦 Field config response structure:', {
+        success: response.data?.success,
+        totalCategories: response.data?.data?.summary?.totalCategories || 0,
+        totalFields: response.data?.data?.summary?.totalFields || 0
+      });
+      
+      if (response.data?.success) {
+        // Cache for offline use
+        await offlineApi.storeData(`order_field_configurations_${orderId}`, response.data);
+        return response.data;
+      }
+      
+      throw new Error('Invalid response format from field config API');
+    } catch (error) {
+      console.error('❌ Error fetching order field configurations:', error);
+      
+      // Try cache if API fails
+      try {
+        const cachedData = await offlineApi.getData(`order_field_configurations_${orderId}`);
+        if (cachedData) {
+          console.log('📦 Using cached field configuration data');
+          return { ...cachedData, fromCache: true };
+        }
+      } catch (cacheError) {
+        console.error('❌ Cache retrieval error:', cacheError);
+      }
+      
+      return {
+        success: false,
+        status: error.response?.status || 500,
+        message: error.response?.data?.message || error.message || 'Failed to fetch field configurations'
+      };
+    }
+  },
+
   uploadMediaBatch: async (mediaFiles) => {
     try {
       console.log('Batch uploading media to sync API:', mediaFiles.length, 'files');
