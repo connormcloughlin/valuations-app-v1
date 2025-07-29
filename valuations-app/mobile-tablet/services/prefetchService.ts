@@ -204,7 +204,7 @@ class PrefetchService {
       console.log(`🚀 Using composite hierarchy API for order: ${orderNumber}`);
       
       const fullUrl = `${API_BASE_URL}/mobile/risk-assessment/${orderNumber}/complete-hierarchy`;
-      const fieldConfigUrl = `${API_BASE_URL}/api/mobile/config/order/${orderNumber}/categories/complete`;
+      const fieldConfigUrl = `${API_BASE_URL}/mobile/config/order/${orderNumber}/categories/complete`;
       console.log(`🌐 COMPOSITE API - FULL URL: ${fullUrl}`);
       console.log(`🌐 FIELD CONFIG API - FULL URL: ${fieldConfigUrl}`);
       

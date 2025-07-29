@@ -130,11 +130,15 @@ export class ApiRequestManager {
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        console.log(`🚀 API Request (attempt ${attempt + 1}/${retries + 1}): ${config.method?.toUpperCase() || 'GET'} ${config.url}`);
+        if (__DEV__) {
+          console.log(`🚀 ${config.method?.toUpperCase() || 'GET'} ${config.url}`);
+        }
         
         const response: AxiosResponse = await axios(requestConfig);
         
-        console.log(`✅ API Success: ${config.url} (${response.status})`);
+        if (__DEV__) {
+          console.log(`✅ ${config.url} (${response.status})`);
+        }
         return response.data;
         
       } catch (error: any) {
@@ -149,7 +153,9 @@ export class ApiRequestManager {
         // Wait before retry (exponential backoff)
         if (attempt < retries) {
           const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s...
-          console.log(`⏳ Retrying in ${delay}ms...`);
+          if (__DEV__) {
+            console.log(`⏳ Retrying in ${delay}ms...`);
+          }
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }

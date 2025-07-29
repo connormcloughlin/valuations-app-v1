@@ -47,10 +47,10 @@ class ConfigurationService {
     try {
       console.log(`🔄 ConfigurationService: Fetching complete configuration for category ${categoryId}`);
       
-      // Check cache first
+      // Check cache first - this includes pre-cached data from order endpoint
       const cachedConfig = await this.getCachedConfiguration(categoryId);
       if (cachedConfig && !this.isCacheExpired(cachedConfig)) {
-        console.log('✅ Using cached category configuration');
+        console.log('✅ Using cached category configuration (includes pre-cached data from order endpoint)');
         return cachedConfig;
       }
 
@@ -66,6 +66,16 @@ class ConfigurationService {
         return null;
       }
 
+      // If we have cached config but it's expired, we should still use it as fallback
+      // and only make API calls if absolutely necessary
+      if (cachedConfig) {
+        console.log('⚠️ Using expired cached configuration as fallback');
+        return cachedConfig;
+      }
+
+      // Only proceed with individual API calls if we have no cached data at all
+      console.log('🔄 No cached data available, proceeding with individual API calls');
+      
       let finalRiskTemplateCategoryId = riskTemplateCategoryId;
 
       if (!finalRiskTemplateCategoryId) {
@@ -75,7 +85,7 @@ class ConfigurationService {
         
         if (!categoryResponse.data?.success || !categoryResponse.data?.data) {
           console.error('❌ Failed to fetch category details:', categoryResponse.data?.message);
-          return cachedConfig; // Return cached if available
+          return null;
         }
 
         const categoryData = categoryResponse.data.data;
@@ -90,7 +100,7 @@ class ConfigurationService {
         if (!finalRiskTemplateCategoryId) {
           console.error('❌ No RiskTemplateCategoryID found in category data');
           console.error('Available fields:', Object.keys(categoryData));
-          return cachedConfig; // Return cached if available
+          return null;
         }
 
         console.log('✅ Step 1 Complete: Found RiskTemplateCategoryID', finalRiskTemplateCategoryId);
@@ -117,7 +127,7 @@ class ConfigurationService {
 
       if (!configResponse.data.success || !configResponse.data.data) {
         console.error('❌ Failed to fetch complete configuration:', configResponse.data.message);
-        return cachedConfig; // Return cached if available
+        return null;
       }
 
       const completeConfig = configResponse.data.data;

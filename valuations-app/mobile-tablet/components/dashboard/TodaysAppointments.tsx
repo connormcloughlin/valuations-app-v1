@@ -23,24 +23,31 @@ interface TodaysAppointmentsProps {
 }
 
 export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppointmentPress }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Only fetch appointments if user is authenticated
-    if (isAuthenticated && user) {
+    // Don't do anything while auth is still loading
+    if (isLoading) {
+      console.log('⏳ Auth still loading, waiting...');
+      setLoading(false);
+      return;
+    }
+
+    // Only fetch appointments if user is authenticated and auth loading is complete
+    if (isAuthenticated && user && !isLoading) {
       console.log('🔐 User authenticated, fetching today\'s appointments...');
       fetchTodaysAppointments();
     } else {
       console.log('⏳ Waiting for authentication before fetching today\'s appointments...');
       setLoading(false);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, isLoading]);
 
-  // Don't render anything if not authenticated
-  if (!isAuthenticated) {
+  // Don't render anything if auth is still loading or not authenticated
+  if (isLoading || !isAuthenticated || !user) {
     return null;
   }
 

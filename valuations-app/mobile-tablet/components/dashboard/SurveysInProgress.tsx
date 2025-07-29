@@ -22,24 +22,31 @@ interface SurveysInProgressProps {
 }
 
 export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPress }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Only fetch surveys if user is authenticated
-    if (isAuthenticated && user) {
+    // Don't do anything while auth is still loading
+    if (isLoading) {
+      console.log('⏳ Auth still loading, waiting...');
+      setLoading(false);
+      return;
+    }
+
+    // Only fetch surveys if user is authenticated and auth loading is complete
+    if (isAuthenticated && user && !isLoading) {
       console.log('🔐 User authenticated, fetching in-progress surveys...');
       fetchInProgressSurveys();
     } else {
       console.log('⏳ Waiting for authentication before fetching in-progress surveys...');
       setLoading(false);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, isLoading]);
 
-  // Don't render anything if not authenticated
-  if (!isAuthenticated) {
+  // Don't render anything if auth is still loading or not authenticated
+  if (isLoading || !isAuthenticated || !user) {
     return null;
   }
 

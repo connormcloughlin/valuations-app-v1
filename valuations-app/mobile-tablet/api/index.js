@@ -49,29 +49,25 @@ const api = {
   // Sync method for uploading local changes to server
   syncChanges: async (syncData) => {
     try {
-      console.log('=== API CLIENT: PREPARING SYNC REQUEST ===');
-      console.log('Sync data summary:', {
-        riskAssessmentItems: syncData.riskAssessmentItems?.length || 0,
-        riskAssessmentMasters: syncData.riskAssessmentMasters?.length || 0,
-        appointments: syncData.appointments?.length || 0,
-        deletedEntities: syncData.deletedEntities?.length || 0,
-        deviceId: syncData.deviceId,
-        userId: syncData.userId
-      });
-
-      console.log('=== FULL REQUEST PAYLOAD TO /sync/batch ===');
-      console.log(JSON.stringify(syncData, null, 2));
-
-      console.log('=== MAKING HTTP REQUEST ===');
-      console.log('Endpoint: POST /sync/batch');
-      console.log('Headers:', apiClient.defaults.headers);
+      if (__DEV__) {
+        console.log('=== SYNC REQUEST ===');
+        console.log('Sync data summary:', {
+          riskAssessmentItems: syncData.riskAssessmentItems?.length || 0,
+          riskAssessmentMasters: syncData.riskAssessmentMasters?.length || 0,
+          appointments: syncData.appointments?.length || 0,
+          deletedEntities: syncData.deletedEntities?.length || 0,
+          deviceId: syncData.deviceId,
+          userId: syncData.userId
+        });
+      }
 
       const response = await apiClient.post('/sync/batch', syncData);
       
-      console.log('=== API RESPONSE RECEIVED ===');
-      console.log('Status:', response.status);
-      console.log('Headers:', response.headers);
-      console.log('Response data:', JSON.stringify(response.data, null, 2));
+      if (__DEV__) {
+        console.log('=== SYNC RESPONSE ===');
+        console.log('Status:', response.status);
+        console.log('Response data:', JSON.stringify(response.data, null, 2));
+      }
       
       return {
         success: true,
@@ -79,11 +75,10 @@ const api = {
         status: response.status,
       };
     } catch (error) {
-      console.error('=== API CLIENT: SYNC ERROR ===');
+      console.error('=== SYNC ERROR ===');
       console.error('Error message:', error.message);
       console.error('Error status:', error.response?.status);
       console.error('Error data:', error.response?.data);
-      console.error('Full error:', error);
       
       return {
         success: false,
@@ -233,7 +228,7 @@ const api = {
   getOrderCategoryFieldConfigurations: async (orderId) => {
     try {
       console.log('🚀 Fetching category field configurations for order:', orderId);
-      const response = await apiClient.get(`/api/mobile/config/order/${orderId}/categories/complete`);
+      const response = await apiClient.get(`/mobile/config/order/${orderId}/categories/complete`);
       
       console.log('📦 Field config response structure:', {
         success: response.data?.success,

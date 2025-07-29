@@ -28,7 +28,7 @@ interface StatsCardsProps {
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
   const [stats, setStats] = useState<StatsData>({
     scheduled: 0,
     inProgress: 0,
@@ -41,8 +41,16 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
   const [waitingForAuth, setWaitingForAuth] = useState(false);
 
   useEffect(() => {
-    // Only fetch stats if user is authenticated
-    if (isAuthenticated && user) {
+    // Don't do anything while auth is still loading
+    if (isLoading) {
+      console.log('⏳ Auth still loading, waiting...');
+      setWaitingForAuth(true);
+      setLoading(false);
+      return;
+    }
+
+    // Only fetch stats if user is authenticated and auth loading is complete
+    if (isAuthenticated && user && !isLoading) {
       console.log('🔐 User authenticated, fetching dashboard stats...');
       setWaitingForAuth(false);
       fetchStats();
@@ -51,10 +59,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
       setWaitingForAuth(true);
       setLoading(false);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, isLoading]);
 
-  // Don't render anything if not authenticated
-  if (!isAuthenticated) {
+  // Don't render anything if auth is still loading or not authenticated
+  if (isLoading || !isAuthenticated || !user) {
     return null;
   }
 
@@ -64,25 +72,19 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
       
       // Use the optimized mobile dashboard API endpoint with enhanced client for caching
       const endpoint = '/mobile/appointment/dashboard/status-counts';
-      console.log('🚀 Fetching dashboard stats from optimized mobile API...');
-      console.log('🔍 Full endpoint URL will be: [BASE_URL]' + endpoint);
       
       // Check if we have auth token and decode it to see user info
       const AsyncStorage = await import('@react-native-async-storage/async-storage');
       const authToken = await AsyncStorage.default.getItem('authToken');
-      console.log('🔐 Auth token available:', authToken ? `Yes (${authToken.substring(0, 20)}...)` : 'No');
       
-      if (authToken) {
+      if (authToken && __DEV__) {
         try {
           // Decode JWT token to see user info (without verification, just for debugging)
           const tokenParts = authToken.split('.');
           if (tokenParts.length === 3) {
             const payload = JSON.parse(atob(tokenParts[1]));
-            console.log('🔍 Token payload (user info):', {
+            console.log('🔍 Token payload:', {
               userId: payload.sub || payload.userId || payload.id,
-              email: payload.email,
-              role: payload.role,
-              tenant: payload.tenant || payload.tenantId,
               exp: payload.exp ? new Date(payload.exp * 1000).toISOString() : 'No expiry'
             });
           }
@@ -91,19 +93,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         }
       }
       
-      // Call API directly without authentication to get unfiltered data
-      console.log('🚀 Calling dashboard API without authentication for unfiltered data');
-      
-      console.log('🔍 Calling authenticated API (backend should return unfiltered data)');
-      
       const response = await enhancedApiClient.get(endpoint, {
         requestOptions: { 
           skipCache: true, // Always hit the actual API, no caching for dashboard stats
           skipDeduplication: false // Still allow deduplication for simultaneous requests
         }
       });
-      
-      console.log('🔍 Response received from endpoint:', endpoint);
       
       // Get pending sync count from SQLite (run in parallel with API call)
       let pendingSync = 0;
@@ -135,10 +130,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         
         // Check if we have any data
         if (statusCounts.length === 0) {
-          console.warn('⚠️ Mobile dashboard API returned empty statusCounts array. This might indicate:');
-          console.warn('   - No appointments in database for current user');
-          console.warn('   - Backend query filters excluding all data');
-          console.warn('   - Database connection or query issue');
+          console.warn('⚠️ Mobile dashboard API returned empty statusCounts array');
         }
         
         // Create a lookup map for easier access
@@ -156,15 +148,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         // Get performance info if available
         const performanceData = response.data.performance || apiData.performance;
         const queryTime = performanceData?.queryTime || 'N/A';
-        console.log(`📊 Dashboard stats loaded in ${queryTime}:`, { 
-          scheduled, 
-          inProgress, 
-          completed, 
-          finalise, 
-          pendingSync,
-          totalAppointments: apiData.totalAppointments,
-          cacheKey: apiData.cacheKey?.substring(0, 20) + '...'
-        });
+        
+        if (__DEV__) {
+          console.log(`📊 Dashboard stats loaded in ${queryTime}:`, { 
+            scheduled, 
+            inProgress, 
+            completed, 
+            finalise, 
+            pendingSync,
+            totalAppointments: apiData.totalAppointments
+          });
+        }
         
         setStats({
           scheduled,
@@ -181,21 +175,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
           })
         });
       } else {
-        console.error('❌ Mobile dashboard API failed or returned invalid format:', response);
-        throw new Error('Mobile dashboard API failed');
+        console.error('❌ Failed to load dashboard stats:', response?.data?.message || 'Unknown error');
       }
     } catch (error) {
       console.error('❌ Error fetching dashboard stats:', error);
-      
-      // Show error state
-      setStats({
-        scheduled: 0,
-        inProgress: 0,
-        completed: 0,
-        finalise: 0,
-        pendingSync: 0,
-        lastSync: 'Connection Error'
-      });
     } finally {
       setLoading(false);
     }

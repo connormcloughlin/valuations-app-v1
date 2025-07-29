@@ -100,20 +100,16 @@ export async function initializeDatabase() {
 async function ensureDatabaseConnection() {
   const now = Date.now();
   if (!db || now - lastConnectionCheck > CONNECTION_CHECK_INTERVAL) {
-    console.log('Checking database connection...');
     try {
       if (!db) {
-        console.log('Database not initialized, initializing...');
         await initializeDatabase();
       } else {
         // Test the connection
         await db.execAsync('SELECT 1');
       }
       lastConnectionCheck = now;
-      console.log('Database connection verified');
     } catch (error) {
       console.error('Database connection check failed:', error);
-      console.log('Attempting to reinitialize database...');
       await initializeDatabase();
     }
   }
@@ -626,20 +622,10 @@ export async function deleteRiskAssessmentItem(id: number) {
 // Get all items that need to be synced to the server
 export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmentItem[]> {
   try {
-    console.log('=== DB QUERY: Fetching pending sync risk assessment items ===');
-    console.log('SQL Query: SELECT * FROM risk_assessment_items WHERE pending_sync = 1');
-    
     const res = await runSql('SELECT * FROM risk_assessment_items WHERE pending_sync = 1');
     
-    console.log('=== DB RESULT: Pending sync items found ===');
-    console.log('Total rows returned:', res.rows._array.length);
-    
-    if (res.rows._array.length > 0) {
-      console.log('=== FIRST ITEM FROM DB (Raw) ===');
-      console.log(JSON.stringify(res.rows._array[0], null, 2));
-      
-      console.log('=== ALL PENDING ITEMS IDs ===');
-      console.log('IDs:', res.rows._array.map(item => item.riskassessmentitemid));
+    if (__DEV__ && res.rows._array.length > 0) {
+      console.log(`📊 Found ${res.rows._array.length} pending sync items`);
     }
     
     return res.rows._array;
@@ -668,9 +654,10 @@ export async function markRiskAssessmentItemsAsSynced(itemIds: number[]) {
 // Get all appointments that need to be synced to the server
 export async function getPendingSyncAppointments() {
   try {
-    console.log('Fetching pending sync appointments from SQLite');
     const res = await runSql('SELECT * FROM appointments WHERE pending_sync = 1');
-    console.log('Pending sync appointments found:', res.rows._array.length);
+    if (__DEV__ && res.rows._array.length > 0) {
+      console.log(`📊 Found ${res.rows._array.length} pending sync appointments`);
+    }
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching pending sync appointments:', error);
@@ -697,9 +684,10 @@ export async function markAppointmentsAsSynced(appointmentIds: number[]) {
 // Get all risk assessment masters that need to be synced to the server
 export async function getPendingSyncRiskAssessmentMasters(): Promise<RiskAssessmentMaster[]> {
   try {
-    console.log('Fetching pending sync risk assessment masters from SQLite');
     const res = await runSql('SELECT * FROM risk_assessment_master WHERE pending_sync = 1');
-    console.log('Pending sync masters found:', res.rows._array.length);
+    if (__DEV__ && res.rows._array.length > 0) {
+      console.log(`📊 Found ${res.rows._array.length} pending sync masters`);
+    }
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching pending sync risk assessment masters:', error);
@@ -858,9 +846,10 @@ export async function hardDeleteMediaFile(mediaID: number) {
 // Get all media files that need to be synced to the server
 export async function getPendingSyncMediaFiles(): Promise<MediaFile[]> {
   try {
-    console.log('Fetching pending sync media files from SQLite');
     const res = await runSql('SELECT * FROM media_files WHERE pending_sync = 1');
-    console.log('Pending sync media files found:', res.rows._array.length);
+    if (__DEV__ && res.rows._array.length > 0) {
+      console.log(`📊 Found ${res.rows._array.length} pending sync media files`);
+    }
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching pending sync media files:', error);

@@ -1,4 +1,4 @@
-import { StyleSheet, ActivityIndicator, View } from 'react-native';
+import { StyleSheet, ActivityIndicator, View, Text } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Button } from 'react-native-paper';
 import { router } from 'expo-router';
@@ -11,7 +11,7 @@ import { dashboardStyles } from '../GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
 
 export default function Dashboard() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   const navigateToAppointment = (id: string, status: 'scheduled' | 'inProgress' | 'completed') => {
     // Route to different screens based on appointment status
@@ -61,19 +61,31 @@ export default function Dashboard() {
     }
   };
 
+  // Show loading while auth is checking
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#3498db" />
+        <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>
+          Checking authentication...
+        </Text>
       </View>
     );
   }
 
-  if (!isAuthenticated) {
+  // Show login prompt if not authenticated
+  if (!isAuthenticated || !user) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <DashboardHeader />
-        <Button mode="contained" onPress={() => router.push('/auth')}>Sign In</Button>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ fontSize: 18, marginBottom: 20, textAlign: 'center', color: '#666' }}>
+            Please sign in to access the dashboard
+          </Text>
+          <Button mode="contained" onPress={() => router.push('/login')}>
+            Sign In
+          </Button>
+        </View>
       </View>
     );
   }

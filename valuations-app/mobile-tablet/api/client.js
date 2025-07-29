@@ -115,7 +115,6 @@ apiClient.interceptors.request.use(
       if (config.url?.includes('/appointments/list-view') || 
           config.url?.includes('/appointments/stats')) {
         config.timeout = 45000; // 45 seconds for appointment endpoints
-        console.log(`🕐 Extended timeout to 45s for ${config.url}`);
       }
       
       // Only log detailed info for non-GET requests or in development
@@ -136,17 +135,12 @@ apiClient.interceptors.request.use(
             : baseUrl + '/' + endpoint;
         }
         
-        console.log('🚀 === API REQUEST ===');
         console.log(`🚀 ${config.method?.toUpperCase() || 'GET'}: ${fullUrl}`);
-        console.log('🚀 Headers:', config.headers);
         
         // Log request data for sync requests
         if (config.url?.includes('/sync/') && config.data) {
           console.log('🚀 Request Data Size:', JSON.stringify(config.data).length, 'characters');
-          console.log('🚀 Request Data (first 500 chars):', JSON.stringify(config.data).substring(0, 500));
         }
-        
-        console.log('🚀 === END REQUEST ===');
       }
       
       // Get the auth token efficiently (with caching)
@@ -154,21 +148,17 @@ apiClient.interceptors.request.use(
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
         
-        // Log user information for debugging
-        try {
-          const userData = await AsyncStorage.getItem('userData');
-          if (userData) {
-            const user = JSON.parse(userData);
-            console.log('🔐 API Request - User Info:', {
-              userId: user.id,
-              userName: user.name,
-              userEmail: user.email,
-              endpoint: config.url,
-              method: config.method
-            });
+        // Log user information for debugging (only in dev)
+        if (__DEV__) {
+          try {
+            const userData = await AsyncStorage.getItem('userData');
+            if (userData) {
+              const user = JSON.parse(userData);
+              console.log('🔐 User:', user.email, '->', config.url);
+            }
+          } catch (userError) {
+            // Silent fail for user data logging
           }
-        } catch (userError) {
-          console.log('🔐 API Request - No user data available');
         }
       }
       
