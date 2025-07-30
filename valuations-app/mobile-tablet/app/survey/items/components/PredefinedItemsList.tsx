@@ -498,6 +498,9 @@ export default function PredefinedItemsList({
   }, [propsItems]);
   // --- END FORCE LOCAL STATE TO MATCH PROPS ---
 
+  // Add ref for auto-save timeout
+  const autoSaveTimeoutRef = useRef<number | null>(null);
+
   // Handle editing a field - updated for dynamic fields
   const handleEdit = (itemId: string, fieldName: string, value: string) => {
     setEditItems(prev => ({
@@ -508,9 +511,14 @@ export default function PredefinedItemsList({
       }
     }));
 
-    // Save immediately for all fields
-    console.log('🔄 handleEdit: calling autoSaveItem for', itemId, fieldName, value);
-    autoSaveItem(itemId);
+    // Debounced auto-save to prevent excessive saves and accordion collapse
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      console.log('🔄 handleEdit: calling autoSaveItem for', itemId, fieldName, value);
+      autoSaveItem(itemId);
+    }, 2000); // 2 second delay to prevent immediate saves
   };
 
   // Auto-save function that saves changes to SQLite
@@ -524,51 +532,160 @@ export default function PredefinedItemsList({
     const changes = editItems[id] || {};
     console.log('🔄 [autoSaveItem] Changes to save:', changes);
 
-    // Only perform updates in flat structure (no inserts)
-        const existingItems = await getAllRiskAssessmentItems();
-        const existingItem = existingItems.find(dbItem => 
-          String(dbItem.riskassessmentitemid) === String(item.id)
-        );
-        if (!existingItem) {
-      console.error('❌ [autoSaveItem] No existing SQLite record found for predefined item:', id, '— update skipped.');
-          return;
-        }
-    // Prepare updated object
-        const updated: RiskAssessmentItem = {
-      ...existingItem,
-          itemprompt: changes.type ?? existingItem.itemprompt ?? '',
-      selectedanswer: changes.selectedanswer ?? existingItem.selectedanswer ?? '',
-          qty: Number(changes.quantity ?? existingItem.qty) || 1,
-          price: Number(changes.price ?? existingItem.price) || 0,
-          description: changes.description ?? existingItem.description ?? '',
-          model: changes.model ?? existingItem.model ?? '',
-          location: changes.room ?? existingItem.location ?? '',
-          notes: changes.notes ?? existingItem.notes ?? '',
-          pending_sync: 1,
-        };
-    console.log('🔄 [autoSaveItem] updateRiskAssessmentItem called with:', updated);
-        await updateRiskAssessmentItem(updated);
+    // Import database functions
+    const { getAllRiskAssessmentItems, updateRiskAssessmentItem, insertRiskAssessmentItem } = await import('../../../../utils/db');
+    
+    // Check if item exists in database
+    const existingItems = await getAllRiskAssessmentItems();
+    const existingItem = existingItems.find(dbItem => 
+      String(dbItem.riskassessmentitemid) === String(item.id)
+    );
+
+    if (existingItem) {
+      // Update existing item
+      const updated: RiskAssessmentItem = {
+        ...existingItem,
+        itemprompt: changes.type ?? existingItem.itemprompt ?? '',
+        selectedanswer: changes.selectedanswer ?? existingItem.selectedanswer ?? '',
+        qty: Number(changes.quantity ?? existingItem.qty) || 1,
+        price: Number(changes.price ?? existingItem.price) || 0,
+        description: changes.description ?? existingItem.description ?? '',
+        model: changes.model ?? existingItem.model ?? '',
+        location: changes.room ?? existingItem.location ?? '',
+        notes: changes.notes ?? existingItem.notes ?? '',
+        pending_sync: 1,
+      };
+      console.log('🔄 [autoSaveItem] updateRiskAssessmentItem called with:', updated);
+      await updateRiskAssessmentItem(updated);
+    } else {
+      // Insert new item (for custom-new- or duplicate- items)
+      console.log('🔄 [autoSaveItem] Inserting new item:', id);
+      
+      // Create new SQLite item
+      const newSqliteItem: RiskAssessmentItem = {
+        riskassessmentitemid: Number(id.replace('custom-new-', '').replace('duplicate-', '')),
+        riskassessmentcategoryid: Number(categoryId),
+        itemprompt: changes.type ?? item.type ?? '',
+        itemtype: 0,
+        rank: 0,
+        commaseparatedlist: item.commaseparatedlist ?? '',
+        selectedanswer: changes.selectedanswer ?? item.selectedanswer ?? '',
+        qty: Number(changes.quantity ?? item.quantity) || 1,
+        price: Number(changes.price ?? item.price) || 0,
+        description: changes.description ?? item.description ?? '',
+        model: changes.model ?? item.model ?? '',
+        location: changes.room ?? item.room ?? '',
+        assessmentregisterid: 0,
+        assessmentregistertypeid: 0,
+        datecreated: new Date().toISOString(),
+        createdbyid: '',
+        dateupdated: new Date().toISOString(),
+        updatedbyid: '',
+        issynced: 0,
+        syncversion: 0,
+        deviceid: '',
+        syncstatus: '',
+        synctimestamp: new Date().toISOString(),
+        hasphoto: 0,
+        latitude: 0,
+        longitude: 0,
+        notes: changes.notes ?? item.notes ?? '',
+        pending_sync: 1,
+        appointmentid: undefined
+      };
+      
+      console.log('🔄 [autoSaveItem] insertRiskAssessmentItem called with:', newSqliteItem);
+      await insertRiskAssessmentItem(newSqliteItem);
+      
+      // For new items, update the item ID to the database ID after successful insertion
+      if (id.startsWith('custom-new-') || id.startsWith('duplicate-')) {
+        const newItemId = String(newSqliteItem.riskassessmentitemid);
+        console.log('🔄 [autoSaveItem] Updating item ID from', id, 'to', newItemId);
         
-                    // Update local items state immediately after database update (following ItemsTable pattern)
-            // This ensures UI shows the saved changes even after sync completes
-            setItems(prevItems => 
-              prevItems.map(prevItem => 
-                String(prevItem.id) === id ? {
-                  ...prevItem,
-                  type: updated.itemprompt || '',
-                  quantity: String(updated.qty || 1),
-                  price: String(updated.price),
-                  description: updated.description || '',
-                  model: updated.model || '',
-                  room: updated.location || '',
-                  notes: updated.notes || ''
-                } : prevItem
-              )
-            );
+        // Update the item ID in the items array
+        setItems(prevItems => 
+          prevItems.map(prevItem => 
+            String(prevItem.id) === id ? {
+              ...prevItem,
+              id: newItemId, // Change to database ID
+              type: changes.type ?? prevItem.type ?? '',
+              quantity: changes.quantity ?? prevItem.quantity ?? '1',
+              price: changes.price ?? prevItem.price ?? '0',
+              description: changes.description ?? prevItem.description ?? '',
+              model: changes.model ?? prevItem.model ?? '',
+              room: changes.room ?? prevItem.room ?? '',
+              notes: changes.notes ?? prevItem.notes ?? ''
+            } : prevItem
+          )
+        );
+        
+        // Preserve expanded state when item ID changes
+        if (expandedItem === id) {
+          setExpandedItem(newItemId);
+        }
+        
+        // Update editItems to use the new ID
+        setEditItems(prev => {
+          const newEditItems = { ...prev };
+          if (newEditItems[id]) {
+            newEditItems[newItemId] = newEditItems[id];
+            delete newEditItems[id];
+          }
+          return newEditItems;
+        });
+        
+        // Update autoSavedItems to use the new ID
+        setAutoSavedItems(prev => {
+          const newAutoSavedItems = { ...prev };
+          if (newAutoSavedItems[id]) {
+            newAutoSavedItems[newItemId] = newAutoSavedItems[id];
+            delete newAutoSavedItems[id];
+          }
+          return newAutoSavedItems;
+        });
+        
+        // Update the finalId to use the new database ID
+        const finalId = newItemId;
+      } else {
+        // For existing items, just update the values
+        setItems(prevItems => 
+          prevItems.map(prevItem => 
+            String(prevItem.id) === id ? {
+              ...prevItem,
+              type: changes.type ?? prevItem.type ?? '',
+              quantity: changes.quantity ?? prevItem.quantity ?? '1',
+              price: changes.price ?? prevItem.price ?? '0',
+              description: changes.description ?? prevItem.description ?? '',
+              model: changes.model ?? prevItem.model ?? '',
+              room: changes.room ?? prevItem.room ?? '',
+              notes: changes.notes ?? prevItem.notes ?? ''
+            } : prevItem
+          )
+        );
+      }
+    }
+    
+    // Update local items state for existing items (if not already done above)
+    if (!id.startsWith('custom-new-') && !id.startsWith('duplicate-')) {
+      setItems(prevItems => 
+        prevItems.map(prevItem => 
+          String(prevItem.id) === id ? {
+            ...prevItem,
+            type: changes.type ?? prevItem.type ?? '',
+            quantity: changes.quantity ?? prevItem.quantity ?? '1',
+            price: changes.price ?? prevItem.price ?? '0',
+            description: changes.description ?? prevItem.description ?? '',
+            model: changes.model ?? prevItem.model ?? '',
+            room: changes.room ?? prevItem.room ?? '',
+            notes: changes.notes ?? prevItem.notes ?? ''
+          } : prevItem
+        )
+      );
+    }
 
       // Mark as auto-saved but keep the changes visible
       // For new items, use the new SQLite ID if it was created
-    const finalId = (id.startsWith('custom-new-') || id.startsWith('duplicate-')) ? id : id;
+      const finalId = id; // Use the original ID, the auto-save logic above handles ID updates
       setAutoSavedItems(prev => ({ ...prev, [finalId]: true }));
 
       // Update pending changes count immediately after database update
