@@ -368,28 +368,31 @@ export default function PredefinedItemsList({
         const count = await riskAssessmentSyncService.getPendingChangesCount();
         setPendingChangesCount(count.total);
         
-        // --- FLAT STRUCTURE REFRESH LOGIC ---
-        if (
-          !groupingStrategy &&
-          typeof onRefresh === 'function'
-        ) {
-          console.log('🔄 Flat structure detected after sync, calling onRefresh to reload data from SQLite');
+        // --- REFRESH LOGIC FOR ALL STRUCTURES ---
+        if (typeof onRefresh === 'function') {
+          console.log('🔄 Sync completed, calling onRefresh to reload data from SQLite with updated backend IDs');
           await onRefresh();
+          
           // --- FORCE FULL LOCAL STATE RESET ---
-          console.log('🔄 Forcing full local state reset after refresh. propsItems:', propsItems);
+          console.log('🔄 Forcing full local state reset after refresh. propsItems:', propsItems.length, 'items');
+          console.log('🔄 Items before reset:', items.map(i => ({ id: i.id, type: i.type, description: i.description })));
+          
           setItems(propsItems);
           setEditItems({});
           setAutoSavedItems({});
           setExpandedItem(null);
           setExpandedGroup(null);
           setExpandedSecondaryGroups({});
+          
+          console.log('🔄 Items after reset:', propsItems.map(i => ({ id: i.id, type: i.type, description: i.description })));
           // --- END FULL LOCAL STATE RESET ---
+          
           if (typeof onForceRemount === 'function') {
             console.log('🔄 Forcing full component remount after sync/refresh');
             onForceRemount();
           }
         }
-        // --- END FLAT STRUCTURE REFRESH LOGIC ---
+        // --- END REFRESH LOGIC ---
         
         // Show success alert
         Alert.alert(
@@ -562,8 +565,13 @@ export default function PredefinedItemsList({
       console.log('🔄 [autoSaveItem] Inserting new item:', id);
       
       // Create new SQLite item
+      // For temporary IDs, generate a unique negative ID to avoid conflicts
+      const tempId = id.startsWith('custom-new-') || id.startsWith('duplicate-') 
+        ? -Math.abs(Number(id.replace('custom-new-', '').replace('duplicate-', ''))) 
+        : Number(id);
+      
       const newSqliteItem: RiskAssessmentItem = {
-        riskassessmentitemid: Number(id.replace('custom-new-', '').replace('duplicate-', '')),
+        riskassessmentitemid: tempId,
         riskassessmentcategoryid: Number(categoryId),
         itemprompt: changes.type ?? item.type ?? '',
         itemtype: 0,
@@ -596,73 +604,24 @@ export default function PredefinedItemsList({
       
       console.log('🔄 [autoSaveItem] insertRiskAssessmentItem called with:', newSqliteItem);
       await insertRiskAssessmentItem(newSqliteItem);
-      
-      // For new items, update the item ID to the database ID after successful insertion
-      if (id.startsWith('custom-new-') || id.startsWith('duplicate-')) {
-        const newItemId = String(newSqliteItem.riskassessmentitemid);
-        console.log('🔄 [autoSaveItem] Updating item ID from', id, 'to', newItemId);
-        
-        // Update the item ID in the items array
-        setItems(prevItems => 
-          prevItems.map(prevItem => 
-            String(prevItem.id) === id ? {
-              ...prevItem,
-              id: newItemId, // Change to database ID
-              type: changes.type ?? prevItem.type ?? '',
-              quantity: changes.quantity ?? prevItem.quantity ?? '1',
-              price: changes.price ?? prevItem.price ?? '0',
-              description: changes.description ?? prevItem.description ?? '',
-              model: changes.model ?? prevItem.model ?? '',
-              room: changes.room ?? prevItem.room ?? '',
-              notes: changes.notes ?? prevItem.notes ?? ''
-            } : prevItem
-          )
-        );
-        
-        // Preserve expanded state when item ID changes
-        if (expandedItem === id) {
-          setExpandedItem(newItemId);
-        }
-        
-        // Update editItems to use the new ID
-        setEditItems(prev => {
-          const newEditItems = { ...prev };
-          if (newEditItems[id]) {
-            newEditItems[newItemId] = newEditItems[id];
-            delete newEditItems[id];
-          }
-          return newEditItems;
-        });
-        
-        // Update autoSavedItems to use the new ID
-        setAutoSavedItems(prev => {
-          const newAutoSavedItems = { ...prev };
-          if (newAutoSavedItems[id]) {
-            newAutoSavedItems[newItemId] = newAutoSavedItems[id];
-            delete newAutoSavedItems[id];
-          }
-          return newAutoSavedItems;
-        });
-        
-        // Update the finalId to use the new database ID
-        const finalId = newItemId;
-      } else {
-        // For existing items, just update the values
-        setItems(prevItems => 
-          prevItems.map(prevItem => 
-            String(prevItem.id) === id ? {
-              ...prevItem,
-              type: changes.type ?? prevItem.type ?? '',
-              quantity: changes.quantity ?? prevItem.quantity ?? '1',
-              price: changes.price ?? prevItem.price ?? '0',
-              description: changes.description ?? prevItem.description ?? '',
-              model: changes.model ?? prevItem.model ?? '',
-              room: changes.room ?? prevItem.room ?? '',
-              notes: changes.notes ?? prevItem.notes ?? ''
-            } : prevItem
-          )
-        );
-      }
+      console.log('🔄 [autoSaveItem] Saved to database but keeping original ID:', id);
+
+      // Don't change the item ID - keep it as 'duplicate-123' so "Save New Item" button shows
+      // Only update the values, not the ID
+      setItems(prevItems => 
+        prevItems.map(prevItem => 
+          String(prevItem.id) === id ? {
+            ...prevItem,
+            type: changes.type ?? prevItem.type ?? '',
+            quantity: changes.quantity ?? prevItem.quantity ?? '1',
+            price: changes.price ?? prevItem.price ?? '0',
+            description: changes.description ?? prevItem.description ?? '',
+            model: changes.model ?? prevItem.model ?? '',
+            room: changes.room ?? prevItem.room ?? '',
+            notes: changes.notes ?? prevItem.notes ?? ''
+          } : prevItem
+        )
+      );
     }
     
     // Update local items state for existing items (if not already done above)
@@ -688,13 +647,128 @@ export default function PredefinedItemsList({
       const finalId = id; // Use the original ID, the auto-save logic above handles ID updates
       setAutoSavedItems(prev => ({ ...prev, [finalId]: true }));
 
-      // Update pending changes count immediately after database update
-      const count = await riskAssessmentSyncService.getPendingChangesCount();
-      setPendingChangesCount(count.total);
+      // Only update pending changes count for real IDs (not temporary ones)
+      if (!id.startsWith('custom-new-') && !id.startsWith('duplicate-')) {
+        const count = await riskAssessmentSyncService.getPendingChangesCount();
+        setPendingChangesCount(count.total);
+      }
 
       console.log('=== PREDEFINED ITEMS: Auto-save completed successfully ===');
       console.log('Item ID:', id);
       console.log('Changes applied:', JSON.stringify(changes, null, 2));
+  };
+
+  // Add explicit save function that changes the ID
+  const explicitSaveItem = async (id: string) => {
+    console.log('🔄 [explicitSaveItem] Called for item:', id);
+    
+    // First, auto-save to ensure data is in database
+    await autoSaveItem(id);
+    
+    // Then change the ID to database ID
+    const item = items.find(i => String(i.id) === String(id));
+    if (!item) {
+      console.error('❌ [explicitSaveItem] No item found for id:', id);
+      return;
+    }
+    
+    const changes = editItems[id] || {};
+    
+    // For temporary IDs, find the record by the negative temp ID we created
+    const { getAllRiskAssessmentItems, updateRiskAssessmentItem } = await import('../../../../utils/db');
+    const existingItems = await getAllRiskAssessmentItems();
+    
+    // Find the record with the negative temp ID
+    const tempId = -Math.abs(Number(id.replace('custom-new-', '').replace('duplicate-', '')));
+    const existingItem = existingItems.find(dbItem => 
+      dbItem.riskassessmentitemid === tempId
+    );
+    
+    if (existingItem) {
+      console.log('🔄 [explicitSaveItem] Found existing item with temp ID:', tempId);
+      
+      // Generate a new positive ID (simulate what the backend would assign)
+      const newDbId = Date.now(); // Use timestamp as unique ID
+      
+      // Update the record with a new positive ID
+      const updatedItem: RiskAssessmentItem = {
+        ...existingItem,
+        riskassessmentitemid: newDbId, // Change to positive ID
+        pending_sync: 1,
+        dateupdated: new Date().toISOString()
+      };
+      
+      // Remove the old temp record and insert the new one
+      const { runSql } = await import('../../../../utils/db');
+      await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [tempId]);
+      await runSql(`
+        INSERT INTO risk_assessment_items (
+          riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
+          commaseparatedlist, selectedanswer, qty, price, description, model, location,
+          assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
+          dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
+          synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        updatedItem.riskassessmentitemid, updatedItem.riskassessmentcategoryid, updatedItem.itemprompt,
+        updatedItem.itemtype, updatedItem.rank, updatedItem.commaseparatedlist, updatedItem.selectedanswer,
+        updatedItem.qty, updatedItem.price, updatedItem.description, updatedItem.model, updatedItem.location,
+        updatedItem.assessmentregisterid, updatedItem.assessmentregistertypeid, updatedItem.datecreated,
+        updatedItem.createdbyid, updatedItem.dateupdated, updatedItem.updatedbyid, updatedItem.issynced,
+        updatedItem.syncversion, updatedItem.deviceid, updatedItem.syncstatus, updatedItem.synctimestamp,
+        updatedItem.hasphoto, updatedItem.latitude, updatedItem.longitude, updatedItem.notes,
+        updatedItem.pending_sync, updatedItem.appointmentid
+      ]);
+      
+      const newItemId = String(newDbId);
+      console.log('🔄 [explicitSaveItem] Changing item ID from', id, 'to', newItemId);
+      
+      // Update the item ID in the items array
+      setItems(prevItems => 
+        prevItems.map(prevItem => 
+          String(prevItem.id) === id ? {
+            ...prevItem,
+            id: newItemId, // Change to database ID
+            type: changes.type ?? prevItem.type ?? '',
+            quantity: changes.quantity ?? prevItem.quantity ?? '1',
+            price: changes.price ?? prevItem.price ?? '0',
+            description: changes.description ?? prevItem.description ?? '',
+            model: changes.model ?? prevItem.model ?? '',
+            room: changes.room ?? prevItem.room ?? '',
+            notes: changes.notes ?? prevItem.notes ?? ''
+          } : prevItem
+        )
+      );
+      
+      // Preserve expanded state when item ID changes
+      if (expandedItem === id) {
+        setExpandedItem(newItemId);
+      }
+      
+      // Update editItems to use the new ID
+      setEditItems(prev => {
+        const newEditItems = { ...prev };
+        if (newEditItems[id]) {
+          newEditItems[newItemId] = newEditItems[id];
+          delete newEditItems[id];
+        }
+        return newEditItems;
+      });
+      
+      // Update autoSavedItems to use the new ID
+      setAutoSavedItems(prev => {
+        const newAutoSavedItems = { ...prev };
+        if (newAutoSavedItems[id]) {
+          newAutoSavedItems[newItemId] = newAutoSavedItems[id];
+          delete newAutoSavedItems[id];
+        }
+        return newAutoSavedItems;
+      });
+      
+      // Now update the sync count since we have a real ID
+      const count = await riskAssessmentSyncService.getPendingChangesCount();
+      setPendingChangesCount(count.total);
+    }
   };
 
   // Photo functions
@@ -728,9 +802,20 @@ export default function PredefinedItemsList({
         if (itemToUpdate) {
           // Get existing SQLite record to preserve all fields
           const existingItems = await getAllRiskAssessmentItems();
-          const existingItem = existingItems.find(dbItem => 
-            String(dbItem.riskassessmentitemid) === String(itemToUpdate.id)
-          );
+          
+          // Handle both temp IDs (negative) and real IDs (positive)
+          let existingItem;
+          const itemId = String(itemToUpdate.id);
+          if (itemId.startsWith('custom-new-') || itemId.startsWith('duplicate-')) {
+            // Find by negative temp ID
+            const tempId = -Math.abs(Number(itemId.replace('custom-new-', '').replace('duplicate-', '')));
+            existingItem = existingItems.find(dbItem => dbItem.riskassessmentitemid === tempId);
+          } else {
+            // Find by positive real ID
+            existingItem = existingItems.find(dbItem => 
+              String(dbItem.riskassessmentitemid) === itemId
+            );
+          }
 
           if (existingItem) {
             const updated: RiskAssessmentItem = {
@@ -743,9 +828,11 @@ export default function PredefinedItemsList({
             
             await updateRiskAssessmentItem(updated);
             
-            // Update pending changes count after database update
-            const count = await riskAssessmentSyncService.getPendingChangesCount();
-            setPendingChangesCount(count.total);
+            // Only update pending changes count for real IDs (not temporary ones)
+            if (!itemId.startsWith('custom-new-') && !itemId.startsWith('duplicate-')) {
+              const count = await riskAssessmentSyncService.getPendingChangesCount();
+              setPendingChangesCount(count.total);
+            }
           }
         }
 
@@ -800,9 +887,20 @@ export default function PredefinedItemsList({
         if (itemToUpdate) {
           // Get existing SQLite record to preserve all fields
           const existingItems = await getAllRiskAssessmentItems();
-          const existingItem = existingItems.find(dbItem => 
-            String(dbItem.riskassessmentitemid) === String(itemToUpdate.id)
-          );
+          
+          // Handle both temp IDs (negative) and real IDs (positive)
+          let existingItem;
+          const itemId = String(itemToUpdate.id);
+          if (itemId.startsWith('custom-new-') || itemId.startsWith('duplicate-')) {
+            // Find by negative temp ID
+            const tempId = -Math.abs(Number(itemId.replace('custom-new-', '').replace('duplicate-', '')));
+            existingItem = existingItems.find(dbItem => dbItem.riskassessmentitemid === tempId);
+          } else {
+            // Find by positive real ID
+            existingItem = existingItems.find(dbItem => 
+              String(dbItem.riskassessmentitemid) === itemId
+            );
+          }
 
           if (existingItem) {
             const updated: RiskAssessmentItem = {
@@ -815,9 +913,11 @@ export default function PredefinedItemsList({
             
             await updateRiskAssessmentItem(updated);
             
-            // Update pending changes count after database update
-            const count = await riskAssessmentSyncService.getPendingChangesCount();
-            setPendingChangesCount(count.total);
+            // Only update pending changes count for real IDs (not temporary ones)
+            if (!itemId.startsWith('custom-new-') && !itemId.startsWith('duplicate-')) {
+              const count = await riskAssessmentSyncService.getPendingChangesCount();
+              setPendingChangesCount(count.total);
+            }
           }
         }
 
@@ -1299,36 +1399,24 @@ export default function PredefinedItemsList({
                 console.log('Item values cleared successfully:', itemId);
                 
               } else {
-                // Proceed with normal deletion
+                // Proceed with normal deletion (mark for sync deletion)
+                console.log('🗑️ Marking item for deletion (not the only item with data in group)');
               
-              // If it's not a new item, mark it as deleted in the database
-              if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
-                // Get existing SQLite record
-                const existingItems = await getAllRiskAssessmentItems();
-                const existingItem = existingItems.find(dbItem => 
-                  String(dbItem.riskassessmentitemid) === String(itemToDelete.id)
-                );
-
-                if (existingItem) {
-                  // Mark as deleted and pending sync
-                  const updated: RiskAssessmentItem = {
-                    ...existingItem,
-                    qty: 0, // Set quantity to 0 to effectively "delete"
-                    price: 0, // Clear price
-                    description: '', // Clear description
-                    model: '', // Clear model
-                    location: '', // Clear location
-                    notes: '', // Clear notes
-                    pending_sync: 1,
-                    issynced: 0,
-                    dateupdated: new Date().toISOString(),
-                  };
+                // If it's not a new item, mark it for deletion in the database
+                if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
+                  console.log('🗑️ Marking existing item for deletion in SQLite database:', itemToDelete.id);
                   
-                  await updateRiskAssessmentItem(updated);
+                  // Mark as deleted (will be synced to backend)
+                  const { deleteRiskAssessmentItem } = await import('../../../../utils/db');
+                  await deleteRiskAssessmentItem(Number(itemToDelete.id));
+                  
+                  console.log('✅ Record marked for deletion in SQLite database');
                   
                   // Update pending changes count
                   const count = await riskAssessmentSyncService.getPendingChangesCount();
                   setPendingChangesCount(count.total);
+                } else {
+                  console.log('🗑️ Deleting new/temporary item (no database record to delete)');
                 }
               }
               
@@ -1355,7 +1443,6 @@ export default function PredefinedItemsList({
               }
               
               console.log('Item deleted successfully:', itemId);
-              }
               
             } catch (error) {
               console.error('Error processing item:', error);
@@ -2367,16 +2454,16 @@ export default function PredefinedItemsList({
 
                                             {/* Action buttons */}
                                             <View style={predefinedItemsListStyles.actionButtonsContainer}>
-                                              {isNewItem && (
-                                                <TouchableOpacity
-                                                  style={[predefinedItemsListStyles.saveButton, { opacity: type ? 1 : 0.5 }]}
-                                                  onPress={() => autoSaveItem(itemId)}
-                                                  disabled={!type}
-                                                >
-                                                  <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
-                                                  <Text style={predefinedItemsListStyles.saveButtonText}>Save New Item</Text>
-                                                </TouchableOpacity>
-                                              )}
+                                                                      {isNewItem && (
+                          <TouchableOpacity
+                            style={[predefinedItemsListStyles.saveButton, { opacity: type ? 1 : 0.5 }]}
+                            onPress={() => explicitSaveItem(itemId)}
+                            disabled={!type}
+                          >
+                            <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
+                            <Text style={predefinedItemsListStyles.saveButtonText}>Save New Item</Text>
+                          </TouchableOpacity>
+                        )}
                                               
                                               {/* Add Another button - only show for saved items */}
                                               {!isNewItem && hasData && (
@@ -2583,7 +2670,7 @@ export default function PredefinedItemsList({
                         {isNewItem && (
                           <TouchableOpacity
                             style={[predefinedItemsListStyles.saveButton, { opacity: type ? 1 : 0.5 }]}
-                            onPress={() => autoSaveItem(itemId)}
+                            onPress={() => explicitSaveItem(itemId)}
                             disabled={!type}
                           >
                             <MaterialCommunityIcons name="content-save" size={20} color="#fff" />

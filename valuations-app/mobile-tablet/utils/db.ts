@@ -616,7 +616,39 @@ export async function updateRiskAssessmentItem(i: RiskAssessmentItem) {
   console.log('=== DB UPDATE: Item updated successfully ===');
 }
 export async function deleteRiskAssessmentItem(id: number) {
+  // Mark as deleted instead of actually deleting (for sync purposes)
+  await runSql('UPDATE risk_assessment_items SET pending_sync = 1, qty = 0, price = 0, description = "", model = "", location = "", notes = "" WHERE riskassessmentitemid = ?', [id]);
+}
+
+export async function hardDeleteRiskAssessmentItem(id: number) {
+  // Actually delete the record from SQLite (after successful sync)
   await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [id]);
+}
+
+export async function cleanupItemsMarkedForDeletion() {
+  // Clean up items that are marked for deletion (qty=0, price=0, etc.)
+  // This is used when we know the backend has processed the deletion but didn't return confirmation
+  try {
+    const result = await runSql(`
+      DELETE FROM risk_assessment_items 
+      WHERE pending_sync = 1 
+        AND qty = 0 
+        AND price = 0 
+        AND description = '' 
+        AND model = '' 
+        AND location = '' 
+        AND notes = ''
+    `);
+    
+    if (__DEV__ && result.rowsAffected > 0) {
+      console.log(`🗑️ Cleaned up ${result.rowsAffected} items marked for deletion`);
+    }
+    
+    return result.rowsAffected;
+  } catch (error) {
+    console.error('Error cleaning up items marked for deletion:', error);
+    throw error;
+  }
 }
 
 // Get all items that need to be synced to the server
@@ -628,7 +660,23 @@ export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmen
       console.log(`📊 Found ${res.rows._array.length} pending sync items`);
     }
     
-    return res.rows._array;
+    // Filter out items with temporary IDs (custom-new- or duplicate- prefixes)
+    const validItems = res.rows._array.filter((item: RiskAssessmentItem) => {
+      const itemId = String(item.riskassessmentitemid);
+      const isTemporaryId = itemId.startsWith('custom-new-') || itemId.startsWith('duplicate-');
+      
+      if (isTemporaryId && __DEV__) {
+        console.log(`📊 Filtering out temporary ID from sync count: ${itemId}`);
+      }
+      
+      return !isTemporaryId;
+    });
+    
+    if (__DEV__ && validItems.length !== res.rows._array.length) {
+      console.log(`📊 Filtered ${res.rows._array.length - validItems.length} temporary IDs from sync count`);
+    }
+    
+    return validItems;
   } catch (error) {
     console.error('Error fetching pending sync risk assessment items:', error);
     return [];

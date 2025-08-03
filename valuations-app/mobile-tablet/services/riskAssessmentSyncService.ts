@@ -303,16 +303,53 @@ const riskAssessmentSyncService = {
       if (response.success) {
         console.log('✅ Batch sync successful');
         
-        // Update local database with backend response data
-        if (response.data?.results?.riskAssessmentItems?.updated > 0) {
-          console.log('🔄 Updating local database with backend response data...');
+        // Process updated items from backend response (new approach)
+        if (response.data?.results?.riskAssessmentItems?.updatedItems) {
+          console.log('🔄 Processing updated items from backend response...');
           
-          // Get the updated items from the response
-          const updatedItems = response.data.results.riskAssessmentItems.updatedItems || [];
+          const updatedItems = response.data.results.riskAssessmentItems.updatedItems;
+          console.log(`📝 Processing ${updatedItems.length} updated items`);
           
           for (const updatedItem of updatedItems) {
             try {
-              // Update the local database with the backend data
+              // Check if this was a new item (has _localId different from backend ID)
+              const isNewItem = updatedItem._localId && updatedItem._localId !== updatedItem.riskassessmentitemid;
+              
+              if (isNewItem) {
+                console.log(`🆕 Processing new item: local ID ${updatedItem._localId} → backend ID ${updatedItem.riskassessmentitemid}`);
+                
+                // For new items, delete the old record and insert with new backend ID
+                const { runSql } = await import('../utils/db');
+                
+                // Delete the old record with the local/timestamp ID
+                await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [updatedItem._localId]);
+                console.log(`🗑️ Deleted local record with ID ${updatedItem._localId}`);
+                
+                // Insert new record with backend ID
+                await runSql(`
+                  INSERT INTO risk_assessment_items (
+                    riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
+                    commaseparatedlist, selectedanswer, qty, price, description, model, location,
+                    assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
+                    dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
+                    synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                  updatedItem.riskassessmentitemid, updatedItem.riskassessmentcategoryid, updatedItem.itemprompt,
+                  updatedItem.itemtype, updatedItem.rank, updatedItem.commaseparatedlist, updatedItem.selectedanswer,
+                  updatedItem.qty, updatedItem.price, updatedItem.description, updatedItem.model, updatedItem.location,
+                  updatedItem.assessmentregisterid, updatedItem.assessmentregistertypeid, updatedItem.datecreated,
+                  updatedItem.createdbyid, updatedItem.dateupdated, updatedItem.updatedbyid, 1, // issynced = 1
+                  updatedItem.syncversion || 1, updatedItem.deviceid, updatedItem.syncstatus, updatedItem.synctimestamp,
+                  updatedItem.hasphoto, updatedItem.latitude, updatedItem.longitude, updatedItem.notes,
+                  0, // pending_sync = 0
+                  updatedItem.appointmentid || null
+                ]);
+                console.log(`✅ Inserted new record with backend ID ${updatedItem.riskassessmentitemid}`);
+              } else {
+                console.log(`🔄 Updating existing item: ${updatedItem.riskassessmentitemid}`);
+                
+                // For existing items, just update normally
               await updateRiskAssessmentItem({
                 riskassessmentitemid: updatedItem.riskassessmentitemid,
                 riskassessmentcategoryid: updatedItem.riskassessmentcategoryid,
@@ -341,18 +378,33 @@ const riskAssessmentSyncService = {
                 latitude: updatedItem.latitude,
                 longitude: updatedItem.longitude,
                 notes: updatedItem.notes,
-                pending_sync: 0
+                  pending_sync: 0,
+                  appointmentid: updatedItem.appointmentid
               });
-              console.log(`✅ Updated local item ${updatedItem.riskassessmentitemid} with backend data`);
+                console.log(`✅ Updated existing item ${updatedItem.riskassessmentitemid}`);
+              }
             } catch (error) {
-              console.error(`❌ Error updating local item ${updatedItem.riskassessmentitemid}:`, error);
+              console.error(`❌ Error processing item ${updatedItem.riskassessmentitemid}:`, error);
             }
           }
-        }
-        
-        // Mark items as synced
+          
+          // Items are already marked as synced by the update/insert operations above
+          console.log(`✅ Successfully processed ${updatedItems.length} items from backend response`);
+          
+          // Handle any errors reported by the backend
+          if (response.data?.results?.riskAssessmentItems?.errors && response.data.results.riskAssessmentItems.errors.length > 0) {
+            console.warn('⚠️ Backend reported errors for some items:');
+            response.data.results.riskAssessmentItems.errors.forEach((error: any) => {
+              console.warn(`❌ Error for item ${error._localId}: ${error.error} (${error.code})`);
+            });
+          }
+        } else {
+          // Fallback: Mark items as synced using original IDs (for backward compatibility)
+          console.log('⚠️ No updatedItems in response, falling back to marking original items as synced');
         const itemIds = batch.map(item => item.riskassessmentitemid);
+          console.log('📝 Marking items as synced:', itemIds);
         await markRiskAssessmentItemsAsSynced(itemIds);
+        }
         
         return { success: true };
       } else {
@@ -632,7 +684,21 @@ const riskAssessmentSyncService = {
           
           return syncItem;
         }),
-        deletedEntities: [] // TODO: Implement deleted entities tracking
+        deletedEntities: (() => {
+          const deletedItems = pendingRiskAssessmentItems
+            .filter(item => item.qty === 0 && item.price === 0 && item.description === '' && item.model === '' && item.location === '' && item.notes === '')
+            .map(item => ({
+              riskassessmentitemid: item.riskassessmentitemid,
+              riskassessmentcategoryid: item.riskassessmentcategoryid,
+              entityType: 'riskAssessmentItem'
+            }));
+          
+          if (deletedItems.length > 0) {
+            console.log('🗑️ Sending items for deletion to backend:', deletedItems.map(item => item.riskassessmentitemid));
+          }
+          
+          return deletedItems;
+        })()
       };
 
       console.log('=== COMPLETE SYNC PAYLOAD ===');
@@ -660,13 +726,171 @@ const riskAssessmentSyncService = {
         message: response.message
       });
       
+      // Debug: Log the full response structure
+      if (response.data) {
+        console.log('=== FULL RESPONSE DATA ===');
+        console.log(JSON.stringify(response.data, null, 2));
+        
+        if (response.data.results) {
+          console.log('=== RESULTS STRUCTURE ===');
+          console.log('Results keys:', Object.keys(response.data.results));
+          
+          if (response.data.results.deletedEntities) {
+            console.log('🗑️ Found deletedEntities in response:', response.data.results.deletedEntities);
+          } else {
+            console.log('⚠️ No deletedEntities found in response');
+          }
+        }
+      }
+      
       if (response.success) {
         console.log('Server sync successful:', response.data);
 
-        // Mark items as synced in local database
-        if (pendingRiskAssessmentItems.length > 0) {
-          const itemIds = pendingRiskAssessmentItems.map((item: RiskAssessmentItem) => item.riskassessmentitemid);
-          console.log('Marking risk assessment items as synced:', itemIds);
+        // Process updated items from backend response (new approach)
+        if (response.data?.results?.riskAssessmentItems?.updatedItems && response.data.results.riskAssessmentItems.updatedItems.length > 0) {
+          console.log('🔄 Processing updated items from backend response...');
+          
+          const updatedItems = response.data.results.riskAssessmentItems.updatedItems;
+          console.log(`📝 Processing ${updatedItems.length} updated items`);
+          
+          for (const updatedItem of updatedItems) {
+            try {
+              // Check if this was a new item (has _localId different from backend ID)
+              const isNewItem = updatedItem._localId && updatedItem._localId !== updatedItem.riskassessmentitemid;
+              
+              if (isNewItem) {
+                console.log(`🆕 Processing new item: local ID ${updatedItem._localId} → backend ID ${updatedItem.riskassessmentitemid}`);
+                
+                // For new items, delete the old record and insert with new backend ID
+                const { runSql } = await import('../utils/db');
+                
+                // Delete the old record with the local/timestamp ID
+                await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [updatedItem._localId]);
+                console.log(`🗑️ Deleted local record with ID ${updatedItem._localId}`);
+                
+                // Insert new record with backend ID
+                await runSql(`
+                  INSERT INTO risk_assessment_items (
+                    riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
+                    commaseparatedlist, selectedanswer, qty, price, description, model, location,
+                    assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
+                    dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
+                    synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                  updatedItem.riskassessmentitemid, updatedItem.riskassessmentcategoryid, updatedItem.itemprompt,
+                  updatedItem.itemtype, updatedItem.rank, updatedItem.commaseparatedlist, updatedItem.selectedanswer,
+                  updatedItem.qty, updatedItem.price, updatedItem.description, updatedItem.model, updatedItem.location,
+                  updatedItem.assessmentregisterid, updatedItem.assessmentregistertypeid, updatedItem.datecreated,
+                  updatedItem.createdbyid, updatedItem.dateupdated, updatedItem.updatedbyid, 1, // issynced = 1
+                  updatedItem.syncversion || 1, updatedItem.deviceid, updatedItem.syncstatus, updatedItem.synctimestamp,
+                  updatedItem.hasphoto, updatedItem.latitude, updatedItem.longitude, updatedItem.notes,
+                  0, // pending_sync = 0
+                  updatedItem.appointmentid || null
+                ]);
+                console.log(`✅ Inserted new record with backend ID ${updatedItem.riskassessmentitemid}`);
+              } else {
+                console.log(`🔄 Updating existing item: ${updatedItem.riskassessmentitemid}`);
+                
+                // For existing items, just update normally
+                await updateRiskAssessmentItem({
+                  riskassessmentitemid: updatedItem.riskassessmentitemid,
+                  riskassessmentcategoryid: updatedItem.riskassessmentcategoryid,
+                  itemprompt: updatedItem.itemprompt,
+                  itemtype: updatedItem.itemtype,
+                  rank: updatedItem.rank,
+                  commaseparatedlist: updatedItem.commaseparatedlist,
+                  selectedanswer: updatedItem.selectedanswer,
+                  qty: updatedItem.qty,
+                  price: updatedItem.price,
+                  description: updatedItem.description,
+                  model: updatedItem.model,
+                  location: updatedItem.location,
+                  assessmentregisterid: updatedItem.assessmentregisterid,
+                  assessmentregistertypeid: updatedItem.assessmentregistertypeid,
+                  datecreated: updatedItem.datecreated,
+                  createdbyid: updatedItem.createdbyid,
+                  dateupdated: updatedItem.dateupdated,
+                  updatedbyid: updatedItem.updatedbyid,
+                  issynced: 1,
+                  syncversion: updatedItem.syncversion || 1,
+                  deviceid: updatedItem.deviceid,
+                  syncstatus: updatedItem.syncstatus,
+                  synctimestamp: updatedItem.synctimestamp,
+                  hasphoto: updatedItem.hasphoto,
+                  latitude: updatedItem.latitude,
+                  longitude: updatedItem.longitude,
+                  notes: updatedItem.notes,
+                  pending_sync: 0,
+                  appointmentid: updatedItem.appointmentid
+                });
+                console.log(`✅ Updated existing item ${updatedItem.riskassessmentitemid}`);
+              }
+            } catch (error) {
+              console.error(`❌ Error processing item ${updatedItem.riskassessmentitemid}:`, error);
+            }
+          }
+          
+          console.log(`✅ Successfully processed ${updatedItems.length} items from backend response`);
+          
+          // Handle any errors reported by the backend
+          if (response.data?.results?.riskAssessmentItems?.errors && response.data.results.riskAssessmentItems.errors.length > 0) {
+            console.warn('⚠️ Backend reported errors for some items:');
+            response.data.results.riskAssessmentItems.errors.forEach((error: any) => {
+              console.warn(`❌ Error for item ${error._localId}: ${error.error} (${error.code})`);
+            });
+          }
+          
+          // Note: Deleted entities are processed outside this block to avoid duplication
+        }
+        
+        // Handle deleted entities from backend response (outside of updatedItems block)
+        if (response.data?.results?.deletedEntities && response.data.results.deletedEntities.length > 0) {
+          console.log('🗑️ Processing deleted entities from backend response...');
+          const { hardDeleteRiskAssessmentItem } = await import('../utils/db');
+          
+          for (const deletedEntity of response.data.results.deletedEntities) {
+            try {
+              if (deletedEntity.entityType === 'riskAssessmentItem') {
+                console.log(`🗑️ Actually deleting item ${deletedEntity.riskassessmentitemid} from SQLite (confirmed by backend)`);
+                await hardDeleteRiskAssessmentItem(deletedEntity.riskassessmentitemid);
+              }
+            } catch (error) {
+              console.error(`❌ Error deleting entity ${deletedEntity.riskassessmentitemid}:`, error);
+            }
+          }
+          console.log(`✅ Successfully processed ${response.data.results.deletedEntities.length} deleted entities`);
+        } else {
+          // Backend did not return deletedEntities - items remain marked for deletion until backend confirms
+          const itemsMarkedForDeletion = pendingRiskAssessmentItems.filter(item => 
+            item.qty === 0 && item.price === 0 && item.description === '' && 
+            item.model === '' && item.location === '' && item.notes === ''
+          );
+          
+          if (itemsMarkedForDeletion.length > 0) {
+            console.log('⚠️ Backend did not return deletedEntities confirmation for items marked for deletion');
+            console.log('🗑️ Items remain marked for deletion until backend confirms:', itemsMarkedForDeletion.map(item => item.riskassessmentitemid));
+            console.log('ℹ️ These items will be re-sent in the next sync attempt');
+            
+            // Optional: Clean up items marked for deletion if we're confident the backend processed them
+            // Uncomment the following lines if you want to automatically clean up after successful sync
+            // const { cleanupItemsMarkedForDeletion } = await import('../utils/db');
+            // const cleanedCount = await cleanupItemsMarkedForDeletion();
+            // console.log(`🗑️ Cleaned up ${cleanedCount} items marked for deletion`);
+          }
+        }
+        
+        // Only mark items as synced if they are NOT marked for deletion
+        const itemsNotMarkedForDeletion = pendingRiskAssessmentItems.filter(item => 
+          !(item.qty === 0 && item.price === 0 && item.description === '' && 
+            item.model === '' && item.location === '' && item.notes === '')
+        );
+        
+        if (itemsNotMarkedForDeletion.length > 0) {
+          // Fallback: Mark items as synced using original IDs (for backward compatibility)
+          console.log('⚠️ No updatedItems in response, falling back to marking original items as synced');
+          const itemIds = itemsNotMarkedForDeletion.map((item: RiskAssessmentItem) => item.riskassessmentitemid);
+          console.log('📝 Marking items as synced:', itemIds);
           await markRiskAssessmentItemsAsSynced(itemIds);
         }
 
