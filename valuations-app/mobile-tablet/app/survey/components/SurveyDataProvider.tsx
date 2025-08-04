@@ -174,227 +174,97 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
         // Continue to fetch fresh data in background
       }
       
-      // Check if we have orderNumber for composite API
+      // Use composite API only - no fallbacks
       const orderNumber = survey?.orderNumber;
       
-      if (orderNumber && orderNumber !== 'Unknown' && orderNumber !== 'N/A') {
-        console.log(`🚀 Using composite API for order: ${orderNumber}`);
-        
-        try {
-          // Use composite hierarchy API and field configurations in parallel
-          const [compositeResponse, fieldConfigResponse] = await Promise.all([
-            api.getRiskAssessmentCompleteHierarchy(orderNumber),
-            api.getOrderCategoryFieldConfigurations(orderNumber)
-          ]);
-          
-          console.log('✅ Composite API response received');
-          console.log('✅ Field config response received:', fieldConfigResponse?.success);
-          
-          // Cache field configurations if available
-          if (fieldConfigResponse?.success && fieldConfigResponse?.data?.categories) {
-            console.log(`🚀 Pre-loading field configurations for ${fieldConfigResponse.data.categories.length} categories`);
-            
-            // Store field configurations in a format that can be used by ConfigurationService
-            const configurationService = await import('../../../services/configurationService');
-            await configurationService.default.cacheOrderFieldConfigurations(orderNumber, fieldConfigResponse.data);
-          }
-          
-          if (compositeResponse?.success && compositeResponse?.data?.assessmentMasters) {
-            console.log('✅ Composite API response received');
-            
-            // Find the section in the composite data
-            let foundCategories: Category[] = [];
-            
-            for (const master of compositeResponse.data.assessmentMasters) {
-              if (master.sections) {
-                for (const section of master.sections) {
-                  if (section.riskassessmentsectionid === sectionId && section.categories) {
-                    console.log(`📋 Found ${section.categories.length} categories in composite data for section ${sectionId}`);
-                    
-                    // Process categories from composite API
-                    foundCategories = section.categories.map((category: any) => {
-                      const categoryId = category.riskassessmentcategoryid || category.categoryId;
-                      const categoryName = category.categoryName || category.categoryname || 'Unnamed Category';
-                      const riskTemplateCategoryId = category.risktemplatecategoryid || category.RiskTemplateCategoryID;
-                      
-                      // Calculate totals from items in composite data
-                      const items = category.items || [];
-                      const itemCount = items.length;
-                      const totalValue = items.reduce((sum: number, item: any) => {
-                        const price = Number(item.price) || 0;
-                        const qty = Number(item.qty) || 1;
-                        return sum + (price * qty);
-                      }, 0);
-                      
-                      return {
-                        id: categoryId,
-                        name: categoryName,
-                        items: itemCount,
-                        value: totalValue,
-                        risktemplatecategoryid: riskTemplateCategoryId
-                      };
-                    });
-                    
-                    break; // Found the section, no need to continue
-                  }
-                }
-              }
-            }
-            
-            if (foundCategories.length > 0) {
-              console.log(`✅ Processed ${foundCategories.length} categories from composite API`);
-              setCategories(foundCategories);
-              
-              // Update survey with categories
-              if (survey) {
-                const totalValue = foundCategories.reduce((sum: number, cat: Category) => sum + cat.value, 0);
-                setSurvey({
-                  ...survey,
-                  categories: foundCategories,
-                  totalValue: totalValue
-                });
-              }
-              
-              // Cache the categories
-              await storeDataForKey(cacheKey, foundCategories);
-              setCategoriesLoading(false);
-              return;
-            }
-          }
-        } catch (compositeError) {
-          console.warn('⚠️ Composite API failed, falling back to individual calls:', compositeError);
-        }
+      if (!orderNumber || orderNumber === 'Unknown' || orderNumber === 'N/A') {
+        throw new Error(`No valid order number available for composite API. Order number: ${orderNumber}`);
       }
       
-      // Fallback to individual API calls if composite API fails or no order number
-      console.log('🔄 Falling back to individual API calls');
-      const res = await api.getRiskAssessmentCategories(sectionId);
-      console.log('✅ getRiskAssessmentCategories response:', res);
+      console.log(`🚀 Using composite API for order: ${orderNumber}`);
       
-      if (res.success && res.data) {
-        const categoriesWithItems: Category[] = [];
+      // Use composite hierarchy API and field configurations in parallel
+      const [compositeResponse, fieldConfigResponse] = await Promise.all([
+        api.getRiskAssessmentCompleteHierarchy(orderNumber),
+        api.getOrderCategoryFieldConfigurations(orderNumber)
+      ]);
+      
+      console.log('✅ Composite API response received');
+      console.log('✅ Field config response received:', fieldConfigResponse?.success);
+      
+      // Cache field configurations if available
+      if (fieldConfigResponse?.success && fieldConfigResponse?.data?.categories) {
+        console.log(`🚀 Pre-loading field configurations for ${fieldConfigResponse.data.categories.length} categories`);
         
-        // Fetch items for each category (following ItemComponents logic)
-        for (const c of res.data) {
-          const categoryId = c.id || c.categoryid || c.riskassessmentcategoryid;
-          const categoryName = c.name || c.categoryname || 'Unnamed Category';
-          const riskTemplateCategoryId = c.risktemplatecategoryid || c.RiskTemplateCategoryID || c.risk_template_category_id;
-          
-          console.log('🔍 Fetching items for category:', categoryId);
-          console.log('🔍 RiskTemplateCategoryID for category:', riskTemplateCategoryId);
-          
-          try {
-            // Check SQLite first, then API (same pattern as ItemComponents.tsx)
-            const { getAllRiskAssessmentItems } = await import('../../../utils/db');
-            const localItems = await getAllRiskAssessmentItems();
-            const categoryItems = localItems.filter(item => 
-              String(item.riskassessmentcategoryid) === String(categoryId)
-            );
-            
-            let itemCount = 0;
-            let totalValue = 0;
-            
-            if (categoryItems.length === 0) {
-              // No items in SQLite, fetch from API
-              console.log('No items in SQLite for category, fetching from API:', categoryId);
-              const apiResponse = await api.getRiskAssessmentItems(categoryId);
+        // Store field configurations in a format that can be used by ConfigurationService
+        const configurationService = await import('../../../services/configurationService');
+        await configurationService.default.cacheOrderFieldConfigurations(orderNumber, fieldConfigResponse.data);
+      }
+      
+      if (!compositeResponse?.success || !compositeResponse?.data?.assessmentMasters) {
+        throw new Error(`Composite API failed or invalid response structure. Response: ${JSON.stringify(compositeResponse)}`);
+      }
+      
+      console.log('✅ Composite API response received');
+      
+      // Find the section in the composite data
+      let foundCategories: Category[] = [];
+      
+      for (const master of compositeResponse.data.assessmentMasters) {
+        if (master.sections) {
+          for (const section of master.sections) {
+            if (section.riskAssessmentSectionId === sectionId && section.categories) {
+              console.log(`📋 Found ${section.categories.length} categories in composite data for section ${sectionId}`);
               
-              if (apiResponse?.success && Array.isArray(apiResponse.data)) {
-                console.log('Got items from API:', apiResponse.data.length);
-                itemCount = apiResponse.data.length;
-                totalValue = apiResponse.data.reduce((sum: number, item: any) => {
+              // Process categories from composite API
+              foundCategories = section.categories.map((category: any) => {
+                const categoryId = category.riskAssessmentCategoryId || category.riskassessmentcategoryid || category.categoryId;
+                const categoryName = category.categoryName || category.categoryname || 'Unnamed Category';
+                const riskTemplateCategoryId = category.riskTemplateCategoryId || category.risktemplatecategoryid || category.RiskTemplateCategoryID;
+                
+                // Calculate totals from items in composite data
+                const items = category.items || [];
+                const itemCount = items.length;
+                const totalValue = items.reduce((sum: number, item: any) => {
                   const price = Number(item.price) || 0;
                   const qty = Number(item.qty) || 1;
                   return sum + (price * qty);
                 }, 0);
                 
-                // Store in SQLite for future use (Step 1.2 - Batch Insert Optimization)
-                const { batchInsertRiskAssessmentItems } = await import('../../../utils/db');
-                const sqliteItems = apiResponse.data.map((item: any) => ({
-                  riskassessmentitemid: Number(item.riskassessmentitemid),
-                  riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
-                  itemprompt: item.itemprompt || '',
-                  itemtype: Number(item.itemtype) || 0,
-                  rank: Number(item.rank) || 0,
-                  commaseparatedlist: item.commaseparatedlist || '',
-                  selectedanswer: item.selectedanswer || '',
-                  qty: Number(item.qty) || 1,
-                  price: Number(item.price) || 0,
-                  description: item.description || '',
-                  model: item.model || '',
-                  location: item.location || '',
-                  assessmentregisterid: Number(item.assessmentregisterid) || 0,
-                  assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
-                  datecreated: item.datecreated || new Date().toISOString(),
-                  createdbyid: item.createdbyid || '',
-                  dateupdated: item.dateupdated || new Date().toISOString(),
-                  updatedbyid: item.updatedbyid || '',
-                  issynced: Number(item.issynced) || 0,
-                  syncversion: Number(item.syncversion) || 0,
-                  deviceid: item.deviceid || '',
-                  syncstatus: item.syncstatus || '',
-                  synctimestamp: item.synctimestamp || new Date().toISOString(),
-                  hasphoto: Number(item.hasphoto) || 0,
-                  latitude: Number(item.latitude) || 0,
-                  longitude: Number(item.longitude) || 0,
-                  notes: item.notes || '',
-                  appointmentid: survey?.appointmentId || ''
-                }));
-                
-                await batchInsertRiskAssessmentItems(sqliteItems);
-                console.log(`✅ Stored ${sqliteItems.length} items in SQLite for category ${categoryId}`);
-              }
-            } else {
-              // Use existing SQLite items
-              console.log('Using existing SQLite items for category:', categoryItems.length);
-              itemCount = categoryItems.length;
-              totalValue = categoryItems.reduce((sum: number, item: any) => {
-                const price = Number(item.price) || 0;
-                const qty = Number(item.qty) || 1;
-                return sum + (price * qty);
-              }, 0);
+                return {
+                  id: categoryId,
+                  name: categoryName,
+                  items: itemCount,
+                  value: totalValue,
+                  risktemplatecategoryid: riskTemplateCategoryId
+                };
+              });
+              
+              break; // Found the section, no need to continue
             }
-            
-                         categoriesWithItems.push({
-               id: categoryId,
-               name: categoryName,
-               items: itemCount,
-               value: totalValue,
-               risktemplatecategoryid: riskTemplateCategoryId
-             });
-            
-          } catch (categoryError) {
-            console.warn('⚠️ Error processing category:', categoryName, categoryError);
-            // Add category with zero values on error
-                         categoriesWithItems.push({
-               id: categoryId,
-               name: categoryName,
-               items: 0,
-               value: 0,
-               risktemplatecategoryid: riskTemplateCategoryId
-             });
           }
         }
-        
-        console.log(`✅ Processed ${categoriesWithItems.length} categories with items`);
-        setCategories(categoriesWithItems);
-        
-        // Update survey with categories
-        if (survey) {
-          const totalValue = categoriesWithItems.reduce((sum: number, cat: Category) => sum + cat.value, 0);
-          setSurvey({
-            ...survey,
-            categories: categoriesWithItems,
-            totalValue: totalValue
-          });
-        }
-        
-        // Cache the categories
-        await storeDataForKey(cacheKey, categoriesWithItems);
-      } else {
-        console.error('❌ Failed to fetch categories:', res);
-        setCategoriesError('Failed to load categories');
       }
+      
+      if (foundCategories.length === 0) {
+        throw new Error(`No categories found in composite data for section: ${sectionId}. Available sections: ${JSON.stringify(compositeResponse.data.assessmentMasters.map((m: any) => m.sections?.map((s: any) => s.riskAssessmentSectionId)))}`);
+      }
+      
+      console.log(`✅ Processed ${foundCategories.length} categories from composite API`);
+      setCategories(foundCategories);
+      
+      // Update survey with categories
+      if (survey) {
+        const totalValue = foundCategories.reduce((sum: number, cat: Category) => sum + cat.value, 0);
+        setSurvey({
+          ...survey,
+          categories: foundCategories,
+          totalValue: totalValue
+        });
+      }
+      
+      // Cache the categories
+      await storeDataForKey(cacheKey, foundCategories);
     } catch (err) {
       console.error('❌ Error fetching categories:', err);
       setCategoriesError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);

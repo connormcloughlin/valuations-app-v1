@@ -23,6 +23,8 @@ export interface Item {
   selection?: string;
   selectedanswer?: string;
   commaseparatedlist?: string;
+  rank?: number; // Add rank property for item ordering
+  itemtype?: number; // Add itemtype property for database compatibility
 }
 
 // Define the API response type

@@ -14,6 +14,7 @@ import ConnectionStatus from '../components/ConnectionStatus';
 import connectionUtils from '../utils/connectionUtils';
 import { initializeDatabase } from '../utils/db';
 import { AuthProvider } from '../context/AuthContext';
+import { DashboardProvider } from '../context/DashboardContext';
 
 import { useColorScheme } from '../hooks/useColorScheme';
 import { useOrientation } from '../hooks/useOrientation';
@@ -108,15 +109,16 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <PaperProvider>
           <AuthProvider>
-            <ConnectionStatus showOffline={true} showOnline={true} />
-            {/* Use simplified themes to avoid font issues */}
-            <Stack
-              screenOptions={{ 
-                headerShown: false,
-                // Add animation based on orientation
-                animation: orientation === 'landscape' ? 'slide_from_right' : 'default', 
-              }}
-            >
+            <DashboardProvider>
+              <ConnectionStatus showOffline={true} showOnline={true} />
+              {/* Use simplified themes to avoid font issues */}
+              <Stack
+                screenOptions={{ 
+                  headerShown: false,
+                  // Add animation based on orientation
+                  animation: orientation === 'landscape' ? 'slide_from_right' : 'default', 
+                }}
+              >
               <Stack.Screen name="index" />
               <Stack.Screen name="login" options={{ headerShown: false }} />
               <Stack.Screen name="auth" options={{ headerShown: false }} />
@@ -131,6 +133,7 @@ export default function RootLayout() {
               <Stack.Screen name="+not-found" options={{ headerShown: true }} />
             </Stack>
             <StatusBar style="auto" />
+            </DashboardProvider>
           </AuthProvider>
         </PaperProvider>
       </SafeAreaProvider>

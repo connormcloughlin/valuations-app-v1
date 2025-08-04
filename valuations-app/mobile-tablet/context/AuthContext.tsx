@@ -38,12 +38,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const initializeApp = async () => {
     try {
-      // First initialize the database
-      await initializeDatabase();
-      setDbInitialized(true);
+      console.log('🚀 Starting app initialization...');
       
-      // Then check authentication status
-      await checkAuthStatus();
+      // Check if database is already initialized to prevent duplicate initialization
+      if (!dbInitialized) {
+        await initializeDatabase();
+        setDbInitialized(true);
+        console.log('✅ Database initialized');
+      } else {
+        console.log('✅ Database already initialized, skipping...');
+      }
+      
+      // Then check authentication status with timeout
+      await Promise.race([
+        checkAuthStatus(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Authentication check timeout')), 10000) // 10 second timeout
+        )
+      ]);
     } catch (error) {
       console.error('❌ Error during app initialization:', error);
       // Continue with auth check even if DB fails
@@ -151,7 +163,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // If silent login fails, do interactive login
       if (!authResult) {
         console.log('🔐 Silent login failed, starting interactive login...');
-        authResult = await azureAdService.signInInteractive();
+        try {
+          authResult = await azureAdService.signInInteractive();
+        } catch (authError) {
+          console.error('❌ Interactive authentication failed:', authError);
+          // Don't set loading to false here, let the finally block handle it
+          return false;
+        }
       }
       
       if (authResult && authResult.account) {
@@ -194,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     } finally {
       setIsLoading(false);
+      console.log('🔐 Azure AD login process completed');
     }
   };
 

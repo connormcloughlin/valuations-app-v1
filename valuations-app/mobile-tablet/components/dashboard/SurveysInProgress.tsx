@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
@@ -19,13 +19,17 @@ interface Survey {
 
 interface SurveysInProgressProps {
   onSurveyPress: (id: string) => void;
+  shouldFetchData?: boolean; // Add prop to control when to fetch data
 }
 
-export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPress }) => {
+export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPress, shouldFetchData = true }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Add a ref to track if surveys have been fetched to prevent duplicate calls
+  const surveysFetchedRef = useRef(false);
 
   useEffect(() => {
     // Don't do anything while auth is still loading
@@ -35,18 +39,23 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
       return;
     }
 
-    // Only fetch surveys if user is authenticated and auth loading is complete
-    if (isAuthenticated && user && !isLoading) {
+    // Only fetch surveys if user is authenticated, auth loading is complete, surveys haven't been fetched yet, and shouldFetchData is true
+    if (isAuthenticated && user && !isLoading && !surveysFetchedRef.current && shouldFetchData) {
       console.log('🔐 User authenticated, fetching in-progress surveys...');
+      surveysFetchedRef.current = true;
       fetchInProgressSurveys();
-    } else {
+    } else if (!isAuthenticated || !user) {
       console.log('⏳ Waiting for authentication before fetching in-progress surveys...');
+      setLoading(false);
+      surveysFetchedRef.current = false; // Reset when user logs out
+    } else if (!shouldFetchData) {
+      console.log('⏸️ Data fetching disabled for SurveysInProgress component');
       setLoading(false);
     }
   }, [isAuthenticated, user, isLoading]);
 
-  // Don't render anything if auth is still loading or not authenticated
-  if (isLoading || !isAuthenticated || !user) {
+  // Don't render anything if auth is still loading, not authenticated, or data fetching is disabled
+  if (isLoading || !isAuthenticated || !user || !shouldFetchData) {
     return null;
   }
 
@@ -97,13 +106,18 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
         await storeDataForKey(cacheKey, surveysData);
       } else {
         console.warn('Invalid API response:', response);
-        setSurveys([]);
+        // Don't clear surveys on API failure - keep existing data
+        if (surveys.length === 0) {
+          setSurveys([]);
+        }
       }
     } catch (err) {
       setError('Failed to load surveys in progress');
       console.error('Error fetching in-progress surveys:', err);
-      // Set empty array on error instead of keeping old data
-      setSurveys([]);
+      // Don't clear surveys on error - keep existing data
+      if (surveys.length === 0) {
+        setSurveys([]);
+      }
     } finally {
       setLoading(false);
     }

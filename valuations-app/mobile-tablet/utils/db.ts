@@ -661,6 +661,7 @@ export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmen
     }
     
     // Filter out items with temporary IDs (custom-new- or duplicate- prefixes)
+    // But include items marked for deletion (empty values) in the sync count
     const validItems = res.rows._array.filter((item: RiskAssessmentItem) => {
       const itemId = String(item.riskassessmentitemid);
       const isTemporaryId = itemId.startsWith('custom-new-') || itemId.startsWith('duplicate-');
@@ -674,6 +675,16 @@ export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmen
     
     if (__DEV__ && validItems.length !== res.rows._array.length) {
       console.log(`📊 Filtered ${res.rows._array.length - validItems.length} temporary IDs from sync count`);
+    }
+    
+    // Count items marked for deletion for debugging
+    const itemsMarkedForDeletion = validItems.filter(item => 
+      item.qty === 0 && item.price === 0 && item.description === '' && 
+      item.model === '' && item.location === '' && item.notes === ''
+    );
+    
+    if (__DEV__ && itemsMarkedForDeletion.length > 0) {
+      console.log(`🗑️ Including ${itemsMarkedForDeletion.length} items marked for deletion in sync count`);
     }
     
     return validItems;

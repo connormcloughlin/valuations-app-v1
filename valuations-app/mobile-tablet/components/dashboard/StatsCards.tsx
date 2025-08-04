@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet } from 'react-native';
 import { View } from '../Themed';
 import { Card, Text } from 'react-native-paper';
@@ -7,6 +7,8 @@ import { router } from 'expo-router';
 import { enhancedApiClient } from '../../api/enhancedClient';
 import { statsCardsStyles } from '../../app/GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
+import { useDashboard } from '../../context/DashboardContext';
+import { setGlobalRefreshFunction } from '../../utils/dashboardRefresh';
 
 interface StatsData {
   scheduled: number;
@@ -28,7 +30,12 @@ interface StatsCardsProps {
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
+  console.log('📊 StatsCards: COMPONENT FUNCTION CALLED - TOP OF FUNCTION');
+  
   const { isAuthenticated, user, isLoading } = useAuth();
+  const { setRefreshStats } = useDashboard();
+  
+  console.log('📊 StatsCards: Component rendered, isAuthenticated:', isAuthenticated, 'isLoading:', isLoading, 'user:', !!user);
   const [stats, setStats] = useState<StatsData>({
     scheduled: 0,
     inProgress: 0,
@@ -40,6 +47,105 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
   const [loading, setLoading] = useState(true);
   const [waitingForAuth, setWaitingForAuth] = useState(false);
 
+  // Add a ref to track if stats have been fetched to prevent duplicate calls
+  const statsFetchedRef = useRef(false);
+
+  // Define fetchStats function first (will be used in useCallback)
+  const fetchStats = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Use the optimized mobile dashboard API endpoint with enhanced client for caching
+      const endpoint = '/mobile/appointment/dashboard/status-counts';
+      
+      const startTime = Date.now();
+      const response = await enhancedApiClient.get(endpoint);
+      const loadTime = Date.now() - startTime;
+      
+      if (response?.data?.success && response?.data?.data) {
+        const data = response.data.data;
+        
+        console.log(`📊 Dashboard stats loaded in ${loadTime}ms:`, data);
+        
+        // Handle the new statusCounts array format
+        let scheduled = 0, inProgress = 0, completed = 0, finalise = 0;
+        
+        if (data.statusCounts && Array.isArray(data.statusCounts)) {
+          // New format: statusCounts array
+          data.statusCounts.forEach((item: any) => {
+            switch (item.inviteStatus) {
+              case 'Booked':
+                scheduled = item.count;
+                break;
+              case 'In-progress':
+                inProgress = item.count;
+                break;
+              case 'Completed':
+                completed = item.count;
+                break;
+              case 'Finalise':
+                finalise = item.count;
+                break;
+            }
+          });
+        } else if (data.byInviteStatus) {
+          // Old format: byInviteStatus object
+          scheduled = data.byInviteStatus?.['Booked'] || 0;
+          inProgress = data.byInviteStatus?.['In-Progress'] || 0;
+          completed = data.byInviteStatus?.['Completed'] || 0;
+          finalise = data.byInviteStatus?.['Finalise'] || 0;
+        }
+        
+        const newStats = {
+          scheduled,
+          inProgress,
+          completed,
+          finalise,
+          pendingSync: data.pendingSync || 0,
+          lastSync: new Date().toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          })
+        };
+        
+        console.log('📊 StatsCards: Setting new stats:', newStats);
+        setStats(newStats);
+      } else {
+        console.error('❌ Failed to load dashboard stats:', response?.data?.message || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching dashboard stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  
+  // Add a function to manually refresh stats  
+  const refreshStats = useCallback(() => {
+    console.log('🔄 Manually refreshing dashboard stats...');
+    statsFetchedRef.current = false; // Allow fetching again
+    setLoading(true); // Show loading state
+    fetchStats();
+  }, [fetchStats]);
+
+  // Debug: Log when the refresh function is created
+  console.log('📊 StatsCards: refreshStats function created:', typeof refreshStats);
+
+  // Register the refresh function globally
+  useEffect(() => {
+    console.log('📊 StatsCards: Registering refresh function globally');
+    setGlobalRefreshFunction(refreshStats);
+    console.log('📊 StatsCards: Refresh function registered globally');
+  }, [refreshStats]);
+
+  // Debug: Log when component mounts
+  useEffect(() => {
+    console.log('📊 StatsCards: Component mounted');
+  }, []);
+
   useEffect(() => {
     // Don't do anything while auth is still loading
     if (isLoading) {
@@ -49,140 +155,25 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
       return;
     }
 
-    // Only fetch stats if user is authenticated and auth loading is complete
-    if (isAuthenticated && user && !isLoading) {
+    // Only fetch stats if user is authenticated, auth loading is complete, and stats haven't been fetched yet
+    if (isAuthenticated && user && !isLoading && !statsFetchedRef.current) {
       console.log('🔐 User authenticated, fetching dashboard stats...');
       setWaitingForAuth(false);
+      statsFetchedRef.current = true;
       fetchStats();
-    } else {
+    } else if (!isAuthenticated || !user) {
       console.log('⏳ Waiting for authentication before fetching dashboard stats...');
       setWaitingForAuth(true);
       setLoading(false);
+      statsFetchedRef.current = false; // Reset when user logs out
     }
-  }, [isAuthenticated, user, isLoading]);
+  }, [isAuthenticated, user, isLoading, fetchStats]);
 
   // Don't render anything if auth is still loading or not authenticated
   if (isLoading || !isAuthenticated || !user) {
+    console.log('📊 StatsCards: Early return - isLoading:', isLoading, 'isAuthenticated:', isAuthenticated, 'user:', !!user);
     return null;
   }
-
-  const fetchStats = async () => {
-    try {
-      setLoading(true);
-      
-      // Use the optimized mobile dashboard API endpoint with enhanced client for caching
-      const endpoint = '/mobile/appointment/dashboard/status-counts';
-      
-      // Check if we have auth token and decode it to see user info
-      const AsyncStorage = await import('@react-native-async-storage/async-storage');
-      const authToken = await AsyncStorage.default.getItem('authToken');
-      
-      if (authToken && __DEV__) {
-        try {
-          // Decode JWT token to see user info (without verification, just for debugging)
-          const tokenParts = authToken.split('.');
-          if (tokenParts.length === 3) {
-            const payload = JSON.parse(atob(tokenParts[1]));
-            console.log('🔍 Token payload:', {
-              userId: payload.sub || payload.userId || payload.id,
-              exp: payload.exp ? new Date(payload.exp * 1000).toISOString() : 'No expiry'
-            });
-          }
-        } catch (decodeError: any) {
-          console.warn('⚠️ Could not decode auth token:', decodeError?.message || 'Unknown error');
-        }
-      }
-      
-      const response = await enhancedApiClient.get(endpoint, {
-        requestOptions: { 
-          skipCache: true, // Always hit the actual API, no caching for dashboard stats
-          skipDeduplication: false // Still allow deduplication for simultaneous requests
-        }
-      });
-      
-      // Get pending sync count from SQLite (run in parallel with API call)
-      let pendingSync = 0;
-      try {
-        const { 
-          getPendingSyncRiskAssessmentItems, 
-          getPendingSyncAppointments, 
-          getPendingSyncRiskAssessmentMasters, 
-          getPendingSyncMediaFiles 
-        } = await import('../../utils/db');
-        
-        const [pendingItems, pendingAppointments, pendingMasters, pendingMedia] = await Promise.all([
-          getPendingSyncRiskAssessmentItems(),
-          getPendingSyncAppointments(),
-          getPendingSyncRiskAssessmentMasters(),
-          getPendingSyncMediaFiles()
-        ]);
-        
-        pendingSync = pendingItems.length + pendingAppointments.length + pendingMasters.length + pendingMedia.length;
-      } catch (syncError) {
-        console.warn('Could not fetch pending sync count:', syncError);
-      }
-      
-      // Handle nested data structure from enhanced API client
-      const apiData = response?.data?.data || response?.data;
-      
-      if (response?.success && apiData?.statusCounts) {
-        const statusCounts = apiData.statusCounts;
-        
-        // Check if we have any data
-        if (statusCounts.length === 0) {
-          console.warn('⚠️ Mobile dashboard API returned empty statusCounts array');
-        }
-        
-        // Create a lookup map for easier access
-        const statusMap = statusCounts.reduce((acc: any, item: any) => {
-          acc[item.inviteStatus] = item.count;
-          return acc;
-        }, {});
-        
-        // Map status counts to our stats
-        const scheduled = statusMap['Booked'] || 0;
-        const inProgress = statusMap['In-progress'] || 0;
-        const completed = statusMap['Completed'] || 0;
-        const finalise = statusMap['Finalise'] || 0;
-        
-        // Get performance info if available
-        const performanceData = response.data.performance || apiData.performance;
-        const queryTime = performanceData?.queryTime || 'N/A';
-        
-        if (__DEV__) {
-          console.log(`📊 Dashboard stats loaded in ${queryTime}:`, { 
-            scheduled, 
-            inProgress, 
-            completed, 
-            finalise, 
-            pendingSync,
-            totalAppointments: apiData.totalAppointments
-          });
-        }
-        
-        setStats({
-          scheduled,
-          inProgress,
-          completed,
-          finalise,
-          pendingSync,
-          lastSync: new Date().toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-          })
-        });
-      } else {
-        console.error('❌ Failed to load dashboard stats:', response?.data?.message || 'Unknown error');
-      }
-    } catch (error) {
-      console.error('❌ Error fetching dashboard stats:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCardPress = (cardType: 'scheduled' | 'inProgress' | 'completed' | 'finalise' | 'sync') => {
     // If it's a sync card press, navigate to the sync component
@@ -226,6 +217,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     </Card>
   );
 
+  console.log('📊 StatsCards: Rendering UI, loading:', loading, 'waitingForAuth:', waitingForAuth);
+  console.log('📊 StatsCards: Current stats state:', stats);
+  console.log('📊 StatsCards: About to render JSX, all hooks should have executed by now');
+  
   return (
     <View style={statsCardsStyles.cardsContainer}>
       {renderCard('Booked', waitingForAuth ? 'Auth...' : (loading ? '...' : stats.scheduled), 'calendar-clock', '#4a90e2', 'scheduled')}

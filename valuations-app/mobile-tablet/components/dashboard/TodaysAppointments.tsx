@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
@@ -20,13 +20,17 @@ interface Appointment {
 
 interface TodaysAppointmentsProps {
   onAppointmentPress: (id: string) => void;
+  shouldFetchData?: boolean; // Add prop to control when to fetch data
 }
 
-export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppointmentPress }) => {
+export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppointmentPress, shouldFetchData = true }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Add a ref to track if appointments have been fetched to prevent duplicate calls
+  const appointmentsFetchedRef = useRef(false);
 
   useEffect(() => {
     // Don't do anything while auth is still loading
@@ -36,18 +40,23 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
       return;
     }
 
-    // Only fetch appointments if user is authenticated and auth loading is complete
-    if (isAuthenticated && user && !isLoading) {
+    // Only fetch appointments if user is authenticated, auth loading is complete, appointments haven't been fetched yet, and shouldFetchData is true
+    if (isAuthenticated && user && !isLoading && !appointmentsFetchedRef.current && shouldFetchData) {
       console.log('🔐 User authenticated, fetching today\'s appointments...');
+      appointmentsFetchedRef.current = true;
       fetchTodaysAppointments();
-    } else {
+    } else if (!isAuthenticated || !user) {
       console.log('⏳ Waiting for authentication before fetching today\'s appointments...');
+      setLoading(false);
+      appointmentsFetchedRef.current = false; // Reset when user logs out
+    } else if (!shouldFetchData) {
+      console.log('⏸️ Data fetching disabled for TodaysAppointments component');
       setLoading(false);
     }
   }, [isAuthenticated, user, isLoading]);
 
-  // Don't render anything if auth is still loading or not authenticated
-  if (isLoading || !isAuthenticated || !user) {
+  // Don't render anything if auth is still loading, not authenticated, or data fetching is disabled
+  if (isLoading || !isAuthenticated || !user || !shouldFetchData) {
     return null;
   }
 
@@ -113,12 +122,18 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
         await storeDataForKey(cacheKey, todaysAppointments);
       } else {
         console.warn('No appointments found for today or API call failed:', response);
-        setAppointments([]);
+        // Don't clear appointments on API failure - keep existing data
+        if (appointments.length === 0) {
+          setAppointments([]);
+        }
       }
     } catch (err: any) {
       setError('Failed to load today\'s appointments');
       console.error('Error fetching today\'s appointments:', err);
-      setAppointments([]);
+      // Don't clear appointments on error - keep existing data
+      if (appointments.length === 0) {
+        setAppointments([]);
+      }
     } finally {
       setLoading(false);
     }

@@ -574,8 +574,8 @@ export default function PredefinedItemsList({
         riskassessmentitemid: tempId,
         riskassessmentcategoryid: Number(categoryId),
         itemprompt: changes.type ?? item.type ?? '',
-        itemtype: 0,
-        rank: 0,
+        itemtype: item.itemtype ?? 0, // Preserve the original itemtype
+        rank: item.rank ?? 0, // Preserve the original rank
         commaseparatedlist: item.commaseparatedlist ?? '',
         selectedanswer: changes.selectedanswer ?? item.selectedanswer ?? '',
         qty: Number(changes.quantity ?? item.quantity) || 1,
@@ -735,7 +735,9 @@ export default function PredefinedItemsList({
             description: changes.description ?? prevItem.description ?? '',
             model: changes.model ?? prevItem.model ?? '',
             room: changes.room ?? prevItem.room ?? '',
-            notes: changes.notes ?? prevItem.notes ?? ''
+            notes: changes.notes ?? prevItem.notes ?? '',
+            rank: prevItem.rank || 0, // Preserve the rank value
+            itemtype: prevItem.itemtype || 0 // Preserve the itemtype value
           } : prevItem
         )
       );
@@ -1463,7 +1465,29 @@ export default function PredefinedItemsList({
     console.log('🔄 === DUPLICATE ITEM FUNCTION CALLED ===');
     console.log('🔄 Original item:', originalItem);
     console.log('🔄 Original item type:', originalItem.type);
+    console.log('🔄 Original item rank:', originalItem.rank);
+    console.log('🔄 Original item rank type:', typeof originalItem.rank);
+    console.log('🔄 Original item rank value:', JSON.stringify(originalItem.rank));
+    console.log('🔄 Original item full object:', JSON.stringify(originalItem, null, 2));
     console.log('🔄 Current items count before duplication:', items.length);
+    
+    // Debug: Check if rank exists in the original item's SQLite data
+    (async () => {
+      try {
+        const { getAllRiskAssessmentItems } = await import('../../../../utils/db');
+        const allItems = await getAllRiskAssessmentItems();
+        const sqliteItem = allItems.find(dbItem => String(dbItem.riskassessmentitemid) === String(originalItem.id));
+        if (sqliteItem) {
+          console.log('🔄 SQLite item rank:', sqliteItem.rank);
+          console.log('🔄 SQLite item rank type:', typeof sqliteItem.rank);
+          console.log('🔄 SQLite item full object:', JSON.stringify(sqliteItem, null, 2));
+        } else {
+          console.log('🔄 No SQLite item found for original item ID:', originalItem.id);
+        }
+      } catch (error) {
+        console.log('🔄 Error checking SQLite data:', error);
+      }
+    })();
     
     // For nested grouping, we need to preserve the grouping field values
     let duplicatedItem: Item;
@@ -1487,8 +1511,14 @@ export default function PredefinedItemsList({
         price: '',
         room: '',
         notes: '',
+        rank: originalItem.rank || 0, // Preserve the rank from the original item
+        itemtype: originalItem.itemtype || 0, // Preserve the itemtype from the original item
         categoryId: categoryId
       };
+      
+      console.log('🔄 Duplicated item rank after assignment:', duplicatedItem.rank);
+      console.log('🔄 Duplicated item rank type:', typeof duplicatedItem.rank);
+      console.log('🔄 Duplicated item rank value:', JSON.stringify(duplicatedItem.rank));
       
       // Preserve the specific fields that are used for grouping
       if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
@@ -1539,6 +1569,7 @@ export default function PredefinedItemsList({
         console.log('🔄 Final duplicated item BEFORE state update:', duplicatedItem);
         console.log('🔄 Duplicated item room value:', duplicatedItem.room);
         console.log('🔄 Duplicated item type value:', duplicatedItem.type);
+        console.log('🔄 Duplicated item rank value:', duplicatedItem.rank);
       }
     } else {
       // For flat grouping, use the original logic
@@ -1551,8 +1582,14 @@ export default function PredefinedItemsList({
         price: '',
         room: '',
         notes: '',
+        rank: originalItem.rank || 0, // Preserve the rank from the original item
+        itemtype: originalItem.itemtype || 0, // Preserve the itemtype from the original item
         categoryId: categoryId
       };
+      
+      console.log('🔄 Flat grouping - Duplicated item rank after assignment:', duplicatedItem.rank);
+      console.log('🔄 Flat grouping - Duplicated item rank type:', typeof duplicatedItem.rank);
+      console.log('🔄 Flat grouping - Duplicated item rank value:', JSON.stringify(duplicatedItem.rank));
     }
     
     console.log('🔄 Duplicated item to be created:', duplicatedItem);
@@ -1630,6 +1667,9 @@ export default function PredefinedItemsList({
     });
     
     console.log('🔄 Edit state set for duplicated item');
+    console.log('🔄 Final duplicated item rank:', duplicatedItem.rank);
+    console.log('🔄 Final duplicated item rank type:', typeof duplicatedItem.rank);
+    console.log('🔄 Final duplicated item rank value:', JSON.stringify(duplicatedItem.rank));
     console.log('🔄 === DUPLICATE ITEM FUNCTION COMPLETED ===');
   }, [categoryId, items.length, isNestedGrouping, groupedItems, groupingStrategy, getItemFieldValue]);
 
@@ -1743,17 +1783,16 @@ export default function PredefinedItemsList({
       .filter(field => !groupingFields.includes(field.item_fields)) // Exclude grouping fields
       .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     
+    console.log('🔍 Visible fields being rendered:', visibleFields.map(f => f.item_fields));
+    console.log('🔍 Grouping fields being excluded:', groupingFields);
+    
     // Debug: Check items for commaseparatedlist values
     const itemsWithCommaList = items.filter(item => item.commaseparatedlist);
-    console.log('🔍 Items with commaseparatedlist:', itemsWithCommaList.length);
-    if (itemsWithCommaList.length > 0) {
-      console.log('🔍 Sample commaseparatedlist values:', itemsWithCommaList.slice(0, 3).map(item => ({
-        id: item.id,
-        commaseparatedlist: item.commaseparatedlist,
-        type: typeof item.commaseparatedlist,
-        length: item.commaseparatedlist?.length || 0
-      })));
-    }
+    
+    // Debug: Check if rank field is in dynamic field config
+    const rankField = dynamicFieldConfig?.find(field => field.item_fields === 'rank');
+    console.log('🔍 Rank field in dynamic config:', rankField);
+    console.log('🔍 All dynamic field config fields:', dynamicFieldConfig?.map(f => f.item_fields));
 
     const renderField = (field: any) => {
       const fieldName = field.item_fields;

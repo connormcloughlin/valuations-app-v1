@@ -339,6 +339,8 @@ export default function ItemsScreen() {
             photo: undefined,
             commaseparatedlist: item.commaseparatedlist || '',
             selectedanswer: item.selectedanswer || '',
+            rank: item.rank || 0, // Include rank field from database
+            itemtype: item.itemtype || 0, // Include itemtype field from database
           }));
           
           console.log(`Using newly stored SQLite items: ${formattedItems.length}`);
@@ -356,24 +358,26 @@ export default function ItemsScreen() {
         console.log('Using existing SQLite items for category:', categoryItems.length);
         setFromCache(true);
         
-        // Transform SQLite items to match interface with data validation
-        const formattedItems = categoryItems.map((item: any) => {
-          // 🔧 FIX: Ensure consistent data mapping
-          const mappedItem = {
-            id: String(item.riskassessmentitemid) || '',
-            categoryId: String(currentCategoryId),
-            type: item.itemprompt || '', // This is the critical mapping
-            description: item.description || '',
-            model: item.model || '',
-            selection: '',
-            quantity: String(item.qty) || '1',
-            price: String(item.price) || '',
-            room: item.location || '',
-            notes: item.notes || '',
-            photo: undefined,
-            commaseparatedlist: item.commaseparatedlist || '',
-            selectedanswer: item.selectedanswer || '',
-          };
+                  // Transform SQLite items to match interface with data validation
+          const formattedItems = categoryItems.map((item: any) => {
+            // 🔧 FIX: Ensure consistent data mapping
+            const mappedItem = {
+              id: String(item.riskassessmentitemid) || '',
+              categoryId: String(currentCategoryId),
+              type: item.itemprompt || '', // This is the critical mapping
+              description: item.description || '',
+              model: item.model || '',
+              selection: '',
+              quantity: String(item.qty) || '1',
+              price: String(item.price) || '',
+              room: item.location || '',
+              notes: item.notes || '',
+              photo: undefined,
+              commaseparatedlist: item.commaseparatedlist || '',
+              selectedanswer: item.selectedanswer || '',
+              rank: item.rank || 0, // Include rank field from database
+              itemtype: item.itemtype || 0, // Include itemtype field from database
+            };
           
           // Debug logging for ALL items to see what's being loaded
           console.log(`🔍 [fetchCategoryItems] Item ${mappedItem.id} mapping:`, {

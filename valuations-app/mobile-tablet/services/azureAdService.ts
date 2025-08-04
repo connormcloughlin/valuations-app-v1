@@ -79,8 +79,13 @@ class AzureAdService {
 
       console.log('🔐 Opening authentication modal...');
 
-      // Perform the authentication
-      const result = await request.promptAsync(discovery);
+      // Perform the authentication with timeout
+      const result = await Promise.race([
+        request.promptAsync(discovery),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Authentication timeout')), 60000) // 60 second timeout
+        )
+      ]) as any;
 
       if (result.type === 'success' && result.params.code) {
         console.log('🔐 Authentication successful, got authorization code');

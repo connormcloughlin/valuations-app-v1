@@ -1,7 +1,9 @@
+import React from 'react';
 import { StyleSheet, ActivityIndicator, View, Text } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Button } from 'react-native-paper';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { DashboardHeader } from '../../components/dashboard/DashboardHeader';
 import { StatsCards } from '../../components/dashboard/StatsCards';
 import { TodaysAppointments } from '../../components/dashboard/TodaysAppointments';
@@ -9,9 +11,63 @@ import { SurveysInProgress } from '../../components/dashboard/SurveysInProgress'
 import { DevelopmentTools } from '../../components/dashboard/DevelopmentTools';
 import { dashboardStyles } from '../GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
+import { useDashboard } from '../../context/DashboardContext';
+import { getGlobalRefreshFunction } from '../../utils/dashboardRefresh';
 
 export default function Dashboard() {
   const { isAuthenticated, isLoading, user } = useAuth();
+  const dashboardContext = useDashboard();
+  
+  // Get the global refresh function
+  const globalRefreshFunction = getGlobalRefreshFunction();
+  
+  // Debug: Log the refresh function status
+  console.log('📊 Dashboard: Global refresh function type:', typeof globalRefreshFunction, 'value:', globalRefreshFunction);
+
+  // Add a state to track if we should wait for refresh function
+  const [waitingForRefreshFunction, setWaitingForRefreshFunction] = React.useState(false);
+
+  // Refresh dashboard stats when the screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('🔄 Dashboard screen focused, refreshing stats...');
+      
+      // Add a small delay to allow context updates to propagate
+      setTimeout(() => {
+              // Get the current refresh function from global
+      const currentRefreshStats = getGlobalRefreshFunction();
+      
+      // If refresh function is not available, set waiting state and retry
+      if (!currentRefreshStats || typeof currentRefreshStats !== 'function') {
+        console.log('⏳ Refresh function not available after delay, setting up retry mechanism...');
+        setWaitingForRefreshFunction(true);
+        
+        // Retry every 200ms for up to 2 seconds
+        let retryCount = 0;
+        const maxRetries = 10;
+        const retryInterval = setInterval(() => {
+          retryCount++;
+          console.log(`🔄 Retry ${retryCount}/${maxRetries} for refresh function...`);
+          
+          const retryRefreshStats = getGlobalRefreshFunction();
+          if (retryRefreshStats && typeof retryRefreshStats === 'function') {
+            console.log('✅ Refresh function now available, executing refresh');
+            clearInterval(retryInterval);
+            setWaitingForRefreshFunction(false);
+            retryRefreshStats();
+          } else if (retryCount >= maxRetries) {
+            console.log('⚠️ Refresh function still not available after all retries');
+            clearInterval(retryInterval);
+            setWaitingForRefreshFunction(false);
+          }
+        }, 200);
+      } else {
+        console.log('✅ Refresh function available after delay, executing refresh');
+        currentRefreshStats();
+      }
+      }, 100); // Small delay to allow context updates
+    }, [])
+  );
 
   const navigateToAppointment = (id: string, status: 'scheduled' | 'inProgress' | 'completed') => {
     // Route to different screens based on appointment status
@@ -75,6 +131,7 @@ export default function Dashboard() {
 
   // Show login prompt if not authenticated
   if (!isAuthenticated || !user) {
+    console.log('🔐 Dashboard: User not authenticated, showing login prompt');
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <DashboardHeader />
@@ -90,13 +147,54 @@ export default function Dashboard() {
     );
   }
 
+  console.log('🔐 Dashboard: User authenticated, rendering dashboard components');
+
+  console.log('📊 Dashboard: About to render StatsCards component');
+  
   return (
     <ScrollView style={dashboardStyles.container}>
       <DashboardHeader />
       <StatsCards onCardPress={handleCardPress} />
-      <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} />
-      <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} />
+      <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} shouldFetchData={true} />
+      <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} shouldFetchData={true} />
       <DevelopmentTools />
+      
+      {/* Manual refresh button for testing */}
+      {__DEV__ && (
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <Button 
+            mode="outlined" 
+            onPress={() => {
+              console.log('🔄 Manual refresh triggered');
+              const refreshFn = getGlobalRefreshFunction();
+              if (refreshFn && typeof refreshFn === 'function') {
+                console.log('✅ Manual refresh function available, executing');
+                refreshFn();
+              } else {
+                console.log('⚠️ Manual refresh function not available, will retry...');
+                // Use the same retry mechanism as useFocusEffect
+                let retryCount = 0;
+                const maxRetries = 5;
+                const retryInterval = setInterval(() => {
+                  retryCount++;
+                  const currentRefreshFn = getGlobalRefreshFunction();
+                  if (currentRefreshFn && typeof currentRefreshFn === 'function') {
+                    console.log('✅ Manual refresh function now available, executing');
+                    clearInterval(retryInterval);
+                    currentRefreshFn();
+                  } else if (retryCount >= maxRetries) {
+                    console.log('⚠️ Manual refresh function still not available after retries');
+                    clearInterval(retryInterval);
+                  }
+                }, 200);
+              }
+            }}
+            style={{ marginTop: 10 }}
+          >
+            Refresh Dashboard Stats
+          </Button>
+        </View>
+      )}
     </ScrollView>
   );
 }
