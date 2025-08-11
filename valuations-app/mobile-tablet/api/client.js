@@ -107,6 +107,53 @@ const isRetryableError = (error) => {
   return error.response.status >= 500 && error.response.status < 600;
 };
 
+// Add request interceptor for logging
+apiClient.interceptors.request.use(
+  (config) => {
+    // Log the complete request details
+    const fullUrl = `${config.baseURL}${config.url}`;
+    console.log('🚀 Making API request:');
+    console.log('🚀 Full URL:', fullUrl);
+    console.log('🚀 Method:', config.method?.toUpperCase());
+    console.log('🚀 Headers:', {
+      'Content-Type': config.headers['Content-Type'],
+      'Authorization': config.headers['Authorization'] ? 'Bearer [TOKEN]' : 'None',
+      'Accept': config.headers['Accept']
+    });
+    console.log('🚀 Timeout:', config.timeout);
+    
+    // Special logging for verify endpoint
+    if (config.url === '/auth/verify') {
+      console.log('🔐 === VERIFY ENDPOINT REQUEST ===');
+      console.log('🔐 Complete URL:', fullUrl);
+      console.log('🔐 Request Method:', config.method?.toUpperCase());
+      console.log('🔐 Request Headers:', JSON.stringify(config.headers, null, 2));
+      console.log('🔐 Request Data:', config.data);
+      console.log('🔐 Request Params:', config.params);
+      console.log('🔐 Request Timeout:', config.timeout);
+      console.log('🔐 === END VERIFY REQUEST ===');
+    }
+    
+    // Special logging for token exchange endpoint
+    if (config.url === '/auth/token-exchange') {
+      console.log('🔄 === TOKEN EXCHANGE ENDPOINT REQUEST ===');
+      console.log('🔄 Complete URL:', fullUrl);
+      console.log('🔄 Request Method:', config.method?.toUpperCase());
+      console.log('🔄 Request Headers:', JSON.stringify(config.headers, null, 2));
+      console.log('🔄 Request Data:', config.data ? JSON.stringify(config.data, null, 2) : 'null');
+      console.log('🔄 Request Params:', config.params);
+      console.log('🔄 Request Timeout:', config.timeout);
+      console.log('🔄 === END TOKEN EXCHANGE REQUEST ===');
+    }
+    
+    return config;
+  },
+  (error) => {
+    console.error('❌ Request interceptor error:', error);
+    return Promise.reject(error);
+  }
+);
+
 // Add request interceptor to include bearer token
 apiClient.interceptors.request.use(
   async (config) => {
@@ -190,6 +237,26 @@ apiClient.interceptors.response.use(
       }
     }
     
+    // Special logging for verify endpoint responses
+    if (response.config.url === '/auth/verify') {
+      console.log('🔐 === VERIFY ENDPOINT RESPONSE ===');
+      console.log('🔐 Response Status:', response.status);
+      console.log('🔐 Response Status Text:', response.statusText);
+      console.log('🔐 Response Headers:', JSON.stringify(response.headers, null, 2));
+      console.log('🔐 Response Data:', JSON.stringify(response.data, null, 2));
+      console.log('🔐 === END VERIFY RESPONSE ===');
+    }
+    
+    // Special logging for token exchange endpoint responses
+    if (response.config.url === '/auth/token-exchange') {
+      console.log('🔄 === TOKEN EXCHANGE ENDPOINT RESPONSE ===');
+      console.log('🔄 Response Status:', response.status);
+      console.log('🔄 Response Status Text:', response.statusText);
+      console.log('🔄 Response Headers:', JSON.stringify(response.headers, null, 2));
+      console.log('🔄 Response Data:', JSON.stringify(response.data, null, 2));
+      console.log('🔄 === END TOKEN EXCHANGE RESPONSE ===');
+    }
+    
     // For successful responses, wrap in standard format
     return {
       success: true,
@@ -198,6 +265,31 @@ apiClient.interceptors.response.use(
     };
   },
   async (error) => {
+    // Special logging for verify endpoint errors
+    if (error.config?.url === '/auth/verify') {
+      console.log('🔐 === VERIFY ENDPOINT ERROR ===');
+      console.log('🔐 Error Status:', error.response?.status);
+      console.log('🔐 Error Status Text:', error.response?.statusText);
+      console.log('🔐 Error Headers:', JSON.stringify(error.response?.headers, null, 2));
+      console.log('🔐 Error Data:', JSON.stringify(error.response?.data, null, 2));
+      console.log('🔐 Error Code:', error.code);
+      console.log('🔐 Error Message:', error.message);
+      console.log('🔐 === END VERIFY ERROR ===');
+    }
+    
+    // Special logging for token exchange endpoint errors
+    if (error.config?.url === '/auth/token-exchange') {
+      console.log('🔄 === TOKEN EXCHANGE ENDPOINT ERROR ===');
+      console.log('🔄 Error Status:', error.response?.status);
+      console.log('🔄 Error Status Text:', error.response?.statusText);
+      console.log('🔄 Error Headers:', JSON.stringify(error.response?.headers, null, 2));
+      console.log('🔄 Error Data:', JSON.stringify(error.response?.data, null, 2));
+      console.log('🔄 Error Code:', error.code);
+      console.log('🔄 Error Message:', error.message);
+      console.log('🔄 Error Config:', JSON.stringify(error.config, null, 2));
+      console.log('🔄 === END TOKEN EXCHANGE ERROR ===');
+    }
+    
     // Handle 404s more gracefully for "no content" scenarios
     if (error.response?.status === 404) {
       const errorMessage = error.response?.data?.message || error.message || '';

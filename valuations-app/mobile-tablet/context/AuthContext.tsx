@@ -3,7 +3,9 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import azureAdService from '../services/azureAdService';
 import authApi from '../api/auth';
+import apiClient from '../api/client';
 import { initializeDatabase } from '../utils/db';
+import { AppState, AppStateStatus } from 'react-native';
 
 interface User {
   id: string;
@@ -21,9 +23,42 @@ interface AuthContextType {
   loginWithAzure: () => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuthStatus: () => Promise<void>;
+  validateToken: (token: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/**
+ * Simple JWT decode function (client-side only, no signature verification)
+ */
+const decodeJWT = (token: string): any => {
+  try {
+    const payload = token.split('.')[1];
+    const decoded = JSON.parse(atob(payload));
+    return decoded;
+  } catch (error) {
+    console.error('❌ Failed to decode JWT:', error);
+    return null;
+  }
+};
+
+/**
+ * Check if JWT token is expired (client-side validation)
+ */
+const isTokenExpired = (token: string): boolean => {
+  try {
+    const decoded = decodeJWT(token);
+    if (!decoded || !decoded.exp) {
+      return true; // Consider invalid if no expiration
+    }
+    
+    const currentTime = Math.floor(Date.now() / 1000);
+    return decoded.exp < currentTime;
+  } catch (error) {
+    console.error('❌ Error checking token expiration:', error);
+    return true; // Consider expired on error
+  }
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -35,6 +70,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     initializeApp();
   }, []);
+
+  // Handle app state changes (background/foreground)
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      console.log('🔐 App state changed:', nextAppState);
+      
+      if (nextAppState === 'active' && !isAuthenticated) {
+        // App came to foreground and user is not authenticated
+        // Try to restore authentication state
+        console.log('🔐 App became active, checking for stored auth...');
+        checkAuthStatus();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [isAuthenticated]);
 
   const initializeApp = async () => {
     try {
@@ -49,13 +104,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('✅ Database already initialized, skipping...');
       }
       
-      // Then check authentication status with timeout
-      await Promise.race([
-        checkAuthStatus(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Authentication check timeout')), 10000) // 10 second timeout
-        )
-      ]);
+      // Then check authentication status with timeout and retry logic
+      let authCheckAttempts = 0;
+      const maxAuthAttempts = 3;
+      
+      while (authCheckAttempts < maxAuthAttempts) {
+        try {
+          console.log(`🔐 Auth check attempt ${authCheckAttempts + 1}/${maxAuthAttempts}`);
+          
+          await Promise.race([
+            checkAuthStatus(),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Authentication check timeout')), 15000) // 15 second timeout
+            )
+          ]);
+          
+          console.log('✅ Authentication check completed successfully');
+          break; // Success, exit the retry loop
+          
+        } catch (authError) {
+          authCheckAttempts++;
+          console.error(`❌ Authentication check attempt ${authCheckAttempts} failed:`, authError);
+          
+          if (authCheckAttempts >= maxAuthAttempts) {
+            console.error('❌ All authentication check attempts failed');
+            // On final failure, ensure loading is stopped
+            setIsLoading(false);
+          } else {
+            console.log(`⏳ Retrying authentication check in 2 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
     } catch (error) {
       console.error('❌ Error during app initialization:', error);
       // Continue with auth check even if DB fails
@@ -66,6 +146,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Ensure loading is stopped even if everything fails
         setIsLoading(false);
       }
+    }
+  };
+
+  /**
+   * Validate token with the backend
+   */
+  const validateToken = async (token: string): Promise<boolean> => {
+    try {
+      if (!token) {
+        console.log('🔐 No token provided for validation');
+        return false;
+      }
+
+      // First, do client-side validation to check if token is expired
+      if (isTokenExpired(token)) {
+        console.log('🔐 Token expired (client-side check)');
+        return false;
+      }
+
+      // For external APIs, we'll rely primarily on client-side validation
+      // and only attempt server validation if needed
+      console.log('🔐 Token appears valid (client-side check)');
+      
+      // Optionally try server validation, but don't fail if endpoint doesn't exist
+      try {
+        // Store the current auth header before setting the token
+        const originalAuth = apiClient.defaults.headers.common['Authorization'];
+        
+        // Set the token temporarily for this validation request
+        authApi.setAuthToken(token);
+        
+        // Call the verify endpoint (this might not exist in external APIs)
+        const response = await authApi.verifyToken();
+        
+        // Restore original auth token
+        if (originalAuth) {
+          apiClient.defaults.headers.common['Authorization'] = originalAuth;
+        } else {
+          delete apiClient.defaults.headers.common['Authorization'];
+        }
+
+        // Handle the new response format from the implemented backend
+        if (response && (response as any).data) {
+          if ((response as any).data.valid === true) {
+            console.log('🔐 Token validation successful (server-side)');
+            console.log('🔐 User info:', (response as any).data.user);
+            return true;
+          } else {
+            // Handle normalized error responses
+            const errorCode = (response as any).data.code;
+            console.log('🔐 Token validation failed (server-side):', {
+              code: errorCode,
+              message: (response as any).data.message
+            });
+            
+            // Handle specific error codes
+            if (errorCode === 'INVALID_TOKEN' || errorCode === 'NO_TOKEN') {
+              console.log('🔐 Token is invalid, clearing stored data');
+              return false;
+            } else if (errorCode === 'RATE_LIMITED') {
+              console.log('🔐 Rate limited, but token might still be valid');
+              // Don't clear tokens on rate limiting, just accept client-side validation
+              return !isTokenExpired(token);
+            } else {
+              console.log('🔐 Unknown error code, accepting token based on client-side validation');
+              return !isTokenExpired(token);
+            }
+          }
+        } else {
+          console.log('🔐 Invalid response format, using client-side validation');
+          return !isTokenExpired(token);
+        }
+      } catch (serverError) {
+        console.log('🔐 Server validation not available or failed, using client-side validation');
+        // If server validation fails (e.g., endpoint doesn't exist), 
+        // we'll accept the token if it passes client-side validation
+        return !isTokenExpired(token);
+      }
+    } catch (error) {
+      console.error('❌ Token validation error:', error);
+      return false;
     }
   };
 
@@ -86,29 +247,112 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       if (token && userData) {
-        const parsedUser = JSON.parse(userData);
-        setUser({ 
-          ...parsedUser, 
-          token,
-          azureToken: azureToken || undefined
-        });
+        console.log('🔐 Found stored token and user data, validating...');
         
-        if (__DEV__) {
-          console.log('🔐 User authenticated:', parsedUser.email);
+        // Validate the token before considering user authenticated
+        const isTokenValid = await validateToken(token);
+        
+        if (isTokenValid) {
+          console.log('🔐 Token validation successful, setting user as authenticated');
+          
+          // Try to get fresh user data from the verify endpoint
+          try {
+            const originalAuth = apiClient.defaults.headers.common['Authorization'];
+            authApi.setAuthToken(token);
+            const verifyResponse = await authApi.verifyToken();
+            
+            if (verifyResponse && (verifyResponse as any).data && (verifyResponse as any).data.valid === true) {
+              // Use fresh user data from the server
+              const freshUserData = (verifyResponse as any).data.user;
+              console.log('🔐 Using fresh user data from server:', freshUserData);
+              
+              setUser({ 
+                id: freshUserData.id,
+                name: freshUserData.name,
+                email: freshUserData.email,
+                token,
+                azureToken: azureToken || undefined
+              });
+              
+              // Update stored user data with fresh information
+              await AsyncStorage.setItem('userData', JSON.stringify({
+                id: freshUserData.id,
+                name: freshUserData.name,
+                email: freshUserData.email
+              }));
+            } else {
+              // Fall back to stored user data
+              const parsedUser = JSON.parse(userData);
+              setUser({ 
+                ...parsedUser, 
+                token,
+                azureToken: azureToken || undefined
+              });
+            }
+            
+            // Restore original auth header
+            if (originalAuth) {
+              apiClient.defaults.headers.common['Authorization'] = originalAuth;
+            } else {
+              delete apiClient.defaults.headers.common['Authorization'];
+            }
+          } catch (verifyError) {
+            console.log('🔐 Could not get fresh user data, using stored data');
+            // Fall back to stored user data
+            const parsedUser = JSON.parse(userData);
+            setUser({ 
+              ...parsedUser, 
+              token,
+              azureToken: azureToken || undefined
+            });
+          }
+          
+          if (__DEV__) {
+            console.log('🔐 User authenticated:', user?.email);
+          }
+          
+          // Set the API token for subsequent requests
+          authApi.setAuthToken(token);
+          
+          // Add a small delay to ensure state is properly set
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } else {
+          // Only clear tokens if they are definitely invalid (expired)
+          // Don't clear on network issues or server unavailability
+          console.log('🔐 Token validation failed, but keeping tokens for retry');
+          // Set user as null but don't clear stored tokens yet
+          setUser(null);
+          
+          if (__DEV__) {
+            console.log('🔐 User not authenticated, but tokens preserved');
+          }
         }
-        
-        // Set the API token for subsequent requests
-        authApi.setAuthToken(token);
-        
-        // Add a small delay to ensure state is properly set
-        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
+        console.log('🔐 No authentication data found, user not authenticated');
         if (__DEV__) {
           console.log('🔐 No authentication data found');
         }
       }
     } catch (error) {
       console.error('❌ Error checking auth status:', error);
+      
+      // Only clear auth data if it's a critical error, not just a network issue
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('timeout')) {
+        console.log('🔐 Auth check timeout, keeping existing auth state');
+        // Don't clear auth data on timeout, just continue with existing state
+      } else {
+        console.log('🔐 Critical auth error, clearing stored data...');
+        // On critical error, clear stored data to be safe
+        try {
+          await AsyncStorage.multiRemove(['authToken', 'azureToken', 'userData']);
+          authApi.setAuthToken('');
+          setUser(null);
+          console.log('🔐 Cleared auth data due to critical error');
+        } catch (clearError) {
+          console.error('❌ Error clearing auth data:', clearError);
+        }
+      }
     } finally {
       setIsLoading(false);
       if (__DEV__) {
@@ -176,7 +420,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('🔐 Azure AD authentication successful, starting token exchange...');
         
         // Step 2: Exchange Azure AD token for API token
-        const tokenExchangeResult = await authApi.exchangeToken(authResult.accessToken);
+        const userInfo = {
+          id: authResult.account.identifier,
+          name: authResult.account.name,
+          email: authResult.account.username
+        };
+        
+        console.log('🔐 User info for token exchange:', userInfo);
+        const tokenExchangeResult = await authApi.exchangeToken(authResult.accessToken, userInfo);
+        
+        console.log('🔐 Token exchange result received:', {
+          success: (tokenExchangeResult as any).success,
+          hasData: !!(tokenExchangeResult as any).data,
+          hasToken: !!(tokenExchangeResult as any).data?.token,
+          message: (tokenExchangeResult as any).message
+        });
         
         if ((tokenExchangeResult as any).success && (tokenExchangeResult as any).data?.token) {
         const azureUser: User = {
@@ -257,7 +515,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     loginWithAzure,
     logout,
-    checkAuthStatus
+    checkAuthStatus,
+    validateToken
   };
 
   return (
