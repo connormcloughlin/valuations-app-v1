@@ -30,12 +30,9 @@ interface StatsCardsProps {
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
-  console.log('📊 StatsCards: COMPONENT FUNCTION CALLED - TOP OF FUNCTION');
-  
   const { isAuthenticated, user, isLoading } = useAuth();
   const { setRefreshStats } = useDashboard();
   
-  console.log('📊 StatsCards: Component rendered, isAuthenticated:', isAuthenticated, 'isLoading:', isLoading, 'user:', !!user);
   const [stats, setStats] = useState<StatsData>({
     scheduled: 0,
     inProgress: 0,
@@ -111,7 +108,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
           })
         };
         
-        console.log('📊 StatsCards: Setting new stats:', newStats);
         setStats(newStats);
       } else {
         console.error('❌ Failed to load dashboard stats:', response?.data?.message || 'Unknown error');
@@ -125,53 +121,19 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
   
   // Add a function to manually refresh stats  
   const refreshStats = useCallback(() => {
-    console.log('🔄 Manually refreshing dashboard stats...');
+    console.log('🔄 Refreshing dashboard stats...');
     statsFetchedRef.current = false; // Allow fetching again
     setLoading(true); // Show loading state
     fetchStats();
   }, [fetchStats]);
 
-  // Debug: Log when the refresh function is created
-  console.log('📊 StatsCards: refreshStats function created:', typeof refreshStats);
-
   // Register the refresh function globally
   useEffect(() => {
-    console.log('📊 StatsCards: Registering refresh function globally');
     setGlobalRefreshFunction(refreshStats);
-    console.log('📊 StatsCards: Refresh function registered globally');
   }, [refreshStats]);
-
-  // Debug: Log when component mounts
-  useEffect(() => {
-    console.log('📊 StatsCards: Component mounted');
-  }, []);
-
-  useEffect(() => {
-    // Don't do anything while auth is still loading
-    if (isLoading) {
-      console.log('⏳ Auth still loading, waiting...');
-      setWaitingForAuth(true);
-      setLoading(false);
-      return;
-    }
-
-    // Only fetch stats if user is authenticated, auth loading is complete, and stats haven't been fetched yet
-    if (isAuthenticated && user && !isLoading && !statsFetchedRef.current) {
-      console.log('🔐 User authenticated, fetching dashboard stats...');
-      setWaitingForAuth(false);
-      statsFetchedRef.current = true;
-      fetchStats();
-    } else if (!isAuthenticated || !user) {
-      console.log('⏳ Waiting for authentication before fetching dashboard stats...');
-      setWaitingForAuth(true);
-      setLoading(false);
-      statsFetchedRef.current = false; // Reset when user logs out
-    }
-  }, [isAuthenticated, user, isLoading, fetchStats]);
 
   // Don't render anything if auth is still loading or not authenticated
   if (isLoading || !isAuthenticated || !user) {
-    console.log('📊 StatsCards: Early return - isLoading:', isLoading, 'isAuthenticated:', isAuthenticated, 'user:', !!user);
     return null;
   }
 
@@ -217,10 +179,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     </Card>
   );
 
-  console.log('📊 StatsCards: Rendering UI, loading:', loading, 'waitingForAuth:', waitingForAuth);
-  console.log('📊 StatsCards: Current stats state:', stats);
-  console.log('📊 StatsCards: About to render JSX, all hooks should have executed by now');
-  
   return (
     <View style={statsCardsStyles.cardsContainer}>
       {renderCard('Booked', waitingForAuth ? 'Auth...' : (loading ? '...' : stats.scheduled), 'calendar-clock', '#4a90e2', 'scheduled')}

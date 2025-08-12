@@ -16,18 +16,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [refreshAppointments, setRefreshAppointments] = useState<(() => void) | undefined>(undefined);
   const [refreshSurveys, setRefreshSurveys] = useState<(() => void) | undefined>(undefined);
 
-  // Debug: Log when context is created
-  console.log('📊 DashboardProvider: Context created, refreshStats:', typeof refreshStats);
-
   const contextValue: DashboardContextType = {
     refreshStats,
     refreshAppointments,
     refreshSurveys,
-    setRefreshStats: (fn: (() => void) | undefined) => {
-      console.log('📊 DashboardProvider: setRefreshStats called with function type:', typeof fn);
-      setRefreshStats(fn);
-      console.log('📊 DashboardProvider: setRefreshStats state updated, new value type:', typeof fn);
-    },
+    setRefreshStats,
     setRefreshAppointments,
     setRefreshSurveys,
   };
@@ -44,6 +37,5 @@ export function useDashboard() {
   if (context === undefined) {
     throw new Error('useDashboard must be used within a DashboardProvider');
   }
-  console.log('📊 useDashboard: Context retrieved, setRefreshStats type:', typeof context.setRefreshStats);
   return context;
 } 

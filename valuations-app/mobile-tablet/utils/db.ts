@@ -69,7 +69,6 @@ export async function initializeDatabase() {
     
     // Close existing connection if any
     if (db) {
-      console.log('🔄 Closing existing database connection...');
       await db.closeAsync();
       db = null;
       isDbReady = false;
@@ -84,7 +83,7 @@ export async function initializeDatabase() {
     
     // Mark database as ready
     isDbReady = true;
-    console.log('✅ Database initialization completed successfully');
+    console.log('✅ Database initialized');
     
     return db;
   } catch (error) {
@@ -153,7 +152,7 @@ export async function runSql(sql: string, params: any[] = []): Promise<SQLiteRes
 // Create all tables
 export async function createTables() {
   try {
-    console.log('🔧 Starting database table creation...');
+    console.log('🗄️ Creating database tables...');
     
     // Use the db variable that should be set by initializeDatabase
     if (!db) {
@@ -161,7 +160,6 @@ export async function createTables() {
     }
     
     // Create tables using execAsync for DDL operations
-    console.log('Creating appointments table...');
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS appointments (
         appointmentID INTEGER PRIMARY KEY,
@@ -185,7 +183,6 @@ export async function createTables() {
       );
     `);
     
-    console.log('Creating risk_assessment_master table...');
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS risk_assessment_master (
         riskassessmentid INTEGER PRIMARY KEY,
@@ -199,7 +196,6 @@ export async function createTables() {
       );
     `);
     
-    console.log('Creating risk_assessment_items table...');
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS risk_assessment_items (
         riskassessmentitemid INTEGER PRIMARY KEY,
@@ -234,7 +230,6 @@ export async function createTables() {
       );
     `);
     
-    console.log('Creating media_files table...');
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS media_files (
         MediaID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,79 +248,45 @@ export async function createTables() {
     `);
     
     // Create performance indexes
-    console.log('Creating database indexes for performance...');
-    
-    // Index for risk assessment items by category (most common query)
     await db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_risk_items_category 
       ON risk_assessment_items(riskassessmentcategoryid);
     `);
     
-    // Index for risk assessment items by appointment
     await db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_risk_items_appointment 
       ON risk_assessment_items(appointmentid);
     `);
     
-    // Index for pending sync items (sync operations)
     await db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_risk_items_pending_sync 
       ON risk_assessment_items(pending_sync);
     `);
     
-    // Index for appointments by status (dashboard queries)
     await db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_appointments_status 
       ON appointments(inviteStatus);
     `);
     
-    // Index for appointments by order ID
     await db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_appointments_order 
       ON appointments(orderID);
     `);
     
-    // Index for media files by entity
     await db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_media_entity 
       ON media_files(EntityName, EntityID);
     `);
     
-    console.log('✅ Database indexes created successfully');
-
-    // Verify tables were created
-    console.log('Verifying tables...');
-    const tablesResult = await db.getAllAsync("SELECT name FROM sqlite_master WHERE type='table'");
-    console.log('Tables in database:', tablesResult);
-    
-    // Test database access
-    console.log('Testing database access...');
-    // Ensure no duplicate test record
-    await db.runAsync('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = 0');
-    await db.runAsync(
-      `INSERT INTO risk_assessment_items (
-        riskassessmentitemid,
-        riskassessmentcategoryid,
-        itemprompt,
-        itemtype,
-        rank
-      ) VALUES (?, ?, ?, ?, ?)`,
-      [0, 0, 'TEST', 1, 1]
-    );
-    
-    const testSelectResult = await db.getAllAsync('SELECT * FROM risk_assessment_items WHERE riskassessmentitemid = 0');
-    console.log('Test record:', testSelectResult);
-    
-    await db.runAsync('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = 0');
+    console.log('✅ Database tables and indexes created');
     
     // Run migrations
-    console.log('Running database migrations...');
     await migrateDatabase();
     
-    console.log('✅ Database initialization completed successfully');
+    console.log('✅ Database initialization completed');
     
   } catch (error) {
-    console.error('Error creating database tables:', error);
+    console.error('❌ Error creating database tables:', error);
     // Don't throw the error, just log it and continue
     console.log('Continuing despite table creation error');
   }
@@ -334,32 +295,27 @@ export async function createTables() {
 // Add migration function
 export async function migrateDatabase() {
   try {
-    console.log('Starting database migration...');
-    
     if (!db) {
       throw new Error('Database not initialized');
     }
 
     // Check if appointmentid column exists using execAsync
     const tableInfo = await db.getAllAsync("PRAGMA table_info(risk_assessment_items)") as Array<{ name: string }>;
-    console.log('Table info:', tableInfo);
     
     const hasAppointmentId = tableInfo.some(col => col.name === 'appointmentid');
-    console.log('Has appointmentid column:', hasAppointmentId);
     
     if (!hasAppointmentId) {
-      console.log('Adding appointmentid column to risk_assessment_items table...');
+      console.log('🔄 Adding appointmentid column to risk_assessment_items...');
       await db.execAsync('ALTER TABLE risk_assessment_items ADD COLUMN appointmentid TEXT');
-      console.log('Successfully added appointmentid column');
+      console.log('✅ appointmentid column added');
     } else {
-      console.log('appointmentid column already exists');
+      console.log('ℹ️ appointmentid column already exists');
     }
     
-    console.log('Database migration completed successfully');
+    console.log('✅ Database migration completed');
   } catch (error) {
-    console.error('Error during database migration:', error);
-    // Don't throw the error, just log it and continue
-    console.log('Continuing despite migration error');
+    console.error('❌ Database migration error:', error);
+    throw error;
   }
 }
 

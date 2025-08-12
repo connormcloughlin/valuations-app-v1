@@ -73,7 +73,7 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
         console.log('✅ Using cached in-progress surveys data');
         setSurveys(cachedData.data);
         setLoading(false);
-        // Continue to fetch fresh data in background
+        return; // Exit early if we have valid cached data
       }
       
       console.log('Fetching in-progress surveys from API...');

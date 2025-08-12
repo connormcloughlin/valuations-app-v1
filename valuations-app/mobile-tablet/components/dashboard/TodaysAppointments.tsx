@@ -87,7 +87,7 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
         console.log('✅ Using cached today\'s appointments data');
         setAppointments(cachedData.data);
         setLoading(false);
-        // Continue to fetch fresh data in background
+        return; // Exit early if we have valid cached data
       }
       
       console.log('Fetching today\'s appointments:', { startDateFrom, startDateTo });
@@ -117,7 +117,7 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
         console.log(`Found ${todaysAppointments.length} appointments for today`);
         setAppointments(todaysAppointments);
         
-        // Cache the fresh data
+        // Cache the fresh data only once
         console.log('💾 Caching today\'s appointments data...');
         await storeDataForKey(cacheKey, todaysAppointments);
       } else {

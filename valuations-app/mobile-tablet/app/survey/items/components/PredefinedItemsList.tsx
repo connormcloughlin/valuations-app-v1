@@ -515,24 +515,31 @@ export default function PredefinedItemsList({
     }));
 
     // Debounced auto-save to prevent excessive saves and accordion collapse
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
+    // For dropdowns we avoid immediate auto-save here and rely on explicit blur or batch save to prevent stale reads
+    const isDropdownField = fieldName === 'selectedanswer';
+    if (!isDropdownField) {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+      autoSaveTimeoutRef.current = setTimeout(() => {
+        console.log('🔄 handleEdit: calling autoSaveItem for', itemId, fieldName, value);
+        autoSaveItem(itemId);
+      }, 2000); // 2 second delay to prevent immediate saves
+    } else {
+      // Immediate save for dropdowns with explicit override to avoid stale state
+      autoSaveItem(itemId, { [fieldName]: value });
     }
-    autoSaveTimeoutRef.current = setTimeout(() => {
-      console.log('🔄 handleEdit: calling autoSaveItem for', itemId, fieldName, value);
-      autoSaveItem(itemId);
-    }, 2000); // 2 second delay to prevent immediate saves
   };
 
   // Auto-save function that saves changes to SQLite
-  const autoSaveItem = async (id: string) => {
+  const autoSaveItem = async (id: string, overrideChanges?: { [key: string]: any }) => {
     console.log('🔄 [autoSaveItem] Called for item:', id);
     const item = items.find(i => String(i.id) === String(id));
       if (!item) {
       console.error('❌ [autoSaveItem] No item found in local state for id:', id);
         return;
       }
-    const changes = editItems[id] || {};
+    const changes = overrideChanges ?? (editItems[id] || {});
     console.log('🔄 [autoSaveItem] Changes to save:', changes);
 
     // Import database functions
@@ -560,6 +567,16 @@ export default function PredefinedItemsList({
       };
       console.log('🔄 [autoSaveItem] updateRiskAssessmentItem called with:', updated);
       await updateRiskAssessmentItem(updated);
+      // For dropdowns, ensure the updated value is reflected in local state as soon as DB save completes
+      if (changes.selectedanswer !== undefined) {
+        setItems(prevItems =>
+          prevItems.map(prevItem =>
+            String(prevItem.id) === id
+              ? { ...prevItem, selectedanswer: changes.selectedanswer }
+              : prevItem
+          )
+        );
+      }
     } else {
       // Insert new item (for custom-new- or duplicate- items)
       console.log('🔄 [autoSaveItem] Inserting new item:', id);
@@ -646,6 +663,17 @@ export default function PredefinedItemsList({
       // For new items, use the new SQLite ID if it was created
       const finalId = id; // Use the original ID, the auto-save logic above handles ID updates
       setAutoSavedItems(prev => ({ ...prev, [finalId]: true }));
+
+      // Ensure local UI reflects selectedanswer immediately if it changed
+      if (changes.selectedanswer !== undefined) {
+        setItems(prevItems =>
+          prevItems.map(prevItem =>
+            String(prevItem.id) === id
+              ? { ...prevItem, selectedanswer: changes.selectedanswer }
+              : prevItem
+          )
+        );
+      }
 
       // Only update pending changes count for real IDs (not temporary ones)
       if (!id.startsWith('custom-new-') && !id.startsWith('duplicate-')) {
@@ -1061,44 +1089,52 @@ export default function PredefinedItemsList({
   // Group items by strategy configuration - supports both single-tier and 2-tier grouping
   // CRITICAL: We only depend on 'items', NOT 'editItems' to prevent re-grouping while user types
   const groupedItems = useMemo(() => {
-    console.log('🔧 DEBUG: groupedItems useMemo triggered');
-    console.log('🔧 DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
-    console.log('🔧 DEBUG: Items count for grouping:', items.length);
-    console.log('🔧 DEBUG: Items for grouping:', items.map(item => ({ id: item.id, type: item.type, room: item.room })));
+    if (__DEV__) {
+      console.log('🔧 DEBUG: groupedItems useMemo triggered');
+      console.log('🔧 DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
+      console.log('🔧 DEBUG: Items count for grouping:', items.length);
+      console.log('🔧 DEBUG: Items for grouping:', items.map(item => ({ id: item.id, type: item.type, room: item.room })));
+    }
     
     // If no grouping strategy is provided, return items without grouping
     if (!groupingStrategy?.strategy_type) {
-      console.log('🔧 No grouping strategy found - returning items without grouping');
-      console.log('🔧 groupingStrategy object:', groupingStrategy);
+      if (__DEV__) {
+        console.log('🔧 No grouping strategy found - returning items without grouping');
+        console.log('🔧 groupingStrategy object:', groupingStrategy);
+      }
       return null; // Signal that no grouping should be applied
     }
     
     // Require explicit grouping strategy configuration
     const effectiveGroupingStrategy = groupingStrategy.strategy_type;
     
-    console.log('🔧 Grouping items using strategy:', effectiveGroupingStrategy);
+    if (__DEV__) console.log('🔧 Grouping items using strategy:', effectiveGroupingStrategy);
     
     // Check if we have a 2-tier grouping strategy configured
     const strategyConfig = groupingStrategy?.strategy_config;
-    console.log('🔧 Raw strategy config:', strategyConfig);
-    console.log('🔧 Strategy type:', effectiveGroupingStrategy);
+    if (__DEV__) {
+      console.log('🔧 Raw strategy config:', strategyConfig);
+      console.log('🔧 Strategy type:', effectiveGroupingStrategy);
+    }
     
     // Handle both string (legacy) and object (new) types for strategy_config
     let parsedConfig: any = null;
     try {
       parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
     } catch (error) {
-      console.warn('🔧 Error parsing strategy config:', error);
+      if (__DEV__) console.warn('🔧 Error parsing strategy config:', error);
       parsedConfig = null;
     }
     
     const hasTwoTierGrouping = parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group;
     
-    console.log('🔧 Parsed config:', parsedConfig);
-    console.log('🔧 Has two-tier grouping:', hasTwoTierGrouping);
+    if (__DEV__) {
+      console.log('🔧 Parsed config:', parsedConfig);
+      console.log('🔧 Has two-tier grouping:', hasTwoTierGrouping);
+    }
     
     if (hasTwoTierGrouping) {
-      console.log('🔧 Using 2-tier grouping:', parsedConfig.primary_group, '->', parsedConfig.secondary_group);
+      if (__DEV__) console.log('🔧 Using 2-tier grouping:', parsedConfig.primary_group, '->', parsedConfig.secondary_group);
     
       // Create nested structure for 2-tier grouping
       const nestedGroups: NestedGroups = {};
@@ -1783,23 +1819,27 @@ export default function PredefinedItemsList({
       .filter(field => !groupingFields.includes(field.item_fields)) // Exclude grouping fields
       .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     
-    console.log('🔍 Visible fields being rendered:', visibleFields.map(f => f.item_fields));
-    console.log('🔍 Grouping fields being excluded:', groupingFields);
+    if (__DEV__) {
+      console.log('🔍 Visible fields being rendered:', visibleFields.map(f => f.item_fields));
+      console.log('🔍 Grouping fields being excluded:', groupingFields);
+    }
     
     // Debug: Check items for commaseparatedlist values
     const itemsWithCommaList = items.filter(item => item.commaseparatedlist);
     
     // Debug: Check if rank field is in dynamic field config
     const rankField = dynamicFieldConfig?.find(field => field.item_fields === 'rank');
-    console.log('🔍 Rank field in dynamic config:', rankField);
-    console.log('🔍 All dynamic field config fields:', dynamicFieldConfig?.map(f => f.item_fields));
+    if (__DEV__) {
+      console.log('🔍 Rank field in dynamic config:', rankField);
+      console.log('🔍 All dynamic field config fields:', dynamicFieldConfig?.map(f => f.item_fields));
+    }
 
     const renderField = (field: any) => {
       const fieldName = field.item_fields;
       
       // Process commaseparatedlist for selectedanswer field
       if (fieldName === 'selectedanswer' && item.commaseparatedlist) {
-        console.log('🎯 Processing commaseparatedlist for selectedanswer field:', item.commaseparatedlist);
+        if (__DEV__) console.log('🎯 Processing commaseparatedlist for selectedanswer field:', item.commaseparatedlist);
         
         // Parse the comma-separated list and create dropdown options
         const commaSeparatedOptions = item.commaseparatedlist.split(',').map(option => option.trim()).filter(option => option.length > 0);
@@ -1819,12 +1859,14 @@ export default function PredefinedItemsList({
             field_type: 'dropdown' // Use dropdown to match InlineDropdown
           };
           
-          console.log('🎯 Enhanced selectedanswer field with dropdown options:', {
-            originalFieldType: field.field_type,
-            enhancedFieldType: enhancedField.field_type,
-            dropdownOptionsCount: enhancedField.dropdownOptions.length,
-            dropdownOptions: enhancedField.dropdownOptions
-          });
+          if (__DEV__) {
+            console.log('🎯 Enhanced selectedanswer field with dropdown options:', {
+              originalFieldType: field.field_type,
+              enhancedFieldType: enhancedField.field_type,
+              dropdownOptionsCount: enhancedField.dropdownOptions.length,
+              dropdownOptions: enhancedField.dropdownOptions
+            });
+          }
           
           // Use the enhanced field for rendering
           field = enhancedField;
@@ -1835,7 +1877,7 @@ export default function PredefinedItemsList({
       let renderField = { ...field };
       
       // Debug logging for selectedanswer field
-      if (fieldName === 'selectedanswer') {
+      if (__DEV__ && fieldName === 'selectedanswer') {
         console.log('🎯 Processing selectedanswer field for item:', item.id, {
           hasCommaseparatedlist: !!item.commaseparatedlist,
           commaseparatedlistValue: item.commaseparatedlist,
@@ -1857,11 +1899,13 @@ export default function PredefinedItemsList({
           case 'notes': return item.notes || '';
           case 'type': return item.type || '';
           case 'selectedanswer': 
-            console.log(`🔍 [getFieldValue] selectedanswer for item ${itemId}:`, {
-              itemSelectedAnswer: item.selectedanswer,
-              itemId: item.id,
-              itemType: typeof item.selectedanswer
-            });
+            if (__DEV__) {
+              console.log(`🔍 [getFieldValue] selectedanswer for item ${itemId}:`, {
+                itemSelectedAnswer: item.selectedanswer,
+                itemId: item.id,
+                itemType: typeof item.selectedanswer
+              });
+            }
             return item.selectedanswer || '';
           default: return '';
         }
@@ -1871,7 +1915,7 @@ export default function PredefinedItemsList({
       const fieldError = itemErrors.find(e => e.fieldName === fieldName);
       
       // Debug logging for selectedanswer field rendering
-      if (fieldName === 'selectedanswer') {
+      if (__DEV__ && fieldName === 'selectedanswer') {
         console.log('🎯 Rendering selectedanswer field with:', {
           fieldType: field.field_type,
           currentValue,
@@ -1903,7 +1947,12 @@ export default function PredefinedItemsList({
                 itemPhotos={itemPhotos}
                 onTakePhoto={handleViewPhotos}
                 hideLabel={true}
-                onBlur={() => autoSaveItem(itemId)}
+                // Avoid firing onBlur auto-save for dropdowns to prevent stale value saves
+                onBlur={() => {
+                  if (fieldName !== 'selectedanswer') {
+                    autoSaveItem(itemId);
+                  }
+                }}
                 // Add data attributes for focus restoration
                 dataAttributes={{
                   'data-item-id': itemId,
@@ -1925,7 +1974,11 @@ export default function PredefinedItemsList({
             itemPhotos={itemPhotos}
             onTakePhoto={handleViewPhotos}
             hideLabel={true}
-            onBlur={() => autoSaveItem(itemId)}
+            onBlur={() => {
+              if (fieldName !== 'selectedanswer') {
+                autoSaveItem(itemId);
+              }
+            }}
             // Add data attributes for focus restoration
             dataAttributes={{
               'data-item-id': itemId,

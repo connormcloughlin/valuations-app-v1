@@ -110,40 +110,12 @@ const isRetryableError = (error) => {
 // Add request interceptor for logging
 apiClient.interceptors.request.use(
   (config) => {
-    // Log the complete request details
+    // Only log essential request information
     const fullUrl = `${config.baseURL}${config.url}`;
-    console.log('🚀 Making API request:');
-    console.log('🚀 Full URL:', fullUrl);
-    console.log('🚀 Method:', config.method?.toUpperCase());
-    console.log('🚀 Headers:', {
-      'Content-Type': config.headers['Content-Type'],
-      'Authorization': config.headers['Authorization'] ? 'Bearer [TOKEN]' : 'None',
-      'Accept': config.headers['Accept']
-    });
-    console.log('🚀 Timeout:', config.timeout);
     
-    // Special logging for verify endpoint
-    if (config.url === '/auth/verify') {
-      console.log('🔐 === VERIFY ENDPOINT REQUEST ===');
-      console.log('🔐 Complete URL:', fullUrl);
-      console.log('🔐 Request Method:', config.method?.toUpperCase());
-      console.log('🔐 Request Headers:', JSON.stringify(config.headers, null, 2));
-      console.log('🔐 Request Data:', config.data);
-      console.log('🔐 Request Params:', config.params);
-      console.log('🔐 Request Timeout:', config.timeout);
-      console.log('🔐 === END VERIFY REQUEST ===');
-    }
-    
-    // Special logging for token exchange endpoint
-    if (config.url === '/auth/token-exchange') {
-      console.log('🔄 === TOKEN EXCHANGE ENDPOINT REQUEST ===');
-      console.log('🔄 Complete URL:', fullUrl);
-      console.log('🔄 Request Method:', config.method?.toUpperCase());
-      console.log('🔄 Request Headers:', JSON.stringify(config.headers, null, 2));
-      console.log('🔄 Request Data:', config.data ? JSON.stringify(config.data, null, 2) : 'null');
-      console.log('🔄 Request Params:', config.params);
-      console.log('🔄 Request Timeout:', config.timeout);
-      console.log('🔄 === END TOKEN EXCHANGE REQUEST ===');
+    // Special logging for auth endpoints only
+    if (config.url === '/auth/verify' || config.url === '/auth/token-exchange') {
+      console.log(`🚀 ${config.method?.toUpperCase()}: ${fullUrl}`);
     }
     
     return config;
@@ -223,38 +195,9 @@ apiClient.interceptors.request.use(
 // Add response interceptor for standardizing responses
 apiClient.interceptors.response.use(
   (response) => {
-    // Only log details for non-GET requests or errors in production
-    const shouldLogDetails = response.config.method !== 'get' || __DEV__;
-    
-    if (shouldLogDetails) {
-      const dataSize = Array.isArray(response.data) ? response.data.length : 
-                      response.data ? Object.keys(response.data).length : 0;
-      console.log(`✅ ${response.status}: ${response.config.url} (${dataSize} items)`);
-      
-      // For sync responses, show detailed data
-      if (response.config.url?.includes('/sync/')) {
-        console.log('✅ Sync Response Data:', JSON.stringify(response.data, null, 2));
-      }
-    }
-    
-    // Special logging for verify endpoint responses
-    if (response.config.url === '/auth/verify') {
-      console.log('🔐 === VERIFY ENDPOINT RESPONSE ===');
-      console.log('🔐 Response Status:', response.status);
-      console.log('🔐 Response Status Text:', response.statusText);
-      console.log('🔐 Response Headers:', JSON.stringify(response.headers, null, 2));
-      console.log('🔐 Response Data:', JSON.stringify(response.data, null, 2));
-      console.log('🔐 === END VERIFY RESPONSE ===');
-    }
-    
-    // Special logging for token exchange endpoint responses
-    if (response.config.url === '/auth/token-exchange') {
-      console.log('🔄 === TOKEN EXCHANGE ENDPOINT RESPONSE ===');
-      console.log('🔄 Response Status:', response.status);
-      console.log('🔄 Response Status Text:', response.statusText);
-      console.log('🔄 Response Headers:', JSON.stringify(response.headers, null, 2));
-      console.log('🔄 Response Data:', JSON.stringify(response.data, null, 2));
-      console.log('🔄 === END TOKEN EXCHANGE RESPONSE ===');
+    // Only log essential response information for auth endpoints
+    if (response.config.url === '/auth/verify' || response.config.url === '/auth/token-exchange') {
+      console.log(`✅ ${response.status}: ${response.config.url}`);
     }
     
     // For successful responses, wrap in standard format
@@ -265,29 +208,9 @@ apiClient.interceptors.response.use(
     };
   },
   async (error) => {
-    // Special logging for verify endpoint errors
-    if (error.config?.url === '/auth/verify') {
-      console.log('🔐 === VERIFY ENDPOINT ERROR ===');
-      console.log('🔐 Error Status:', error.response?.status);
-      console.log('🔐 Error Status Text:', error.response?.statusText);
-      console.log('🔐 Error Headers:', JSON.stringify(error.response?.headers, null, 2));
-      console.log('🔐 Error Data:', JSON.stringify(error.response?.data, null, 2));
-      console.log('🔐 Error Code:', error.code);
-      console.log('🔐 Error Message:', error.message);
-      console.log('🔐 === END VERIFY ERROR ===');
-    }
-    
-    // Special logging for token exchange endpoint errors
-    if (error.config?.url === '/auth/token-exchange') {
-      console.log('🔄 === TOKEN EXCHANGE ENDPOINT ERROR ===');
-      console.log('🔄 Error Status:', error.response?.status);
-      console.log('🔄 Error Status Text:', error.response?.statusText);
-      console.log('🔄 Error Headers:', JSON.stringify(error.response?.headers, null, 2));
-      console.log('🔄 Error Data:', JSON.stringify(error.response?.data, null, 2));
-      console.log('🔄 Error Code:', error.code);
-      console.log('🔄 Error Message:', error.message);
-      console.log('🔄 Error Config:', JSON.stringify(error.config, null, 2));
-      console.log('🔄 === END TOKEN EXCHANGE ERROR ===');
+    // Only log essential error information for auth endpoints
+    if (error.config?.url === '/auth/verify' || error.config?.url === '/auth/token-exchange') {
+      console.log(`❌ ${error.response?.status || 'No status'}: ${error.config?.url} - ${error.message}`);
     }
     
     // Handle 404s more gracefully for "no content" scenarios
@@ -309,8 +232,6 @@ apiClient.interceptors.response.use(
         };
       }
     }
-    
-    console.log(`❌ ${error.response?.status || 'No status'}: ${error.config?.url || 'No URL'} - ${error.message}`);
     
     // Handle rate limiting
     if (error.response?.status === 429) {
@@ -432,4 +353,4 @@ apiClient.interceptors.response.use(
   }
 );
 
-export default apiClient; 
+export default apiClient;

@@ -145,6 +145,9 @@ export default function DynamicFieldRenderer({
   const isRequired = field.is_required || false;
   const hasError = validationError?.fieldName === fieldName;
 
+  // Toggle for verbose debug logging inside this component
+  const DEBUG_DFR_VERBOSE = true;
+
   const renderFieldByType = () => {
     // Special handling for photo fields
     if (fieldName === 'photos' && itemId && onTakePhoto) {
@@ -152,7 +155,7 @@ export default function DynamicFieldRenderer({
     }
     
     // Special debugging for selectedanswer field
-    if (fieldName === 'selectedanswer') {
+    if (DEBUG_DFR_VERBOSE && fieldName === 'selectedanswer') {
       console.log(`🎯 selectedanswer field in DynamicFieldRenderer:`, {
         fieldType: field.field_type,
         dropdownOptions: field.dropdownOptions,
