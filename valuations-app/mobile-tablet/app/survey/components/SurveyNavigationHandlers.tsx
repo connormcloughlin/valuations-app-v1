@@ -8,7 +8,9 @@ interface NavigationHandlersProps {
 
 export const useSurveyNavigation = ({ survey, surveyId }: NavigationHandlersProps) => {
   const navigateToCategory = (categoryId: string, categoryName: string, riskTemplateCategoryId?: number) => {
-    console.log('🚀 Navigating to category:', { categoryId, categoryName, riskTemplateCategoryId });
+    if (__DEV__) {
+      console.log('🚀 Navigating to category:', { categoryId, categoryName, riskTemplateCategoryId });
+    }
     router.push({
       pathname: '/survey/items',
       params: { 

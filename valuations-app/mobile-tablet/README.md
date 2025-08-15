@@ -1,132 +1,247 @@
-# Welcome to your Expo app 👋
+# Valuations Mobile Tablet App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A React Native/Expo application designed for property valuers to conduct risk assessments and property valuations in the field. The app provides offline capabilities, real-time synchronization, and a comprehensive survey system.
 
-## Get started
+## 🚀 Quick Start
 
-1. Install dependencies
+### Prerequisites
+- Node.js 18+ and npm 9+
+- Expo CLI: `npm install -g @expo/cli`
+- Platform-specific tools (Xcode for iOS, Android Studio for Android)
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-    npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+### Installation
 ```bash
-npm run reset-project
+# Clone the repository
+git clone <repository-url>
+cd valuations-app/mobile-tablet
+
+# Install dependencies
+npm install
+
+# Set environment
+export APP_ENV=development
+
+# Start development server
+npm start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Platform Setup
+```bash
+# iOS
+npx expo run:ios
 
-## Learn more
+# Android
+npx expo run:android
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
-
-# Valuations App - Offline Support
-
-This document provides information about the offline support implementation in the Valuations App.
-
-## Overview
-
-The app has been enhanced with offline capabilities for risk template APIs, allowing users to:
-
-1. View and interact with risk templates, sections, categories, and items when offline
-2. Cache API responses for offline use
-3. See visual indicators of network status
-4. Automatically fall back to cached data when API calls fail
-
-## Required Dependencies
-
-The implementation uses built-in React Native features and AsyncStorage, which is already included in the project:
-
-- `@react-native-async-storage/async-storage` - For local storage of API data
-
-No additional dependencies are needed for this implementation.
-
-## How Offline Support Works
-
-### 1. Network Monitoring
-
-- The app periodically checks connectivity status
-- A visual indicator shows when the app is offline
-- Network status is checked by attempting to make a simple HTTP request
-
-### 2. Data Caching
-
-- All API responses are cached locally using AsyncStorage
-- Cache includes risk templates, sections, categories, and items
-- Each cached item includes a timestamp to track freshness
-
-### 3. Offline Data Retrieval
-
-- When online, the app fetches fresh data and updates the cache
-- When API calls fail (due to being offline or server issues), the app automatically uses cached data
-- API functions transparently handle this offline/online switching
-
-### 4. User Experience
-
-- Users see a banner when offline
-- The UI adapts to show when cached data is being used
-- Critical functions remain available even without network access
-
-## Implementation Details
-
-The main components of the offline implementation are:
-
-1. **API Layer (api/index.ts)** - Enhanced API functions with offline fallback logic
-   - Each API call attempts to fetch from the server first
-   - If the call fails, it automatically tries to retrieve from the local cache
-   - Successful API responses are cached for future offline use
-
-2. **Connection Status (connectionUtils.ts)** - Utility for checking network connectivity
-   - Uses a lightweight ping approach instead of relying on third-party packages
-   - Periodically checks connection status to keep UI updated
-
-3. **Connection Indicator (ConnectionStatus.tsx)** - UI component for displaying network status
-   - Shows a banner indicating online/offline status
-   - Automatically updates when connectivity changes
-
-## Clearing Cached Data
-
-For testing or troubleshooting, you can clear the cached data with the following code:
-
-```javascript
-import api from './api';
-
-// Clear all cached API data
-api.clearAllCachedData();
+# Web
+npx expo start --web
 ```
 
-## Benefits of This Approach
+## 📚 Documentation
 
-1. **No Additional Dependencies** - Uses only AsyncStorage which is already in the project
-2. **Simple Implementation** - Easier to maintain than solutions with multiple dependencies
-3. **Error Resilience** - Handles both offline scenarios and API errors the same way
-4. **Automatic Caching** - All API calls are automatically cached for offline use
+### Core Documentation
+- **[Project Documentation](PROJECT_DOCUMENTATION.md)** - Comprehensive project overview, architecture, and development guidelines
+- **[Development Setup](DEVELOPMENT_SETUP.md)** - Complete setup guide and development workflow
+- **[Cursor Consistency Rules](CURSOR_CONSISTENCY_RULES.md)** - Code standards and consistency guidelines
+- **[Migration Guide](MIGRATION_GUIDE.md)** - GlobalStyles migration and theme system
+
+### Key Features
+- **Offline-First Design**: Works without internet connectivity
+- **Real-time Sync**: Synchronizes data when connection is restored
+- **Dynamic UI**: Configurable survey forms and field types
+- **Media Support**: Photo capture and handwriting recognition
+- **Azure AD Integration**: Enterprise authentication
+- **Cross-Platform**: iOS and Android support
+
+## 🏗️ Architecture
+
+### Technology Stack
+- **React Native**: 0.79.3
+- **Expo**: 53.0.11
+- **TypeScript**: 5.8.3
+- **React**: 19.0.0
+- **Navigation**: Expo Router 5.1.0
+- **Authentication**: react-native-msal 4.0.4
+- **Storage**: @react-native-async-storage/async-storage 2.1.2
+- **Database**: expo-sqlite 15.2.12
+
+### Project Structure
+```
+valuations-app/mobile-tablet/
+├── app/                          # Expo Router app directory
+├── components/                   # Reusable UI components
+├── services/                    # Business logic services
+├── api/                         # API layer
+├── utils/                       # Utility functions
+├── types/                       # TypeScript type definitions
+├── context/                     # React Context providers
+├── constants/                   # App constants
+├── assets/                      # Static assets
+└── tests/                       # Test files
+```
+
+## 🛠️ Development
+
+### Development Commands
+```bash
+# Start development server
+npm start
+
+# Run on specific platform
+npm run android
+npm run ios
+
+# Run tests
+npm test
+
+# Type checking
+npm run type-check
+
+# Linting
+npm run lint
+
+# Format code
+npm run format
+```
+
+### Code Standards
+- **TypeScript**: Strict mode with proper type definitions
+- **Styling**: Use GlobalStyles constants (see [Migration Guide](MIGRATION_GUIDE.md))
+- **Components**: Follow component template from [Consistency Rules](CURSOR_CONSISTENCY_RULES.md)
+- **Error Handling**: Comprehensive error handling with logging
+- **Testing**: Unit, integration, and E2E tests
+
+### Environment Configuration
+Create environment files based on your development environment:
+- `.env.development` - Development environment
+- `.env.staging` - Staging environment  
+- `.env.production` - Production environment
+
+Set the environment variable:
+```bash
+export APP_ENV=development
+```
+
+## 🔧 Configuration
+
+### App Configuration
+The app uses `app.config.js` for Expo configuration with environment-specific settings:
+- Azure AD authentication
+- API endpoints
+- Platform-specific settings
+- Build configuration
+
+### API Configuration
+- Base URL configuration per environment
+- Authentication token management
+- Offline caching strategy
+- Error handling and retry logic
+
+## 🧪 Testing
+
+### Testing Strategy
+- **Unit Tests**: Individual components and functions
+- **Integration Tests**: API integration and data flow
+- **E2E Tests**: Complete user workflows
+- **Performance Tests**: App performance and memory usage
+
+### Running Tests
+```bash
+# Run all tests
+npm test
+
+# Run specific test file
+npm test -- ComponentName.test.tsx
+
+# Run tests in watch mode
+npm test -- --watch
+```
+
+## 🚀 Deployment
+
+### Build Configuration
+```bash
+# Development build
+eas build --profile development --platform all
+
+# Production build
+eas build --profile production --platform all
+```
+
+### Environment Management
+- **Development**: Local development with hot reload
+- **Staging**: Test builds for QA
+- **Production**: Optimized builds for app stores
+
+## 🔍 Troubleshooting
+
+### Common Issues
+- **Build Issues**: Clear cache with `npx expo start --clear`
+- **Dependency Issues**: Clean install with `rm -rf node_modules && npm install`
+- **Platform Issues**: Platform-specific troubleshooting in [Development Setup](DEVELOPMENT_SETUP.md)
+
+### Debugging Tools
+- **React Native Debugger**: Component debugging
+- **Flipper**: Network and performance debugging
+- **Expo Dev Tools**: Development debugging
+- **Platform Tools**: Xcode (iOS), Android Studio (Android)
+
+## 📖 Additional Resources
+
+### Documentation
+- **[Project Documentation](PROJECT_DOCUMENTATION.md)** - Complete project overview
+- **[Development Setup](DEVELOPMENT_SETUP.md)** - Setup and workflow guide
+- **[Cursor Consistency Rules](CURSOR_CONSISTENCY_RULES.md)** - Code standards
+- **[Migration Guide](MIGRATION_GUIDE.md)** - Theme system migration
+
+### External Resources
+- [Expo Documentation](https://docs.expo.dev/)
+- [React Native Documentation](https://reactnative.dev/)
+- [TypeScript Documentation](https://www.typescriptlang.org/)
+
+### Team Support
+- **Code Reviews**: Submit pull requests for review
+- **Architecture Questions**: Contact the development team
+- **Bug Reports**: Create issues in the repository
+
+## 🤝 Contributing
+
+1. Follow the [Cursor Consistency Rules](CURSOR_CONSISTENCY_RULES.md)
+2. Use the development workflow from [Development Setup](DEVELOPMENT_SETUP.md)
+3. Write tests for new functionality
+4. Update documentation as needed
+5. Submit pull requests for review
+
+## 📄 License
+
+This project is proprietary software. All rights reserved.
+
+---
+
+## Quick Reference
+
+### Environment Variables
+```bash
+export APP_ENV=development  # development, staging, production
+```
+
+### Common Commands
+```bash
+npm start                    # Start development server
+npm run android             # Run on Android
+npm run ios                 # Run on iOS
+npm test                    # Run tests
+npm run lint               # Lint code
+npm run type-check         # Type checking
+```
+
+### File Locations
+- **Components**: `components/`
+- **Screens**: `app/`
+- **Services**: `services/`
+- **API**: `api/`
+- **Types**: `types/`
+- **Utils**: `utils/`
+- **Styles**: `app/GlobalStyles.ts`
+
+For detailed information, refer to the [Project Documentation](PROJECT_DOCUMENTATION.md) and [Development Setup](DEVELOPMENT_SETUP.md) guides.

@@ -81,14 +81,39 @@ class ConfigurationService {
       if (!finalRiskTemplateCategoryId) {
         // Step 1: Only fetch category details if riskTemplateCategoryId wasn't provided
         console.log('🔄 Step 1: Fetching category details to get RiskTemplateCategoryID');
-        const categoryResponse = await this.axiosInstance.get(`/api/risk-assessment-categories/${categoryId}`);
         
-        if (!categoryResponse.data?.success || !categoryResponse.data?.data) {
-          console.error('❌ Failed to fetch category details:', categoryResponse.data?.message);
-          return null;
+        // Call debug method to get detailed information
+        await this.debugCategoryConfiguration(categoryId);
+        
+        const categoryResponse = await this.axiosInstance.get(`/risk-assessment-categories/${categoryId}`);
+        
+        // Debug: Log the raw response
+        console.log('🔍 Raw category response status:', categoryResponse.status);
+        console.log('🔍 Raw category response data:', JSON.stringify(categoryResponse.data, null, 2));
+        
+        // Check if response has success/data wrapper or is direct data
+        const hasSuccessWrapper = categoryResponse.data?.success !== undefined;
+        const hasDataWrapper = categoryResponse.data?.data !== undefined;
+        
+        console.log('🔍 Has success wrapper:', hasSuccessWrapper);
+        console.log('🔍 Has data wrapper:', hasDataWrapper);
+        
+        let categoryData;
+        if (hasSuccessWrapper && hasDataWrapper) {
+          // API returns { success: true, data: {...} }
+          if (!categoryResponse.data.success || !categoryResponse.data.data) {
+            console.error('❌ Failed to fetch category details:', categoryResponse.data?.message);
+            return null;
+          }
+          categoryData = categoryResponse.data.data;
+        } else {
+          // API returns data directly
+          if (!categoryResponse.data) {
+            console.error('❌ Failed to fetch category details: No data received');
+            return null;
+          }
+          categoryData = categoryResponse.data;
         }
-
-        const categoryData = categoryResponse.data.data;
         console.log('📝 Category data received:', JSON.stringify(categoryData, null, 2));
         
         // Try different possible field name variations
@@ -428,13 +453,34 @@ class ConfigurationService {
     try {
       // Step 1: Test category API call
       console.log('🔍 Step 1: Testing category API call...');
-      const categoryResponse = await this.axiosInstance.get(`/api/risk-assessment-categories/${categoryId}`);
+      const categoryResponse = await this.axiosInstance.get(`/risk-assessment-categories/${categoryId}`);
       
       console.log('🔍 Category API Response Status:', categoryResponse.status);
       console.log('🔍 Category API Response Data:', JSON.stringify(categoryResponse.data, null, 2));
       
-      if (categoryResponse.data?.success && categoryResponse.data?.data) {
-        const categoryData = categoryResponse.data.data;
+      // Check if response has success/data wrapper or is direct data
+      const hasSuccessWrapper = categoryResponse.data?.success !== undefined;
+      const hasDataWrapper = categoryResponse.data?.data !== undefined;
+      
+      console.log('🔍 Has success wrapper:', hasSuccessWrapper);
+      console.log('🔍 Has data wrapper:', hasDataWrapper);
+      
+      let categoryData;
+      if (hasSuccessWrapper && hasDataWrapper) {
+        // API returns { success: true, data: {...} }
+        if (!categoryResponse.data.success || !categoryResponse.data.data) {
+          console.log('🔍 API returned success=false or no data');
+          return;
+        }
+        categoryData = categoryResponse.data.data;
+      } else {
+        // API returns data directly
+        if (!categoryResponse.data) {
+          console.log('🔍 API returned no data');
+          return;
+        }
+        categoryData = categoryResponse.data;
+      }
         console.log('🔍 Available fields in category data:', Object.keys(categoryData));
         
         // Try to find RiskTemplateCategoryID
@@ -472,8 +518,9 @@ class ConfigurationService {
               console.error('🔍 Config API Error Data:', configError.response.data);
             }
           }
+        } else {
+          console.log('🔍 No RiskTemplateCategoryID found in category data');
         }
-      }
       
     } catch (error: any) {
       console.error('🔍 Debug Error:', error.message);

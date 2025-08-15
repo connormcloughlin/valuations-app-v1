@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Modal, ScrollView, Dimensions } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Modal, ScrollView, Dimensions, Alert } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { FieldConfiguration, DropdownOption, FieldValidationError } from '../../../../types/dynamicUI';
 // Import centralized styles
 import { dynamicFieldRendererStyles } from '../../../GlobalStyles';
+import { debugLog, verboseLog } from '../../../../utils/debugUtils';
 
 interface DynamicFieldRendererProps {
   field: FieldConfiguration;
@@ -41,7 +42,12 @@ function ModalDropdown({ value, onChange, field, hasError, onBlur, dataAttribute
     return null;
   }
 
-  const selectedOption = field.dropdownOptions.find((option: DropdownOption) => option.option_value === value);
+  // Sort dropdown options alphabetically by option_label
+  const sortedDropdownOptions = [...field.dropdownOptions].sort((a, b) => 
+    (a.option_label || '').localeCompare(b.option_label || '')
+  );
+
+  const selectedOption = sortedDropdownOptions.find((option: DropdownOption) => option.option_value === value);
   const displayText = selectedOption ? selectedOption.option_label : (field.placeholder || field.field_label);
 
   const handleSelectOption = (optionValue: string) => {
@@ -89,7 +95,7 @@ function ModalDropdown({ value, onChange, field, hasError, onBlur, dataAttribute
             </View>
             
             <ScrollView style={dynamicFieldRendererStyles.modalScrollView} showsVerticalScrollIndicator={true}>
-              {field.dropdownOptions.map((item: DropdownOption) => (
+              {sortedDropdownOptions.map((item: DropdownOption) => (
                 <TouchableOpacity
                   key={item.option_value}
                   style={[
@@ -145,9 +151,6 @@ export default function DynamicFieldRenderer({
   const isRequired = field.is_required || false;
   const hasError = validationError?.fieldName === fieldName;
 
-  // Toggle for verbose debug logging inside this component
-  const DEBUG_DFR_VERBOSE = true;
-
   const renderFieldByType = () => {
     // Special handling for photo fields
     if (fieldName === 'photos' && itemId && onTakePhoto) {
@@ -155,8 +158,8 @@ export default function DynamicFieldRenderer({
     }
     
     // Special debugging for selectedanswer field
-    if (DEBUG_DFR_VERBOSE && fieldName === 'selectedanswer') {
-      console.log(`🎯 selectedanswer field in DynamicFieldRenderer:`, {
+    if (fieldName === 'selectedanswer') {
+      verboseLog(`selectedanswer field in DynamicFieldRenderer:`, {
         fieldType: field.field_type,
         dropdownOptions: field.dropdownOptions,
         dropdownOptionsLength: field.dropdownOptions?.length || 0,
@@ -291,37 +294,49 @@ export default function DynamicFieldRenderer({
     );
   };
 
-  const renderLocationButtons = () => (
-    <View style={dynamicFieldRendererStyles.locationButtonsContainer}>
-      {field.dropdownOptions
-        ?.filter(option => option.is_active !== false) // Include undefined values
-        .map((option) => (
-          <TouchableOpacity
-            key={option.option_value}
-            style={[
-              dynamicFieldRendererStyles.locationButton,
-              value === option.option_value && dynamicFieldRendererStyles.locationButtonSelected
-            ]}
-            onPress={() => onChange(fieldName, option.option_value)}
-          >
-            <Text
+  const renderLocationButtons = () => {
+    // Sort dropdown options alphabetically by option_label
+    const sortedOptions = [...(field.dropdownOptions || [])].sort((a, b) => 
+      (a.option_label || '').localeCompare(b.option_label || '')
+    );
+
+    return (
+      <View style={dynamicFieldRendererStyles.locationButtonsContainer}>
+        {sortedOptions
+          ?.filter(option => option.is_active !== false) // Include undefined values
+          .map((option) => (
+            <TouchableOpacity
+              key={option.option_value}
               style={[
-                dynamicFieldRendererStyles.locationButtonText,
-                value === option.option_value && dynamicFieldRendererStyles.locationButtonTextSelected
+                dynamicFieldRendererStyles.locationButton,
+                value === option.option_value && dynamicFieldRendererStyles.locationButtonSelected
               ]}
+              onPress={() => onChange(fieldName, option.option_value)}
             >
-              {option.option_label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-    </View>
-  );
+              <Text
+                style={[
+                  dynamicFieldRendererStyles.locationButtonText,
+                  value === option.option_value && dynamicFieldRendererStyles.locationButtonTextSelected
+                ]}
+              >
+                {option.option_label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+      </View>
+    );
+  };
 
   const renderLocationGroupField = () => {
     if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
       // Fallback to text input if no location templates available
       return renderTextField();
     }
+
+    // Sort dropdown options alphabetically by option_label
+    const sortedOptions = [...field.dropdownOptions].sort((a, b) => 
+      (a.option_label || '').localeCompare(b.option_label || '')
+    );
 
     return (
       <View style={dynamicFieldRendererStyles.locationGroupContainer}>
@@ -339,7 +354,7 @@ export default function DynamicFieldRenderer({
         
         {/* Location options grid */}
         <View style={dynamicFieldRendererStyles.locationGroupGrid}>
-          {field.dropdownOptions
+          {sortedOptions
             .filter(option => option.is_active !== false)
             .map((option) => (
               <TouchableOpacity
@@ -383,7 +398,7 @@ export default function DynamicFieldRenderer({
               color="#27ae60" 
             />
             <Text style={dynamicFieldRendererStyles.selectedLocationText}>
-              Selected: {field.dropdownOptions?.find(opt => opt.option_value === value)?.option_label || value}
+              Selected: {sortedOptions.find(opt => opt.option_value === value)?.option_label || value}
             </Text>
           </View>
         )}
@@ -396,9 +411,14 @@ export default function DynamicFieldRenderer({
       return renderTextField();
     }
 
+    // Sort dropdown options alphabetically by option_label
+    const sortedDropdownOptions = [...field.dropdownOptions].sort((a, b) => 
+      (a.option_label || '').localeCompare(b.option_label || '')
+    );
+
     const [inputText, setInputText] = useState(value || '');
     const [showSuggestions, setShowSuggestions] = useState(false);
-    const [filteredOptions, setFilteredOptions] = useState(field.dropdownOptions);
+    const [filteredOptions, setFilteredOptions] = useState(sortedDropdownOptions);
     const selectingOption = useRef(false);
 
     const handleTextChange = (text: string) => {
@@ -406,15 +426,15 @@ export default function DynamicFieldRenderer({
       onChange(fieldName, text);
       
       // Filter options based on input
-      const filtered = field.dropdownOptions?.filter((option: DropdownOption) =>
+      const filtered = sortedDropdownOptions.filter((option: DropdownOption) =>
         option.option_label.toLowerCase().includes(text.toLowerCase())
-      ) || [];
+      );
       setFilteredOptions(filtered);
       setShowSuggestions(text.length > 0 && filtered.length > 0);
     };
 
     const handleSelectSuggestion = (optionValue: string) => {
-      const selectedOption = field.dropdownOptions?.find((option: DropdownOption) => option.option_value === optionValue);
+      const selectedOption = sortedDropdownOptions.find((option: DropdownOption) => option.option_value === optionValue);
       const displayText = selectedOption ? selectedOption.option_label : optionValue;
       setInputText(displayText);
       onChange(fieldName, optionValue);

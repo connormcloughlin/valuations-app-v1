@@ -150,7 +150,9 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
               templatesFromHierarchy.forEach((template: any) => {
                 // Handle different field name cases from the API response
                 const templateId = template.riskAssessmentId || template.riskassessmentid || String(template.assessmentid);
-                console.log(`🚀 Processing template ${templateId}, sections:`, template.sections);
+                if (__DEV__) {
+                  console.log(`🚀 Processing template ${templateId}, sections count:`, template.sections?.length || 0);
+                }
                 
                 if (templateId && template.sections) {
                   // Sections are nested within each template
@@ -163,7 +165,9 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
                 }
               });
               setSections(sectionsFromHierarchy);
-              console.log('🚀 All sections populated:', sectionsFromHierarchy);
+              if (__DEV__) {
+                console.log('🚀 All sections populated for templates:', Object.keys(sectionsFromHierarchy));
+              }
               setLoading(false);
               return; // Exit early since we have hierarchy data
             }
@@ -345,7 +349,9 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
         // Get the template name using the correct field names (handle both camelCase and lowercase)
         const templateName = template.assessmentTypeName || template.templatename || template.assessmenttypename;
         
-        console.log(`🎯 Rendering template ${index}:`, { templateId, templateName, template });
+        if (__DEV__) {
+          console.log(`🎯 Rendering template ${index}:`, { templateId, templateName, template });
+        }
         
         if (!templateId || !templateName) {
           console.log(`❌ Skipping template ${index}: missing ID or name`);

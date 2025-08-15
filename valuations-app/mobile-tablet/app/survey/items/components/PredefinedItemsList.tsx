@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { Card, Divider, Button, TextInput as PaperTextInput, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { PredefinedItemsListProps, Item } from './types';
@@ -22,6 +22,7 @@ import {
 } from '../../../../utils/db';
 // Use require for ImagePicker to avoid type issues
 const ImagePicker = require('expo-image-picker');
+import { debugLog, verboseLog, infoLog } from '../../../../utils/debugUtils';
 
 export default function PredefinedItemsList({ 
   items: propsItems, 
@@ -64,7 +65,7 @@ export default function PredefinedItemsList({
   // Show loading when we expect dynamic config but it's not ready yet
   const isDynamicFieldConfigLoading = useMemo(() => {
     // Debug logging
-    console.log('🔧 Loading state check:', {
+    debugLog('Loading state check:', {
       useCustomFields,
       dynamicFieldConfigLength: dynamicFieldConfig?.length || 0,
       dynamicFieldConfigExists: !!dynamicFieldConfig,
@@ -75,7 +76,7 @@ export default function PredefinedItemsList({
     if (useCustomFields && propsItems && propsItems.length > 0) {
       const hasValidDynamicConfig = dynamicFieldConfig && dynamicFieldConfig.length > 0;
       if (!hasValidDynamicConfig) {
-        console.log('🔧 Showing loading state - waiting for dynamic field config');
+        debugLog('Showing loading state - waiting for dynamic field config');
         return true;
       }
     }
@@ -1089,40 +1090,34 @@ export default function PredefinedItemsList({
   // Group items by strategy configuration - supports both single-tier and 2-tier grouping
   // CRITICAL: We only depend on 'items', NOT 'editItems' to prevent re-grouping while user types
   const groupedItems = useMemo(() => {
-    if (__DEV__) {
-      console.log('🔧 DEBUG: groupedItems useMemo triggered');
-      console.log('🔧 DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
-      console.log('🔧 DEBUG: Items count for grouping:', items.length);
-      console.log('🔧 DEBUG: Items for grouping:', items.map(item => ({ id: item.id, type: item.type, room: item.room })));
-    }
+    verboseLog('DEBUG: groupedItems useMemo triggered');
+    verboseLog('DEBUG: Full groupingStrategy object:', JSON.stringify(groupingStrategy, null, 2));
+    verboseLog('DEBUG: Items count for grouping:', items.length);
+    verboseLog('DEBUG: Items for grouping:', items.map(item => ({ id: item.id, type: item.type, room: item.room })));
     
     // If no grouping strategy is provided, return items without grouping
     if (!groupingStrategy?.strategy_type) {
-      if (__DEV__) {
-        console.log('🔧 No grouping strategy found - returning items without grouping');
-        console.log('🔧 groupingStrategy object:', groupingStrategy);
-      }
+      debugLog('No grouping strategy found - returning items without grouping');
+      verboseLog('groupingStrategy object:', groupingStrategy);
       return null; // Signal that no grouping should be applied
     }
     
     // Require explicit grouping strategy configuration
     const effectiveGroupingStrategy = groupingStrategy.strategy_type;
     
-    if (__DEV__) console.log('🔧 Grouping items using strategy:', effectiveGroupingStrategy);
+    debugLog('Grouping items using strategy:', effectiveGroupingStrategy);
     
     // Check if we have a 2-tier grouping strategy configured
     const strategyConfig = groupingStrategy?.strategy_config;
-    if (__DEV__) {
-      console.log('🔧 Raw strategy config:', strategyConfig);
-      console.log('🔧 Strategy type:', effectiveGroupingStrategy);
-    }
+    verboseLog('Raw strategy config:', strategyConfig);
+    verboseLog('Strategy type:', effectiveGroupingStrategy);
     
     // Handle both string (legacy) and object (new) types for strategy_config
     let parsedConfig: any = null;
     try {
       parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
     } catch (error) {
-      if (__DEV__) console.warn('🔧 Error parsing strategy config:', error);
+      debugLog('Error parsing strategy config:', error);
       parsedConfig = null;
     }
     
@@ -1845,12 +1840,14 @@ export default function PredefinedItemsList({
         const commaSeparatedOptions = item.commaseparatedlist.split(',').map(option => option.trim()).filter(option => option.length > 0);
         
         if (commaSeparatedOptions.length > 0) {
-          // Create dropdown options from the comma-separated list
-          const dropdownOptions = commaSeparatedOptions.map((option, index) => ({
-            option_value: option,
-            option_label: option,
-            is_active: true
-          }));
+          // Create dropdown options from the comma-separated list and sort alphabetically
+          const dropdownOptions = commaSeparatedOptions
+            .map((option, index) => ({
+              option_value: option,
+              option_label: option,
+              is_active: true
+            }))
+            .sort((a, b) => (a.option_label || '').localeCompare(b.option_label || ''));
           
           // Create a new field configuration with the dropdown options
           const enhancedField = {
@@ -2059,33 +2056,33 @@ export default function PredefinedItemsList({
 
   // Helper function to check if a field should be visible
   const isFieldVisible = useCallback((fieldName: string) => {
-    console.log(`🔍 === FIELD VISIBILITY CHECK FOR '${fieldName}' ===`);
-    console.log(`🔍 useCustomFields: ${useCustomFields}`);
-    console.log(`🔍 dynamicFieldConfig length: ${dynamicFieldConfig?.length || 0}`);
-    console.log(`🔍 dynamicFieldConfig:`, JSON.stringify(dynamicFieldConfig, null, 2));
+    verboseLog(`=== FIELD VISIBILITY CHECK FOR '${fieldName}' ===`);
+    verboseLog(`useCustomFields: ${useCustomFields}`);
+    verboseLog(`dynamicFieldConfig length: ${dynamicFieldConfig?.length || 0}`);
+    verboseLog(`dynamicFieldConfig:`, JSON.stringify(dynamicFieldConfig, null, 2));
     
     // Try dynamic field configuration first
     if (dynamicFieldConfig && dynamicFieldConfig.length > 0) {
-      console.log(`🔍 Searching for field '${fieldName}' in dynamic config...`);
+      verboseLog(`Searching for field '${fieldName}' in dynamic config...`);
       
       // Show all available fields
       dynamicFieldConfig.forEach((field, index) => {
-        console.log(`  [${index}] item_fields: "${field.item_fields}", display_on_ui: ${field.display_on_ui}`);
+        verboseLog(`  [${index}] item_fields: "${field.item_fields}", display_on_ui: ${field.display_on_ui}`);
       });
       
       const fieldConfig = dynamicFieldConfig.find(f => f.item_fields === fieldName);
       const isVisible = fieldConfig && fieldConfig.display_on_ui === 1;
       
-      console.log(`🔍 Found field config:`, fieldConfig || 'NOT FOUND');
-      console.log(`🔍 Field '${fieldName}': ${isVisible ? 'VISIBLE' : 'HIDDEN'} (dynamic config)`);
-      console.log(`🔍 === END FIELD VISIBILITY CHECK ===`);
+      verboseLog(`Found field config:`, fieldConfig || 'NOT FOUND');
+      verboseLog(`Field '${fieldName}': ${isVisible ? 'VISIBLE' : 'HIDDEN'} (dynamic config)`);
+      verboseLog(`=== END FIELD VISIBILITY CHECK ===`);
       return isVisible;
     }
     
     // Fall back to legacy field configuration
     if (!useCustomFields || !fieldConfig || fieldConfig.length === 0) {
       // No custom configuration, show all fields
-      console.log(`Field '${fieldName}': visible (no custom config) - useCustomFields: ${useCustomFields}, fieldConfig: ${fieldConfig ? `array[${fieldConfig.length}]` : 'null/undefined'}`);
+      debugLog(`Field '${fieldName}': visible (no custom config) - useCustomFields: ${useCustomFields}, fieldConfig: ${fieldConfig ? `array[${fieldConfig.length}]` : 'null/undefined'}`);
       return true;
     }
     
@@ -2293,6 +2290,7 @@ export default function PredefinedItemsList({
           nestedScrollEnabled={true}
           showsVerticalScrollIndicator={true}
           persistentScrollbar={true}
+          refreshControl={<RefreshControl refreshing={syncing} onRefresh={handleSync} />}
         >
           {groupedItems === null ? (
             // Render all fields for all items in a single flat form (no per-item container)

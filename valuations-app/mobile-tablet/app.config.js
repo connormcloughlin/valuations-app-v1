@@ -72,6 +72,8 @@ module.exports = {
       azureRedirectUri: process.env.AZURE_REDIRECT_URI,
       apiBaseUrl: process.env.API_BASE_URL,
       apiTimeout: process.env.API_TIMEOUT,
+      debugMode: process.env.DEBUG_MODE,
+      logLevel: process.env.LOG_LEVEL,
     },
     "splash": {
       "image": "./assets/images/splash-icon.png",

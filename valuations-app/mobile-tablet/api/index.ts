@@ -486,7 +486,7 @@ export default {
   getOrderCategoryFieldConfigurations: async (orderId: string): Promise<ApiResponse> => {
     try {
       console.log('🚀 Fetching category field configurations for order:', orderId);
-      const response = await axiosInstance.get(`/api/mobile/config/order/${orderId}/categories/complete`);
+      const response = await axiosInstance.get(`/mobile/config/order/${orderId}/categories/complete`);
       
       console.log('📦 Field config response structure:', {
         success: response.data?.success,
