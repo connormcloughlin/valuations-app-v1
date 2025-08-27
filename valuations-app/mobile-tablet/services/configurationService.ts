@@ -26,15 +26,22 @@ class ConfigurationService {
       }
     });
 
-    // Add auth token interceptor
+    // Add API key and user context interceptor
     this.axiosInstance.interceptors.request.use(async (config) => {
       try {
-        const token = await AsyncStorage.getItem('authToken');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+        // Get API key and user context from constants
+        const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
+        const userContext = await AsyncStorage.getItem('userContext');
+        
+        if (API_KEY) {
+          config.headers[API_KEY_HEADER_NAME] = API_KEY;
+        }
+        
+        if (userContext) {
+          config.headers[USER_CONTEXT_HEADER_NAME] = userContext;
         }
       } catch (error) {
-        console.error('Error getting auth token:', error);
+        console.error('Error setting API key headers:', error);
       }
       return config;
     });
@@ -42,12 +49,26 @@ class ConfigurationService {
 
   /**
    * Get complete category configuration including fields, grouping strategy, and location template
+   * Now uses prefetched all category configurations for better performance
    */
   async getCategoryConfiguration(categoryId: number, riskTemplateCategoryId?: number): Promise<CategoryConfiguration | null> {
     try {
       console.log(`🔄 ConfigurationService: Fetching complete configuration for category ${categoryId}`);
       
-      // Check cache first - this includes pre-cached data from order endpoint
+      // First, try to get from SQLite (app startup loaded data)
+      const prefetchService = await import('./prefetchService');
+      
+      // Safety check: ensure category configurations are loaded
+      await prefetchService.default.ensureCategoryConfigurationsLoaded();
+      
+      const sqliteConfig = await prefetchService.default.getCategoryConfigurationByIdFromSQLite(categoryId);
+      
+      if (sqliteConfig) {
+        console.log('✅ Using SQLite category configuration (loaded on app startup)');
+        return this.convertPrefetchedConfigToCategoryConfiguration(sqliteConfig);
+      }
+      
+      // Fallback to cache - this includes pre-cached data from order endpoint
       const cachedConfig = await this.getCachedConfiguration(categoryId);
       if (cachedConfig && !this.isCacheExpired(cachedConfig)) {
         console.log('✅ Using cached category configuration (includes pre-cached data from order endpoint)');
@@ -531,6 +552,88 @@ class ConfigurationService {
     }
     
     console.log('🔍 === END DEBUG ===');
+  }
+
+  /**
+   * Convert prefetched category configuration to CategoryConfiguration format
+   */
+  private convertPrefetchedConfigToCategoryConfiguration(prefetchedConfig: any): CategoryConfiguration {
+    try {
+      const category = prefetchedConfig.category;
+      const fields = prefetchedConfig.fields || [];
+      
+      // Map backend field names to UI field names
+      const fieldNameMapping: { [key: string]: string } = {
+        'Description': 'description',
+        'Model': 'model', 
+        'Qty': 'quantity',
+        'Price': 'price',
+        'Location': 'room',
+        'Notes': 'notes',
+        'HasPhoto': 'photos',
+        'ItemPrompt': 'type'
+      };
+
+      // Map backend data structure to our expected format
+      const mappedFields: FieldConfiguration[] = fields.map((field: any) => {
+        const backendFieldName = field.fieldName || field.fieldLabel || '';
+        const uiFieldName = fieldNameMapping[backendFieldName] || backendFieldName.toLowerCase();
+        
+        // Use backend field type if provided, with special handling for photos
+        let fieldType = field.fieldType || 'text';
+        
+        if (uiFieldName === 'photos') {
+          fieldType = 'photo'; // Special handling for photo fields
+        }
+        // If backend doesn't provide fieldType, infer from field name
+        else if (!field.fieldType) {
+          if (uiFieldName === 'quantity') {
+            fieldType = 'number';
+          } else if (uiFieldName === 'price') {
+            fieldType = 'currency';
+          } else if (uiFieldName === 'notes') {
+            fieldType = 'textarea';
+          }
+        }
+
+        return {
+          riskfieldid: parseInt(field.riskfieldid) || 0,
+          riskTemplateCategoryID: category.categoryId,
+          item_fields: uiFieldName,
+          field_label: field.fieldLabel || field.fieldName || '',
+          display_on_ui: field.isVisible ? 1 : 0,
+          field_type: fieldType,
+          is_required: field.isRequired || false,
+          placeholder: field.placeholder || '',
+          validation_rules: field.validationRules || null,
+          display_order: field.displayOrder || 0,
+          dropdownOptions: field.dropdownOptions || []
+        };
+      });
+
+      // Process grouping strategy from the prefetched config
+      const groupingStrategy = prefetchedConfig.groupingStrategy ? {
+        grouping_strategy_id: prefetchedConfig.groupingStrategy.grouping_strategy_id,
+        RiskTemplateCategoryID: category.categoryId,
+        strategy_type: prefetchedConfig.groupingStrategy.strategy_type,
+        strategy_name: prefetchedConfig.groupingStrategy.strategy_name,
+        strategy_config: prefetchedConfig.groupingStrategy.strategy_config,
+        is_active: prefetchedConfig.groupingStrategy.is_active,
+        display_order: prefetchedConfig.groupingStrategy.display_order
+      } : undefined;
+
+      return {
+        categoryId: category.categoryId,
+        categoryName: category.categoryName,
+        fields: mappedFields.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)),
+        groupingStrategy: groupingStrategy,
+        locationTemplate: prefetchedConfig.locationTemplates?.[0] || undefined,
+        parsedStrategyConfig: prefetchedConfig.groupingStrategy?.strategy_config
+      };
+    } catch (error) {
+      console.error('Error converting prefetched config to CategoryConfiguration:', error);
+      return this.getDefaultConfiguration(prefetchedConfig.category?.categoryId || 0, prefetchedConfig.category?.categoryName || 'Unknown');
+    }
   }
 
   /**

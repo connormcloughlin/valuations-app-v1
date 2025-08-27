@@ -13,6 +13,8 @@ import { dashboardStyles } from '../GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
 import { useDashboard } from '../../context/DashboardContext';
 import { getGlobalRefreshFunction } from '../../utils/dashboardRefresh';
+import { prefetchService } from '../../services/prefetchService';
+import { PrefetchProgressIndicator } from '../../components/PrefetchProgressIndicator';
 
 export default function Dashboard() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -26,11 +28,75 @@ export default function Dashboard() {
 
   // Add a state to track if we should wait for refresh function
   const [waitingForRefreshFunction, setWaitingForRefreshFunction] = React.useState(false);
+  const [prefetchTriggered, setPrefetchTriggered] = React.useState(false);
+
+  // Background prefetch function
+  const startBackgroundPrefetch = React.useCallback(async () => {
+    if (prefetchTriggered || !isAuthenticated || !user) {
+      return;
+    }
+
+    try {
+      console.log('🚀 Starting background prefetch for dashboard...');
+      setPrefetchTriggered(true);
+
+      // Load all category configurations on app startup (SQLite-based)
+      console.log('🔄 Loading all category configurations on app startup...');
+      const prefetchService = await import('../../services/prefetchService');
+      setTimeout(async () => {
+        await prefetchService.default.loadAllCategoryConfigurationsOnStartup();
+      }, 1000); // Start after 1 second
+
+      // Get today's appointments to prefetch the first few
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      const startDateFrom = startOfDay.toISOString();
+      const startDateTo = endOfDay.toISOString();
+
+      // Import appointments API
+      const appointmentsApi = await import('../../api/appointments');
+      
+      // Fetch today's appointments
+      const response = await appointmentsApi.default.getAppointmentsByListView({
+        page: 1,
+        pageSize: 5, // Only prefetch first 5 appointments
+        status: 'Booked',
+        surveyor: '',
+        startDateFrom,
+        startDateTo
+      });
+
+      if (response && (response as any).success && (response as any).data) {
+        const appointments = (response as any).data;
+        console.log(`📦 Found ${appointments.length} appointments to prefetch`);
+
+        // Start prefetching for each appointment in the background
+        appointments.forEach((appointment: any, index: number) => {
+          setTimeout(() => {
+            console.log(`🚀 Starting background prefetch for appointment ${appointment.id} (${index + 1}/${appointments.length})`);
+            prefetchService.default.startAppointmentPrefetch(appointment.orderNumber || appointment.id);
+          }, (index + 2) * 2000); // Start after 2 seconds, then stagger by 2 seconds
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error starting background prefetch:', error);
+    }
+  }, [isAuthenticated, user, prefetchTriggered]);
 
   // Refresh dashboard stats when the screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
       console.log('🔄 Dashboard screen focused, refreshing stats...');
+      
+      // Start background prefetch after a delay
+      setTimeout(() => {
+        startBackgroundPrefetch();
+      }, 3000); // Start prefetch 3 seconds after dashboard loads
       
       // Add a small delay to allow context updates to propagate
       setTimeout(() => {
@@ -66,7 +132,7 @@ export default function Dashboard() {
         currentRefreshStats();
       }
       }, 100); // Small delay to allow context updates
-    }, [])
+    }, [startBackgroundPrefetch])
   );
 
   const navigateToAppointment = (id: string, status: 'scheduled' | 'inProgress' | 'completed') => {
@@ -151,50 +217,64 @@ export default function Dashboard() {
 
   console.log('📊 Dashboard: About to render StatsCards component');
   
-  return (
-    <ScrollView style={dashboardStyles.container}>
-      <DashboardHeader />
-      <StatsCards onCardPress={handleCardPress} />
-      <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} shouldFetchData={true} />
-      <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} shouldFetchData={true} />
-      <DevelopmentTools />
-      
-      {/* Manual refresh button for testing */}
-      {__DEV__ && (
-        <View style={{ padding: 20, alignItems: 'center' }}>
-          <Button 
-            mode="outlined" 
-            onPress={() => {
-              console.log('🔄 Manual refresh triggered');
-              const refreshFn = getGlobalRefreshFunction();
-              if (refreshFn && typeof refreshFn === 'function') {
-                console.log('✅ Manual refresh function available, executing');
-                refreshFn();
-              } else {
-                console.log('⚠️ Manual refresh function not available, will retry...');
-                // Use the same retry mechanism as useFocusEffect
-                let retryCount = 0;
-                const maxRetries = 5;
-                const retryInterval = setInterval(() => {
-                  retryCount++;
-                  const currentRefreshFn = getGlobalRefreshFunction();
-                  if (currentRefreshFn && typeof currentRefreshFn === 'function') {
-                    console.log('✅ Manual refresh function now available, executing');
-                    clearInterval(retryInterval);
-                    currentRefreshFn();
-                  } else if (retryCount >= maxRetries) {
-                    console.log('⚠️ Manual refresh function still not available after retries');
-                    clearInterval(retryInterval);
-                  }
-                }, 200);
-              }
-            }}
-            style={{ marginTop: 10 }}
-          >
-            Refresh Dashboard Stats
-          </Button>
-        </View>
-      )}
-    </ScrollView>
-  );
+     return (
+     <>
+       <ScrollView style={dashboardStyles.container}>
+         <DashboardHeader />
+         <StatsCards onCardPress={handleCardPress} />
+         <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} shouldFetchData={true} />
+         <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} shouldFetchData={true} />
+         <DevelopmentTools />
+         
+         {/* Manual refresh button for testing */}
+         {__DEV__ && (
+           <View style={{ padding: 20, alignItems: 'center' }}>
+             <Button 
+               mode="outlined" 
+               onPress={() => {
+                 console.log('🔄 Manual refresh triggered');
+                 const refreshFn = getGlobalRefreshFunction();
+                 if (refreshFn && typeof refreshFn === 'function') {
+                   console.log('✅ Manual refresh function available, executing');
+                   refreshFn();
+                 } else {
+                   console.log('⚠️ Manual refresh function not available, will retry...');
+                   // Use the same retry mechanism as useFocusEffect
+                   let retryCount = 0;
+                   const maxRetries = 5;
+                   const retryInterval = setInterval(() => {
+                     retryCount++;
+                     const currentRefreshFn = getGlobalRefreshFunction();
+                     if (currentRefreshFn && typeof currentRefreshFn === 'function') {
+                       console.log('✅ Manual refresh function now available, executing');
+                       clearInterval(retryInterval);
+                       currentRefreshFn();
+                     } else if (retryCount >= maxRetries) {
+                       console.log('⚠️ Manual refresh function still not available after retries');
+                       clearInterval(retryInterval);
+                     }
+                   }, 200);
+                 }
+               }}
+               style={{ marginTop: 10 }}
+             >
+               Refresh Dashboard Stats
+             </Button>
+           </View>
+         )}
+       </ScrollView>
+       
+       {/* Background Prefetch Progress Indicator */}
+       <PrefetchProgressIndicator 
+         visible={true} 
+         style={{ 
+           position: 'absolute', 
+           bottom: 20, 
+           left: 20, 
+           right: 20,
+           zIndex: 1000 
+         }} 
+       />
+     </>
+   );
 }

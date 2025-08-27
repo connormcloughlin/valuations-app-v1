@@ -203,78 +203,38 @@ class PrefetchService {
       // Use composite hierarchy API instead of individual calls
       console.log(`🚀 Using composite hierarchy API for order: ${orderNumber}`);
       
-      const fullUrl = `${API_BASE_URL}/mobile/risk-assessment/${orderNumber}/complete-hierarchy`;
-      const fieldConfigUrl = `${API_BASE_URL}/mobile/config/order/${orderNumber}/categories/complete`;
-      console.log(`🌐 COMPOSITE API - FULL URL: ${fullUrl}`);
-      console.log(`🌐 FIELD CONFIG API - FULL URL: ${fieldConfigUrl}`);
+            // Use the configured API client instead of manual fetch with JWT
+      const apiClient = await import('../api/client');
       
-      // Get authentication token
-      const token = await AsyncStorage.getItem('authToken');
-      if (!token) {
-        console.log('❌ COMPOSITE API - No auth token available, skipping prefetch');
-        return false;
-      }
-      
-      console.log(`🔑 COMPOSITE API - AUTH TOKEN: ${token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN'}`);
-      
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      };
-      
-      // Fetch both hierarchy and field configurations in parallel
-      const [hierarchyResponse, fieldConfigResponse] = await Promise.all([
-        fetch(fullUrl, { method: 'GET', headers }),
-        fetch(fieldConfigUrl, { method: 'GET', headers })
-      ]);
-      
-      console.log(`📡 COMPOSITE API - Response status: ${hierarchyResponse.status} ${hierarchyResponse.statusText}`);
-      console.log(`📡 FIELD CONFIG API - Response status: ${fieldConfigResponse.status} ${fieldConfigResponse.statusText}`);
-      
-      // Handle authentication errors
-      if (hierarchyResponse.status === 401 || hierarchyResponse.status === 403) {
-        console.log(`❌ COMPOSITE API - Authentication required, skipping...`);
-        return false;
-      }
-      
-      if (!hierarchyResponse.ok) {
-        console.log(`❌ COMPOSITE API - Failed with status ${hierarchyResponse.status}`);
-        return false;
-      }
-      
-      const hierarchyData = await hierarchyResponse.json();
-      const fieldConfigData = fieldConfigResponse.ok ? await fieldConfigResponse.json() : null;
-      
-      console.log(`📦 COMPOSITE API - Response data structure:`, {
-        success: hierarchyData?.success,
-        hasAssessmentMasters: !!hierarchyData?.data?.assessmentMasters,
-        mastersCount: hierarchyData?.data?.assessmentMasters?.length || 0,
-        totalSections: hierarchyData?.data?.assessmentMasters?.reduce((sum: number, master: any) => 
-          sum + (master.sections?.length || 0), 0) || 0,
-        totalCategories: hierarchyData?.data?.assessmentMasters?.reduce((sum: number, master: any) => 
-          sum + master.sections?.reduce((sectionSum: number, section: any) => 
-            sectionSum + (section.categories?.length || 0), 0), 0) || 0,
-        totalItems: hierarchyData?.data?.assessmentMasters?.reduce((sum: number, master: any) => 
-          sum + master.sections?.reduce((sectionSum: number, section: any) => 
-            sectionSum + section.categories?.reduce((categorySum: number, category: any) => 
-              categorySum + (category.items?.length || 0), 0), 0), 0) || 0
-      });
-      
-      if (fieldConfigData) {
-        console.log(`📦 FIELD CONFIG API - Response data structure:`, {
-          success: fieldConfigData?.success,
-          totalCategories: fieldConfigData?.data?.summary?.totalCategories || 0,
-          totalFields: fieldConfigData?.data?.summary?.totalFields || 0
-        });
+      try {
+        // Only fetch hierarchy - field configurations come from prefetched all categories
+        const hierarchyResponse = await apiClient.default.get(`/mobile/risk-assessment/${orderNumber}/complete-hierarchy`);
         
-        // Cache field configurations if available
-        if (fieldConfigData?.success && fieldConfigData?.data?.categories) {
-          console.log(`🚀 Pre-loading field configurations for ${fieldConfigData.data.categories.length} categories`);
-          
-          // Store field configurations in a format that can be used by ConfigurationService
-          const configurationService = await import('./configurationService');
-          await configurationService.default.cacheOrderFieldConfigurations(orderNumber, fieldConfigData.data);
+        console.log(`📡 COMPOSITE API - Response status: ${hierarchyResponse.status}`);
+        console.log(`📡 FIELD CONFIG - Using prefetched all category configurations (no order-specific call)`);
+        
+        // Handle authentication errors
+        if (hierarchyResponse.status === 401 || hierarchyResponse.status === 403) {
+          console.log(`❌ COMPOSITE API - Authentication required, skipping...`);
+          return false;
         }
+        
+        if (hierarchyResponse.status !== 200) {
+          console.log(`❌ COMPOSITE API - Failed with status ${hierarchyResponse.status}`);
+          return false;
+        }
+        
+        const hierarchyData = hierarchyResponse.data;
+      
+      const mastersCount = hierarchyData?.data?.assessmentMasters?.length || 0;
+      console.log(`📦 COMPOSITE API - Found ${mastersCount} assessment masters`);
+      
+      // Check if we have prefetched all category configurations
+      const allCategoryConfigs = await this.getAllCategoryConfigurations();
+      if (allCategoryConfigs) {
+        console.log(`📦 FIELD CONFIG - Using prefetched all category configurations (${allCategoryConfigs.categories.length} categories)`);
+      } else {
+        console.log(`⚠️ FIELD CONFIG - No prefetched all category configurations found, will use individual calls as fallback`);
       }
       
       if (!hierarchyData?.success || !hierarchyData?.data?.assessmentMasters) {
@@ -290,26 +250,18 @@ class PrefetchService {
       this.completeHierarchyData = hierarchyData.data;
       
       for (const master of assessmentMasters) {
-        console.log(`📝 Processing master: ${master.templateName || master.assessmenttypename} (ID: ${master.riskassessmentid})`);
-        
         if (!master.sections) {
-          console.log(`⚠️ No sections found for master ${master.riskassessmentid}`);
           continue;
         }
         
         for (const section of master.sections) {
-          console.log(`📂 Processing section: ${section.sectionName || section.sectionname} (ID: ${section.riskassessmentsectionid})`);
-          
           if (!section.categories) {
-            console.log(`⚠️ No categories found for section ${section.riskassessmentsectionid}`);
             continue;
           }
           
           for (const category of section.categories) {
             const categoryId = category.riskassessmentcategoryid || category.categoryId;
             const priority = this.getCategoryPriority(category, master.assessmenttypename || master.templateName);
-            
-            console.log(`📋 Adding category task: ${category.categoryName || category.categoryname} (ID: ${categoryId}, Priority: ${priority})`);
             
             const task: PrefetchTask = {
               id: `category-${categoryId}`,
@@ -349,6 +301,10 @@ class PrefetchService {
       console.error('❌ Error building prefetch queue with composite API:', error);
       return false;
     }
+  } catch (error) {
+    console.error('❌ Error in prefetch with composite API:', error);
+    return false;
+  }
   }
 
   // Process queue in background with controlled batching
@@ -473,13 +429,7 @@ class PrefetchService {
 
     // Prepare all items for batch insert
     const sqliteItems: RiskAssessmentItem[] = items.map((item: any, index: number) => {
-      console.log(`📝 PREFETCH - Preparing item ${index + 1}/${items.length}:`, {
-        riskassessmentitemid: item.riskassessmentitemid,
-        riskassessmentcategoryid: item.riskassessmentcategoryid,
-        itemprompt: item.itemprompt,
-        itemtype: item.itemtype,
-        rank: item.rank
-      });
+      // Removed excessive logging - was logging every single item
       
       return {
         riskassessmentitemid: Number(item.riskassessmentitemid),
@@ -532,10 +482,12 @@ class PrefetchService {
         return;
       }
 
-      // Fetch from API - requires authentication
-      const token = await AsyncStorage.getItem('authToken');
-      if (!token) {
-        console.log('❌ PREFETCH - No auth token available for field configuration, skipping...');
+      // Fetch from API - requires API key authentication
+      const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
+      const userContext = await AsyncStorage.getItem('userContext');
+      
+      if (!API_KEY) {
+        console.log('❌ PREFETCH - No API key available for field configuration, skipping...');
         return;
       }
 
@@ -545,7 +497,8 @@ class PrefetchService {
         timeout: 10000,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          [API_KEY_HEADER_NAME]: API_KEY,
+          ...(userContext && { [USER_CONTEXT_HEADER_NAME]: userContext })
         }
       });
 
@@ -568,6 +521,479 @@ class PrefetchService {
         return;
       }
       console.error(`❌ PREFETCH - Error fetching field configuration for category ${categoryId}:`, error);
+    }
+  }
+
+  /**
+   * Prefetch all category configurations for the entire system
+   * This replaces individual order-specific category config calls
+   */
+  async prefetchAllCategoryConfigurations(): Promise<boolean> {
+    try {
+      console.log('🚀 PREFETCH - Starting all category configurations prefetch...');
+      
+      const { API_BASE_URL } = await import('../constants/apiConfig');
+      const fullUrl = `${API_BASE_URL}/api/mobile/config/categories/all/complete`;
+      
+      console.log('🌐 PREFETCH - All Categories Config URL:', fullUrl);
+      
+      // Fetch from API - requires API key authentication
+      const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
+      const userContext = await AsyncStorage.getItem('userContext');
+      
+      if (!API_KEY) {
+        console.log('❌ PREFETCH - No API key available for all category configurations, skipping...');
+        return false;
+      }
+
+      const axios = await import('axios');
+      const axiosInstance = axios.default.create({
+        baseURL: API_BASE_URL,
+        timeout: 30000, // Longer timeout for large data
+        headers: {
+          'Content-Type': 'application/json',
+          [API_KEY_HEADER_NAME]: API_KEY
+        }
+      });
+
+      if (userContext) {
+        axiosInstance.defaults.headers[USER_CONTEXT_HEADER_NAME] = userContext;
+      }
+
+      const response = await axiosInstance.get('/api/mobile/config/categories/all/complete');
+      
+      if (response.status !== 200) {
+        console.log('❌ PREFETCH - All category config API returned status:', response.status);
+        return false;
+      }
+
+      const configData = response.data;
+      
+      if (!configData?.success || !configData?.data?.categories) {
+        console.log('❌ PREFETCH - Invalid response format from all category config API');
+        return false;
+      }
+
+      // Cache the complete category configurations
+      await this.cacheAllCategoryConfigurations(configData.data);
+      
+      console.log(`✅ PREFETCH - Successfully cached ${configData.data.categories.length} category configurations`);
+      return true;
+
+    } catch (error: any) {
+      console.error('❌ PREFETCH - Error prefetching all category configurations:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Cache all category configurations for fast lookup
+   */
+  private async cacheAllCategoryConfigurations(configData: any): Promise<void> {
+    try {
+      console.log(`🚀 Caching all category configurations (${configData.categories.length} categories)`);
+      
+      // Cache the complete data structure
+      const cacheKey = 'all_category_configurations';
+      const cacheData = {
+        data: configData,
+        timestamp: Date.now(),
+        totalCategories: configData.categories.length
+      };
+      
+      await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
+      
+      // Also cache individual categories for backward compatibility
+      for (const categoryConfig of configData.categories) {
+        const categoryId = categoryConfig.category?.categoryId;
+        if (categoryId) {
+          const individualCacheKey = `dynamic_ui_config_${categoryId}`;
+          const individualCacheData = {
+            data: categoryConfig,
+            timestamp: Date.now(),
+            fromAllCategories: true
+          };
+          
+          await AsyncStorage.setItem(individualCacheKey, JSON.stringify(individualCacheData));
+        }
+      }
+      
+      console.log(`✅ Successfully cached all category configurations`);
+    } catch (error) {
+      console.error('❌ Error caching all category configurations:', error);
+    }
+  }
+
+  /**
+   * Get cached all category configurations
+   */
+  async getAllCategoryConfigurations(): Promise<any | null> {
+    try {
+      const cacheKey = 'all_category_configurations';
+      const cachedData = await AsyncStorage.getItem(cacheKey);
+      
+      if (!cachedData) {
+        console.log('📦 No cached all category configurations found');
+        return null;
+      }
+      
+      const parsed = JSON.parse(cachedData);
+      console.log(`📦 Found cached all category configurations (${parsed.totalCategories} categories)`);
+      return parsed.data;
+    } catch (error) {
+      console.error('❌ Error reading cached all category configurations:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get category configuration by categoryId from cached all configurations
+   */
+  async getCategoryConfigurationById(categoryId: number): Promise<any | null> {
+    try {
+      const allConfigs = await this.getAllCategoryConfigurations();
+      
+      if (!allConfigs?.categories) {
+        console.log('📦 No all category configurations available');
+        return null;
+      }
+      
+      const categoryConfig = allConfigs.categories.find(
+        (config: any) => config.category?.categoryId === categoryId
+      );
+      
+      if (categoryConfig) {
+        console.log(`📦 Found category configuration for ID ${categoryId}: ${categoryConfig.category?.categoryName}`);
+        return categoryConfig;
+      } else {
+        console.log(`📦 No category configuration found for ID ${categoryId}`);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error getting category configuration by ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Load all category configurations on app startup
+   * This should be called once when the app starts
+   */
+  async loadAllCategoryConfigurationsOnStartup(): Promise<boolean> {
+    try {
+      console.log('🚀 APP STARTUP - Loading all category configurations...');
+      
+      // First check if we already have data in SQLite
+      const existingData = await this.getAllCategoryConfigurationsFromSQLite();
+      if (existingData && existingData.categories && existingData.categories.length > 0) {
+        console.log(`✅ APP STARTUP - Found ${existingData.categories.length} categories in SQLite, skipping download`);
+        return true;
+      }
+      
+      // If no data in SQLite, fetch from API
+      console.log('🔄 APP STARTUP - No data in SQLite, fetching from API...');
+      return await this.fetchAndStoreAllCategoryConfigurations();
+      
+    } catch (error) {
+      console.error('❌ APP STARTUP - Error loading all category configurations:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Fetch all category configurations from API and store in SQLite
+   */
+  private async fetchAndStoreAllCategoryConfigurations(): Promise<boolean> {
+    try {
+      console.log('🚀 FETCHING - All category configurations from API...');
+      
+      const { API_BASE_URL } = await import('../constants/apiConfig');
+      const fullUrl = `${API_BASE_URL}/mobile/config/categories/all/complete`;
+      
+      console.log('🌐 FETCHING - All Categories Config URL:', fullUrl);
+      
+      // Fetch from API - requires API key authentication
+      const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
+      const userContext = await AsyncStorage.getItem('userContext');
+      
+      if (!API_KEY) {
+        console.log('❌ FETCHING - No API key available for all category configurations, skipping...');
+        return false;
+      }
+
+      const axios = await import('axios');
+      const axiosInstance = axios.default.create({
+        baseURL: API_BASE_URL,
+        timeout: 30000, // Longer timeout for large data
+        headers: {
+          'Content-Type': 'application/json',
+          [API_KEY_HEADER_NAME]: API_KEY
+        }
+      });
+
+      if (userContext) {
+        axiosInstance.defaults.headers[USER_CONTEXT_HEADER_NAME] = userContext;
+      }
+
+      const response = await axiosInstance.get('/mobile/config/categories/all/complete');
+      
+      if (response.status !== 200) {
+        console.log('❌ FETCHING - All category config API returned status:', response.status);
+        return false;
+      }
+
+      const configData = response.data;
+      
+      if (!configData?.success || !configData?.data?.categories) {
+        console.log('❌ FETCHING - Invalid response format from all category config API');
+        return false;
+      }
+
+      // Store in SQLite
+      await this.storeAllCategoryConfigurationsInSQLite(configData.data);
+      
+      console.log(`✅ FETCHING - Successfully stored ${configData.data.categories.length} category configurations in SQLite`);
+      return true;
+
+    } catch (error: any) {
+      console.error('❌ FETCHING - Error fetching all category configurations:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Store all category configurations in SQLite
+   */
+  private async storeAllCategoryConfigurationsInSQLite(configData: any): Promise<void> {
+    try {
+      console.log(`🚀 SQLITE - Storing ${configData.categories.length} category configurations...`);
+      
+      const { runSql, waitForDatabase } = await import('../utils/db');
+      
+      // Ensure database is ready
+      await waitForDatabase();
+      
+      // Create table if it doesn't exist
+      await runSql(`
+        CREATE TABLE IF NOT EXISTS category_configurations (
+          categoryId INTEGER PRIMARY KEY,
+          categoryName TEXT NOT NULL,
+          sectionName TEXT,
+          templateName TEXT,
+          categoryRank INTEGER DEFAULT 0,
+          isActive INTEGER DEFAULT 1,
+          fields TEXT,
+          groupingStrategy TEXT,
+          locationTemplates TEXT,
+          summary TEXT,
+          lastUpdated TEXT
+        )
+      `);
+      
+      // Clear existing data
+      await runSql('DELETE FROM category_configurations');
+      
+      // Insert new data
+      for (const categoryConfig of configData.categories) {
+        const category = categoryConfig.category;
+        const fields = categoryConfig.fields || [];
+        const groupingStrategy = categoryConfig.groupingStrategy;
+        const locationTemplates = categoryConfig.locationTemplates || [];
+        
+        await runSql(`
+          INSERT INTO category_configurations (
+            categoryId, categoryName, sectionName, templateName, categoryRank, isActive,
+            fields, groupingStrategy, locationTemplates, summary, lastUpdated
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          category.categoryId,
+          category.categoryName,
+          category.sectionName,
+          category.templateName,
+          category.categoryRank,
+          category.isActive ? 1 : 0,
+          JSON.stringify(fields),
+          groupingStrategy ? JSON.stringify(groupingStrategy) : null,
+          JSON.stringify(locationTemplates),
+          JSON.stringify(categoryConfig.summary),
+          new Date().toISOString()
+        ]);
+      }
+      
+      console.log(`✅ SQLITE - Successfully stored ${configData.categories.length} category configurations`);
+    } catch (error) {
+      console.error('❌ SQLITE - Error storing category configurations:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all category configurations from SQLite
+   */
+  async getAllCategoryConfigurationsFromSQLite(): Promise<any | null> {
+    try {
+      const { runSql, waitForDatabase } = await import('../utils/db');
+      
+      // Ensure database is ready
+      await waitForDatabase();
+      
+      const result = await runSql('SELECT * FROM category_configurations');
+      
+      if (!result.rows || result.rows.length === 0) {
+        console.log('📦 SQLITE - No category configurations found in database');
+        return null;
+      }
+      
+      // Convert back to the expected format
+      const categories = result.rows._array.map((config: any) => ({
+        category: {
+          categoryId: config.categoryId,
+          categoryName: config.categoryName,
+          sectionName: config.sectionName,
+          templateName: config.templateName,
+          categoryRank: config.categoryRank,
+          isActive: config.isActive === 1
+        },
+        fields: JSON.parse(config.fields || '[]'),
+        groupingStrategy: config.groupingStrategy ? JSON.parse(config.groupingStrategy) : null,
+        locationTemplates: JSON.parse(config.locationTemplates || '[]'),
+        summary: JSON.parse(config.summary || '{}')
+      }));
+      
+      console.log(`📦 SQLITE - Retrieved ${categories.length} category configurations from database`);
+      return { categories };
+    } catch (error) {
+      console.error('❌ SQLITE - Error reading category configurations:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get category configuration by categoryId from SQLite
+   */
+  async getCategoryConfigurationByIdFromSQLite(categoryId: number): Promise<any | null> {
+    try {
+      const { runSql, waitForDatabase } = await import('../utils/db');
+      
+      // Ensure database is ready
+      await waitForDatabase();
+      
+      const result = await runSql('SELECT * FROM category_configurations WHERE categoryId = ?', [categoryId]);
+      
+      if (!result.rows || result.rows.length === 0) {
+        console.log(`📦 SQLITE - No category configuration found for ID ${categoryId}`);
+        return null;
+      }
+      
+      const config = result.rows._array[0];
+      
+      // Convert back to the expected format
+      const categoryConfig = {
+        category: {
+          categoryId: config.categoryId,
+          categoryName: config.categoryName,
+          sectionName: config.sectionName,
+          templateName: config.templateName,
+          categoryRank: config.categoryRank,
+          isActive: config.isActive === 1
+        },
+        fields: JSON.parse(config.fields || '[]'),
+        groupingStrategy: config.groupingStrategy ? JSON.parse(config.groupingStrategy) : null,
+        locationTemplates: JSON.parse(config.locationTemplates || '[]'),
+        summary: JSON.parse(config.summary || '{}')
+      };
+      
+      console.log(`📦 SQLITE - Found category configuration for ID ${categoryId}: ${categoryConfig.category.categoryName}`);
+      return categoryConfig;
+    } catch (error) {
+      console.error('❌ SQLITE - Error reading category configuration by ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all category configurations from SQLite (for development/testing)
+   */
+  async clearAllCategoryConfigurationsFromSQLite(): Promise<void> {
+    try {
+      console.log('🗑️ SQLITE - Clearing all category configurations...');
+      
+      const { runSql, waitForDatabase } = await import('../utils/db');
+      
+      // Ensure database is ready
+      await waitForDatabase();
+      await runSql('DELETE FROM category_configurations');
+      
+      console.log('✅ SQLITE - Successfully cleared all category configurations');
+    } catch (error) {
+      console.error('❌ SQLITE - Error clearing category configurations:', error);
+    }
+  }
+
+  /**
+   * Refresh all category configurations (for development/testing)
+   */
+  async refreshAllCategoryConfigurations(): Promise<boolean> {
+    try {
+      console.log('🔄 REFRESH - Refreshing all category configurations...');
+      
+      // Clear existing data
+      await this.clearAllCategoryConfigurationsFromSQLite();
+      
+      // Fetch and store new data
+      const success = await this.fetchAndStoreAllCategoryConfigurations();
+      
+      if (success) {
+        console.log('✅ REFRESH - Successfully refreshed all category configurations');
+      } else {
+        console.log('❌ REFRESH - Failed to refresh category configurations');
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('❌ REFRESH - Error refreshing category configurations:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if category configurations table is empty and populate if needed
+   * This is a safety check for when navigating to appointments
+   */
+  async ensureCategoryConfigurationsLoaded(): Promise<boolean> {
+    try {
+      console.log('🔍 SAFETY CHECK - Checking if category configurations are loaded...');
+      
+      const { runSql, waitForDatabase } = await import('../utils/db');
+      
+      // Ensure database is ready
+      await waitForDatabase();
+      
+      // Check if table has any data
+      const countResult = await runSql('SELECT COUNT(*) as count FROM category_configurations');
+      const count = countResult.rows._array[0]?.count || 0;
+      
+      if (count === 0) {
+        console.log('⚠️ SAFETY CHECK - Category configurations table is empty, loading now...');
+        
+        // Load all category configurations
+        const success = await this.loadAllCategoryConfigurationsOnStartup();
+        
+        if (success) {
+          console.log('✅ SAFETY CHECK - Category configurations loaded successfully');
+        } else {
+          console.log('❌ SAFETY CHECK - Failed to load category configurations');
+        }
+        
+        return success;
+      } else {
+        console.log(`✅ SAFETY CHECK - Category configurations already loaded (${count} categories)`);
+        return true;
+      }
+      
+    } catch (error) {
+      console.error('❌ SAFETY CHECK - Error checking category configurations:', error);
+      return false;
     }
   }
 

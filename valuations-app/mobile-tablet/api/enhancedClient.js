@@ -2,6 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import apiRequestManager from '../utils/apiRequestManager';
+import { 
+  isApiKeyMode, 
+  isJwtMode, 
+  API_KEY, 
+  API_KEY_HEADER_NAME, 
+  USER_CONTEXT_HEADER_NAME,
+  validateApiKeyConfig 
+} from '../constants/apiConfig';
 
 // Get API configuration from environment variables
 const API_CONFIG = {
@@ -13,18 +21,27 @@ const API_CONFIG = {
   }
 };
 
-// Token cache to avoid AsyncStorage calls on every request
+// Token cache to avoid AsyncStorage calls on every request (JWT mode only)
 let cachedToken = null;
 let tokenLastFetched = 0;
 const TOKEN_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// Add rate limiting for token refresh
+// Add rate limiting for token refresh (JWT mode only)
 let lastTokenRefreshAttempt = 0;
 const MIN_REFRESH_INTERVAL = 60 * 1000; // 1 minute between refresh attempts
 let isRefreshing = false;
 
-// Function to get token with caching
+// User context cache for API key mode
+let cachedUserContext = null;
+let userContextLastFetched = 0;
+const USER_CONTEXT_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
+// Function to get token with caching (JWT mode only)
 async function getCachedToken() {
+  if (!isJwtMode()) {
+    return null;
+  }
+  
   const now = Date.now();
   
   // If we have a cached token and it's not expired, use it
@@ -51,11 +68,45 @@ async function getCachedToken() {
   }
 }
 
+// Function to get user context with caching (API key mode only)
+async function getCachedUserContext() {
+  if (!isApiKeyMode()) {
+    return null;
+  }
+  
+  const now = Date.now();
+  
+  // If we have cached user context and it's not expired, use it
+  if (cachedUserContext && (now - userContextLastFetched) < USER_CONTEXT_CACHE_DURATION) {
+    return cachedUserContext;
+  }
+  
+  // Fetch fresh user context from AsyncStorage
+  try {
+    const userContext = await AsyncStorage.getItem('userContext');
+    cachedUserContext = userContext ? JSON.parse(userContext) : null;
+    userContextLastFetched = now;
+    
+    if (cachedUserContext) {
+      console.log(`👤 Enhanced client: User context refreshed from AsyncStorage`);
+    } else {
+      console.log('⚠️ Enhanced client: No user context found in AsyncStorage');
+    }
+    
+    return cachedUserContext;
+  } catch (error) {
+    console.error('❌ Enhanced client: Error fetching user context from AsyncStorage:', error);
+    return null;
+  }
+}
+
 // Function to clear token cache (call when user logs out)
 export function clearTokenCache() {
   cachedToken = null;
   tokenLastFetched = 0;
-  console.log('🔐 Enhanced client: Token cache cleared');
+  cachedUserContext = null;
+  userContextLastFetched = 0;
+  console.log('🔐 Enhanced client: Token and user context cache cleared');
 }
 
 // Function to update token cache (call when user logs in)
@@ -63,6 +114,13 @@ export function updateTokenCache(token) {
   cachedToken = token;
   tokenLastFetched = Date.now();
   console.log('🔐 Enhanced client: Token cache updated');
+}
+
+// Function to update user context cache (call when user logs in)
+export function updateUserContextCache(userContext) {
+  cachedUserContext = userContext;
+  userContextLastFetched = Date.now();
+  console.log('👤 Enhanced client: User context cache updated');
 }
 
 /**
@@ -200,8 +258,11 @@ class EnhancedApiClient {
    * Prepare request configuration with auth and base URL
    */
   async prepareConfig(config) {
-    // Get the auth token
-    const token = await getCachedToken();
+    // Validate API key configuration
+    if (isApiKeyMode() && !validateApiKeyConfig()) {
+      console.error('❌ Enhanced client: API key configuration validation failed');
+      throw new Error('API key configuration invalid');
+    }
     
     // Prepare headers
     const headers = {
@@ -209,8 +270,24 @@ class EnhancedApiClient {
       ...config.headers
     };
     
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+    // Handle authentication based on mode
+    if (isApiKeyMode()) {
+      // API Key authentication mode
+      if (API_KEY) {
+        headers[API_KEY_HEADER_NAME] = API_KEY;
+        
+        // Add user context header
+        const userContext = await getCachedUserContext();
+        if (userContext) {
+          headers[USER_CONTEXT_HEADER_NAME] = JSON.stringify(userContext);
+        }
+      }
+    } else if (isJwtMode()) {
+      // JWT authentication mode
+      const token = await getCachedToken();
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
     }
     
     // Prepare full URL
@@ -239,54 +316,73 @@ class EnhancedApiClient {
    */
   async handleAuthError(response) {
     const errorCode = response.data?.code;
-    console.log(`🔐 Enhanced client: Token error detected: ${errorCode}`);
+    console.log(`🔐 Enhanced client: Authentication error detected: ${errorCode}`);
     
-    const now = Date.now();
-    
-    // Check if we should attempt a refresh
-    if (isRefreshing || (now - lastTokenRefreshAttempt) < MIN_REFRESH_INTERVAL) {
-      console.log('⏳ Enhanced client: Skipping token refresh - too soon since last attempt');
-      return;
-    }
-    
-    if (errorCode === 'INVALID_API_TOKEN') {
-      console.log('🔐 Enhanced client: API token expired, attempting to refresh...');
-      lastTokenRefreshAttempt = now;
-      isRefreshing = true;
+    if (isApiKeyMode()) {
+      // API Key mode error handling
+      if (errorCode === 'INVALID_API_KEY') {
+        console.log('🔑 Enhanced client: Invalid API key, redirecting to login...');
+        // Clear user context
+        await AsyncStorage.removeItem('userContext');
+        clearTokenCache();
+        // Redirect to login
+        router.replace('/login');
+      } else if (errorCode === 'INVALID_USER_CONTEXT') {
+        console.log('👤 Enhanced client: Invalid user context, refreshing user context...');
+        // Clear user context cache and retry
+        cachedUserContext = null;
+        userContextLastFetched = 0;
+        // The request will be retried automatically by the request manager
+      }
+    } else if (isJwtMode()) {
+      // JWT mode error handling
+      const now = Date.now();
       
-      try {
-        // Get the Azure AD token
-        const azureToken = await AsyncStorage.getItem('azureToken');
-        if (!azureToken) {
-          throw new Error('No Azure token available for refresh');
-        }
-
-        // Exchange the Azure token for a new API token
-        const tokenResponse = await this.post('/auth/token-exchange', {
-          azureToken: azureToken
-        }, { requestOptions: { skipCache: true, skipDeduplication: true } });
-
-        if (tokenResponse.data?.token) {
-          // Update the token in storage and cache
-          await AsyncStorage.setItem('authToken', tokenResponse.data.token);
-          updateTokenCache(tokenResponse.data.token);
-          console.log('✅ Enhanced client: Token refreshed successfully');
-        }
-      } catch (refreshError) {
-        console.error('❌ Enhanced client: Token refresh failed:', refreshError);
-        isRefreshing = false;
+      // Check if we should attempt a refresh
+      if (isRefreshing || (now - lastTokenRefreshAttempt) < MIN_REFRESH_INTERVAL) {
+        console.log('⏳ Enhanced client: Skipping token refresh - too soon since last attempt');
+        return;
+      }
+      
+      if (errorCode === 'INVALID_API_TOKEN') {
+        console.log('🔐 Enhanced client: API token expired, attempting to refresh...');
+        lastTokenRefreshAttempt = now;
+        isRefreshing = true;
         
-        // Check if Azure token also expired
-        if (refreshError.response?.data?.code === 'TOKEN_EXPIRED') {
-          console.log('🔐 Enhanced client: Azure AD token expired, redirecting to login...');
-          // Clear all tokens
-          await AsyncStorage.multiRemove(['authToken', 'azureToken']);
-          clearTokenCache();
-          // Redirect to login
-          router.replace('/login');
+        try {
+          // Get the Azure AD token
+          const azureToken = await AsyncStorage.getItem('azureToken');
+          if (!azureToken) {
+            throw new Error('No Azure token available for refresh');
+          }
+
+          // Exchange the Azure token for a new API token
+          const tokenResponse = await this.post('/auth/token-exchange', {
+            azureToken: azureToken
+          }, { requestOptions: { skipCache: true, skipDeduplication: true } });
+
+          if (tokenResponse.data?.token) {
+            // Update the token in storage and cache
+            await AsyncStorage.setItem('authToken', tokenResponse.data.token);
+            updateTokenCache(tokenResponse.data.token);
+            console.log('✅ Enhanced client: Token refreshed successfully');
+          }
+        } catch (refreshError) {
+          console.error('❌ Enhanced client: Token refresh failed:', refreshError);
+          isRefreshing = false;
+          
+          // Check if Azure token also expired
+          if (refreshError.response?.data?.code === 'TOKEN_EXPIRED') {
+            console.log('🔐 Enhanced client: Azure AD token expired, redirecting to login...');
+            // Clear all tokens
+            await AsyncStorage.multiRemove(['authToken', 'azureToken']);
+            clearTokenCache();
+            // Redirect to login
+            router.replace('/login');
+          }
+        } finally {
+          isRefreshing = false;
         }
-      } finally {
-        isRefreshing = false;
       }
     }
   }

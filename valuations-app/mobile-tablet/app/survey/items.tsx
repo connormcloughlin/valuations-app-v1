@@ -70,6 +70,7 @@ export default function ItemsScreen() {
   const [dynamicFieldConfig, setDynamicFieldConfig] = useState<FieldConfiguration[]>([]);
   const [useCustomFields, setUseCustomFields] = useState(false);
   const [groupingStrategy, setGroupingStrategy] = useState<GroupingStrategy | undefined>(undefined);
+  const [fieldConfigLoading, setFieldConfigLoading] = useState(false);
   
   // Category totals (calculated from predefined items)
   const [categoryItemCount, setCategoryItemCount] = useState(0);
@@ -135,6 +136,8 @@ export default function ItemsScreen() {
   // Fetch field configuration for the category using new Configuration Service
   const fetchFieldConfiguration = async (categoryId: string) => {
     console.log('🚀 fetchFieldConfiguration called with categoryId:', categoryId);
+    
+    setFieldConfigLoading(true);
     
     try {
       // Import the new configuration service
@@ -213,6 +216,8 @@ export default function ItemsScreen() {
         setDynamicFieldConfig([]);
         setUseCustomFields(false);
       }
+    } finally {
+      setFieldConfigLoading(false);
     }
   };
 
@@ -567,7 +572,7 @@ export default function ItemsScreen() {
           <PredefinedItemsList
             key={predefinedListKey}
             items={predefinedItems}
-            loading={loading}
+            loading={loading || fieldConfigLoading}
             error={error}
             categoryTitle={categoryTitle as string}
             categoryId={categoryId as string}

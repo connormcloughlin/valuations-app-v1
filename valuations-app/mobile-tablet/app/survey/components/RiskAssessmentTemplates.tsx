@@ -46,22 +46,10 @@ const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<Ris
   try {
     console.log(`Fetching templates for order ID: ${orderId}`);
     
-    // Create authenticated axios instance
-    const token = await AsyncStorage.getItem('authToken');
-    const fullUrl = `${API_BASE_URL}/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`;
-    console.log(`🌐 FULL URL: ${fullUrl}`);
-    console.log(`🔑 AUTH TOKEN: ${token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN'}`);
+    // Use the configured API client instead of creating a new axios instance
+    const apiClient = await import('../../../api/client');
+    const response = await apiClient.default.get(`/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`);
     
-    const axiosInstance = axios.create({
-      baseURL: API_BASE_URL,
-      timeout: 10000,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
-      }
-    });
-    
-    const response = await axiosInstance.get(`/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`);
     console.log('API response:', JSON.stringify(response.data, null, 2));
     
     // Ensure we return an array, even if API returns different structure

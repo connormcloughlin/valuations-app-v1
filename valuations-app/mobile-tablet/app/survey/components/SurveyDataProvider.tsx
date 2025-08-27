@@ -280,7 +280,20 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
   };
 
   useEffect(() => {
-    fetchSurveyData();
+    // Safety check: ensure category configurations are loaded before fetching survey data
+    const initializeSurvey = async () => {
+      try {
+        const prefetchService = await import('../../../services/prefetchService');
+        await prefetchService.default.ensureCategoryConfigurationsLoaded();
+        fetchSurveyData();
+      } catch (error) {
+        console.error('❌ Error ensuring category configurations loaded:', error);
+        // Still try to fetch survey data even if safety check fails
+        fetchSurveyData();
+      }
+    };
+    
+    initializeSurvey();
   }, [surveyId]);
 
   const contextValue: SurveyContextType = {

@@ -9,7 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Alert } from 'react-native';
 
 export const DevelopmentTools: React.FC = () => {
-  const { clearAuthData } = useAuth();
+  const { logout } = useAuth();
   
   // Only render in development mode
   if (!__DEV__) {
@@ -71,7 +71,7 @@ export const DevelopmentTools: React.FC = () => {
   const handleClearAuthData = async () => {
     console.log('🔐 Clearing authentication data...');
     try {
-      await clearAuthData();
+      await logout();
       Alert.alert('Success', 'Authentication data cleared successfully');
     } catch (error) {
       Alert.alert('Error', 'Failed to clear authentication data');
@@ -85,6 +85,33 @@ export const DevelopmentTools: React.FC = () => {
       Alert.alert('Prefetch Test', `Result: ${result ? 'Success' : 'Failed'}\n\nNote: Authentication is required for prefetching to work.`);
     } catch (error: any) {
       Alert.alert('Prefetch Test Error', `Error: ${error.message}\n\nThis is expected if no authentication token is available.`);
+    }
+  };
+
+  const handleRefreshCategoryConfigs = async () => {
+    console.log('🔄 Refreshing all category configurations...');
+    try {
+      const { prefetchService } = await import('../../services/prefetchService');
+      const result = await prefetchService.refreshAllCategoryConfigurations();
+      Alert.alert(
+        'Category Configs Refresh', 
+        result 
+          ? '✅ Successfully refreshed all category configurations from API and stored in SQLite!' 
+          : '❌ Failed to refresh category configurations. Check console for details.'
+      );
+    } catch (error: any) {
+      Alert.alert('Category Configs Refresh Error', `Error: ${error.message}`);
+    }
+  };
+
+  const handleClearCategoryConfigs = async () => {
+    console.log('🗑️ Clearing all category configurations from SQLite...');
+    try {
+      const { prefetchService } = await import('../../services/prefetchService');
+      await prefetchService.clearAllCategoryConfigurationsFromSQLite();
+      Alert.alert('Category Configs Clear', '✅ Successfully cleared all category configurations from SQLite!');
+    } catch (error: any) {
+      Alert.alert('Category Configs Clear Error', `Error: ${error.message}`);
     }
   };
 
@@ -157,24 +184,42 @@ export const DevelopmentTools: React.FC = () => {
             Clear Auth Data
           </Button>
 
-          <Button 
-            mode="outlined" 
-            onPress={handleTestPrefetch}
-            style={developmentToolsStyles.debugButton}
-            icon="cached"
-          >
-            Test Prefetch
-          </Button>
+                     <Button 
+             mode="outlined" 
+             onPress={handleTestPrefetch}
+             style={developmentToolsStyles.debugButton}
+             icon="cached"
+           >
+             Test Prefetch
+           </Button>
 
-          <Button 
-            mode="outlined" 
-            onPress={handleCheckUpdate}
-            style={developmentToolsStyles.debugButton}
-            icon="update"
-            disabled={checkingUpdate}
-          >
-            Check for Updates
-          </Button>
+           <Button 
+             mode="outlined" 
+             onPress={handleRefreshCategoryConfigs}
+             style={developmentToolsStyles.debugButton}
+             icon="refresh"
+           >
+             Refresh Category Configs
+           </Button>
+
+           <Button 
+             mode="outlined" 
+             onPress={handleClearCategoryConfigs}
+             style={developmentToolsStyles.debugButton}
+             icon="delete"
+           >
+             Clear Category Configs
+           </Button>
+
+           <Button 
+             mode="outlined" 
+             onPress={handleCheckUpdate}
+             style={developmentToolsStyles.debugButton}
+             icon="update"
+             disabled={checkingUpdate}
+           >
+             Check for Updates
+           </Button>
           {checkingUpdate && <ActivityIndicator style={{ marginTop: 8 }} />}
           {updateResult && <Text style={{ marginTop: 8 }}>{updateResult}</Text>}
         </Card.Content>

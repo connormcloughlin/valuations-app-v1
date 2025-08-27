@@ -159,6 +159,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
+      // Check if this is API key mode
+      if (token === 'api-key-mode') {
+        console.log('🔑 API key mode detected, checking user context');
+        
+        // For API key mode, check if user context exists
+        const userContext = await AsyncStorage.getItem('userContext');
+        if (userContext) {
+          console.log('🔑 User context found for API key mode');
+          return true;
+        } else {
+          console.log('🔑 No user context found for API key mode');
+          return false;
+        }
+      }
+
+      // JWT mode validation
       // First, do client-side validation to check if token is expired
       if (isTokenExpired(token)) {
         console.log('🔐 Token expired (client-side check)');
@@ -255,32 +271,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isTokenValid) {
           console.log('🔐 Token validation successful, setting user as authenticated');
           
-          // Try to get fresh user data from the verify endpoint
-          try {
-            const originalAuth = apiClient.defaults.headers.common['Authorization'];
-            authApi.setAuthToken(token);
-            const verifyResponse = await authApi.verifyToken();
+          // Check if this is API key mode
+          if (token === 'api-key-mode') {
+            console.log('🔑 API key mode detected, using stored user data');
             
-            if (verifyResponse && (verifyResponse as any).data && (verifyResponse as any).data.valid === true) {
-              // Use fresh user data from the server
-              const freshUserData = (verifyResponse as any).data.user;
-              console.log('🔐 Using fresh user data from server:', freshUserData);
+            // For API key mode, use stored user data
+            const parsedUser = JSON.parse(userData);
+            setUser({ 
+              ...parsedUser, 
+              token,
+              azureToken: azureToken || undefined
+            });
+            
+            // Restore user context for API key mode
+            const userContext = await AsyncStorage.getItem('userContext');
+            if (userContext) {
+              const parsedUserContext = JSON.parse(userContext);
+              authApi.setUserContext(parsedUserContext);
+              console.log('👤 User context restored for API key mode');
+            }
+          } else {
+            // JWT mode - try to get fresh user data from the verify endpoint
+            try {
+              const originalAuth = apiClient.defaults.headers.common['Authorization'];
+              authApi.setAuthToken(token);
+              const verifyResponse = await authApi.verifyToken();
               
-              setUser({ 
-                id: freshUserData.id,
-                name: freshUserData.name,
-                email: freshUserData.email,
-                token,
-                azureToken: azureToken || undefined
-              });
+              if (verifyResponse && (verifyResponse as any).data && (verifyResponse as any).data.valid === true) {
+                // Use fresh user data from the server
+                const freshUserData = (verifyResponse as any).data.user;
+                console.log('🔐 Using fresh user data from server:', freshUserData);
+                
+                setUser({ 
+                  id: freshUserData.id,
+                  name: freshUserData.name,
+                  email: freshUserData.email,
+                  token,
+                  azureToken: azureToken || undefined
+                });
+                
+                // Update stored user data with fresh information
+                await AsyncStorage.setItem('userData', JSON.stringify({
+                  id: freshUserData.id,
+                  name: freshUserData.name,
+                  email: freshUserData.email
+                }));
+              } else {
+                // Fall back to stored user data
+                const parsedUser = JSON.parse(userData);
+                setUser({ 
+                  ...parsedUser, 
+                  token,
+                  azureToken: azureToken || undefined
+                });
+              }
               
-              // Update stored user data with fresh information
-              await AsyncStorage.setItem('userData', JSON.stringify({
-                id: freshUserData.id,
-                name: freshUserData.name,
-                email: freshUserData.email
-              }));
-            } else {
+              // Restore original auth header
+              if (originalAuth) {
+                apiClient.defaults.headers.common['Authorization'] = originalAuth;
+              } else {
+                delete apiClient.defaults.headers.common['Authorization'];
+              }
+            } catch (verifyError) {
+              console.log('🔐 Could not get fresh user data, using stored data');
               // Fall back to stored user data
               const parsedUser = JSON.parse(userData);
               setUser({ 
@@ -290,29 +343,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               });
             }
             
-            // Restore original auth header
-            if (originalAuth) {
-              apiClient.defaults.headers.common['Authorization'] = originalAuth;
-            } else {
-              delete apiClient.defaults.headers.common['Authorization'];
-            }
-          } catch (verifyError) {
-            console.log('🔐 Could not get fresh user data, using stored data');
-            // Fall back to stored user data
-            const parsedUser = JSON.parse(userData);
-            setUser({ 
-              ...parsedUser, 
-              token,
-              azureToken: azureToken || undefined
-            });
+            // Set the API token for subsequent requests (JWT mode)
+            authApi.setAuthToken(token);
           }
           
           if (__DEV__) {
             console.log('🔐 User authenticated:', user?.email);
           }
-          
-          // Set the API token for subsequent requests
-          authApi.setAuthToken(token);
           
           // Add a small delay to ensure state is properly set
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -375,15 +412,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           token: 'mock-token-' + Date.now()
         };
 
-        await AsyncStorage.setItem('authToken', mockUser.token);
+        await AsyncStorage.setItem('authToken', 'api-key-mode');
         await AsyncStorage.setItem('userData', JSON.stringify({
           id: mockUser.id,
           name: mockUser.name,
           email: mockUser.email
         }));
 
+        // Store user context for API key authentication
+        const userContext = {
+          id: mockUser.id,
+          name: mockUser.name,
+          email: mockUser.email
+        };
+        await AsyncStorage.setItem('userContext', JSON.stringify(userContext));
+        authApi.setUserContext(userContext);
+
         setUser(mockUser);
-        console.log('User logged in:', email);
+        console.log('🔐 Mock user logged in with API key authentication:', email);
         return true;
       }
       return false;
@@ -426,41 +472,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: authResult.account.username
         };
         
-        console.log('🔐 User info for token exchange:', userInfo);
-        const tokenExchangeResult = await authApi.exchangeToken(authResult.accessToken, userInfo);
+        console.log('🔐 User info for API key authentication:', userInfo);
         
-        console.log('🔐 Token exchange result received:', {
-          success: (tokenExchangeResult as any).success,
-          hasData: !!(tokenExchangeResult as any).data,
-          hasToken: !!(tokenExchangeResult as any).data?.token,
-          message: (tokenExchangeResult as any).message
-        });
-        
-        if ((tokenExchangeResult as any).success && (tokenExchangeResult as any).data?.token) {
+        // For API key mode, we don't need token exchange - just store user context
         const azureUser: User = {
           id: authResult.account.identifier,
           name: authResult.account.name || 'Azure User',
           email: authResult.account.username,
-            token: (tokenExchangeResult as any).data.token, // Use API token, not Azure token
-            azureToken: authResult.accessToken // Store Azure token for potential refresh
+          token: 'api-key-mode', // Placeholder for API key mode
+          azureToken: authResult.accessToken // Store Azure token for potential refresh
         };
 
-          // Store API token (not Azure token) for subsequent requests
+        // Store user data for API key authentication
         await AsyncStorage.setItem('authToken', azureUser.token);
-          await AsyncStorage.setItem('azureToken', azureUser.azureToken || '');
+        await AsyncStorage.setItem('azureToken', azureUser.azureToken || '');
         await AsyncStorage.setItem('userData', JSON.stringify({
           id: azureUser.id,
           name: azureUser.name,
           email: azureUser.email
         }));
 
+        // Store user context for API key authentication
+        const userContext = {
+          id: azureUser.id,
+          name: azureUser.name,
+          email: azureUser.email,
+          azureId: authResult.account.identifier
+        };
+        await AsyncStorage.setItem('userContext', JSON.stringify(userContext));
+        
+        // Update the user context cache for API key mode
+        authApi.setUserContext(userContext);
+
         setUser(azureUser);
-          console.log('🔐 Token exchange successful, user logged in:', azureUser.email);
+        console.log('🔐 API key authentication successful, user logged in:', azureUser.email);
         return true;
-        } else {
-          console.error('❌ Token exchange failed:', (tokenExchangeResult as any).message);
-          return false;
-        }
       } else {
         console.error('❌ Azure AD authentication failed - no account returned');
         return false;
@@ -489,10 +535,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // Clear stored authentication data (including both API and Azure tokens)
-      await AsyncStorage.multiRemove(['authToken', 'azureToken', 'userData']);
+      await AsyncStorage.multiRemove(['authToken', 'azureToken', 'userData', 'userContext']);
       
-      // Clear API client auth header
+      // Clear API client auth header and user context
       authApi.setAuthToken('');
+      authApi.setUserContext(null);
       
       // Clear user state
       setUser(null);

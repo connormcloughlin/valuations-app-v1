@@ -15,13 +15,19 @@ const axiosInstance = axios.create({
 axiosInstance.interceptors.request.use(
   async (config) => {
     try {
-      // Get the auth token from AsyncStorage
-      const token = await AsyncStorage.getItem('authToken');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      // Get API key and user context from constants
+      const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
+      const userContext = await AsyncStorage.getItem('userContext');
+      
+      if (API_KEY) {
+        config.headers[API_KEY_HEADER_NAME] = API_KEY;
+      }
+      
+      if (userContext) {
+        config.headers[USER_CONTEXT_HEADER_NAME] = userContext;
       }
     } catch (error) {
-      console.error('Error getting auth token for API request:', error);
+      console.error('Error setting API key headers for API request:', error);
     }
     return config;
   },

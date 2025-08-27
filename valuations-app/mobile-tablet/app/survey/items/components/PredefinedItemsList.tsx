@@ -81,6 +81,12 @@ export default function PredefinedItemsList({
       }
     }
     
+    // Also show loading if we're expecting custom fields but the config is still loading
+    if (useCustomFields && dynamicFieldConfig && dynamicFieldConfig.length === 0) {
+      debugLog('Showing loading state - useCustomFields is true but no dynamic config yet');
+      return true;
+    }
+    
     return false;
   }, [useCustomFields, dynamicFieldConfig, propsItems]);
   
@@ -88,7 +94,10 @@ export default function PredefinedItemsList({
     return (
       <View style={predefinedItemsListStyles.loadingContainer}>
         <ActivityIndicator size="large" color="#4a90e2" />
-        <Text style={predefinedItemsListStyles.loadingText}>Loading field configuration...</Text>
+        <Text style={predefinedItemsListStyles.loadingText}>Loading dynamic field configuration...</Text>
+        <Text style={[predefinedItemsListStyles.loadingText, { fontSize: 12, color: '#666', marginTop: 8 }]}>
+          {useCustomFields ? 'Configuring custom fields...' : 'Preparing field layout...'}
+        </Text>
       </View>
     );
   }

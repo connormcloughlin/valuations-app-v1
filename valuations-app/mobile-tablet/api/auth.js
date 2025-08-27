@@ -1,38 +1,95 @@
-import apiClient, { updateTokenCache, clearTokenCache } from './client';
+import apiClient, { updateTokenCache, clearTokenCache, updateUserContextCache } from './client';
+import { 
+  isApiKeyMode, 
+  isJwtMode, 
+  API_KEY, 
+  API_KEY_HEADER_NAME, 
+  USER_CONTEXT_HEADER_NAME,
+  validateApiKeyConfig 
+} from '../constants/apiConfig';
 
 /**
  * Authentication related API methods
  */
 const authApi = {
   /**
-   * Set authentication token for subsequent requests
+   * Set authentication token for subsequent requests (JWT mode only)
    * @param {string} token - JWT token
    */
   setAuthToken: (token) => {
-    if (token) {
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      updateTokenCache(token); // Update the cache
-      console.log('🔐 Auth token set and cached');
+    if (isJwtMode()) {
+      if (token) {
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        updateTokenCache(token); // Update the cache
+        console.log('🔐 JWT Auth token set and cached');
+      } else {
+        delete apiClient.defaults.headers.common['Authorization'];
+        clearTokenCache(); // Clear the cache
+        console.log('🔐 JWT Auth token cleared');
+      }
     } else {
-      delete apiClient.defaults.headers.common['Authorization'];
-      clearTokenCache(); // Clear the cache
-      console.log('🔐 Auth token cleared');
+      console.log('⚠️ setAuthToken called but not in JWT mode');
     }
   },
 
   /**
-   * Verify token with the backend
+   * Set user context for API key mode
+   * @param {Object|null} userContext - User context object or null to clear
+   */
+  setUserContext: (userContext) => {
+    if (isApiKeyMode()) {
+      if (userContext) {
+        updateUserContextCache(userContext); // Update the cache
+        console.log('👤 User context set and cached for API key mode');
+      } else {
+        clearTokenCache(); // This also clears user context cache
+        console.log('👤 User context cleared');
+      }
+    } else {
+      console.log('⚠️ setUserContext called but not in API key mode');
+    }
+  },
+
+  /**
+   * Get current authentication mode
+   * @returns {string} 'jwt' or 'api_key'
+   */
+  getAuthMode: () => {
+    if (isApiKeyMode()) return 'api_key';
+    if (isJwtMode()) return 'jwt';
+    return 'unknown';
+  },
+
+  /**
+   * Check if API key configuration is valid
+   * @returns {boolean} True if valid
+   */
+  isApiKeyConfigValid: () => {
+    return validateApiKeyConfig();
+  },
+
+  /**
+   * Verify authentication with the backend
    * @returns {Promise<Object>} Response with validation result
    */
-  verifyToken: async () => {
+  verifyAuth: async () => {
     try {
-      console.log('🔐 Verifying token...');
-      
-      const response = await apiClient.get('/auth/verify');
-      console.log('🔐 Token verification successful');
-      return response;
+      if (isApiKeyMode()) {
+        console.log('🔑 Verifying API key authentication...');
+        // For API key mode, we can verify by making a simple request
+        const response = await apiClient.get('/auth/verify');
+        console.log('🔑 API key authentication verification successful');
+        return response;
+      } else if (isJwtMode()) {
+        console.log('🔐 Verifying JWT token...');
+        const response = await apiClient.get('/auth/verify');
+        console.log('🔐 JWT token verification successful');
+        return response;
+      } else {
+        throw new Error('Unknown authentication mode');
+      }
     } catch (error) {
-      console.error('❌ Token verification error:', error.message);
+      console.error('❌ Authentication verification error:', error.message);
       
       // Handle the normalized error responses from the backend
       if (error.response?.data) {
@@ -49,7 +106,7 @@ const authApi = {
         success: false,
         data: {
           valid: false,
-          message: 'Network error during token verification',
+          message: 'Network error during authentication verification',
           code: 'VERIFICATION_ERROR'
         },
         message: error.message
@@ -58,12 +115,42 @@ const authApi = {
   },
 
   /**
-   * Exchange Azure AD token for API token
+   * Verify token with the backend (JWT mode only - deprecated)
+   * @returns {Promise<Object>} Response with validation result
+   */
+  verifyToken: async () => {
+    if (!isJwtMode()) {
+      console.warn('⚠️ verifyToken called but not in JWT mode, use verifyAuth instead');
+      return {
+        success: false,
+        data: {
+          valid: false,
+          message: 'verifyToken is deprecated for API key mode, use verifyAuth instead',
+          code: 'DEPRECATED_METHOD'
+        }
+      };
+    }
+    return authApi.verifyAuth();
+  },
+
+  /**
+   * Exchange Azure AD token for API token (JWT mode only)
    * @param {string} azureToken - Azure AD access token
    * @param {Object} userInfo - Additional user information from Azure AD
    * @returns {Promise<Object>} Response with API token
    */
   exchangeToken: async (azureToken, userInfo = null) => {
+    if (!isJwtMode()) {
+      console.warn('⚠️ exchangeToken called but not in JWT mode');
+      return {
+        success: false,
+        data: {
+          message: 'Token exchange is not available in API key mode',
+          code: 'DEPRECATED_METHOD'
+        }
+      };
+    }
+
     try {
       console.log('🔄 Starting token exchange...');
       

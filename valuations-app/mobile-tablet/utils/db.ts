@@ -246,6 +246,22 @@ export async function createTables() {
         pending_sync INTEGER DEFAULT 0
       );
     `);
+
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS category_configurations (
+        categoryId INTEGER PRIMARY KEY,
+        categoryName TEXT NOT NULL,
+        sectionName TEXT,
+        templateName TEXT,
+        categoryRank INTEGER DEFAULT 0,
+        isActive INTEGER DEFAULT 1,
+        fields TEXT,
+        groupingStrategy TEXT,
+        locationTemplates TEXT,
+        summary TEXT,
+        lastUpdated TEXT
+      );
+    `);
     
     // Create performance indexes
     await db.execAsync(`
@@ -902,6 +918,7 @@ export async function clearAllCachedTables(): Promise<void> {
     await database.runAsync('DELETE FROM risk_assessment_master');
     await database.runAsync('DELETE FROM appointments');
     await database.runAsync('DELETE FROM media_files');
+    await database.runAsync('DELETE FROM category_configurations');
     
     // Reset auto-increment counters
     await database.runAsync('DELETE FROM sqlite_sequence WHERE name IN ("media_files")');
@@ -913,12 +930,14 @@ export async function clearAllCachedTables(): Promise<void> {
     const mastersCount = await database.getAllAsync('SELECT COUNT(*) as count FROM risk_assessment_master');
     const appointmentsCount = await database.getAllAsync('SELECT COUNT(*) as count FROM appointments');
     const mediaCount = await database.getAllAsync('SELECT COUNT(*) as count FROM media_files');
+    const categoryConfigsCount = await database.getAllAsync('SELECT COUNT(*) as count FROM category_configurations');
     
     console.log('📊 Table counts after clearing:', {
       risk_assessment_items: (itemsCount[0] as any)?.count,
       risk_assessment_master: (mastersCount[0] as any)?.count,
       appointments: (appointmentsCount[0] as any)?.count,
-      media_files: (mediaCount[0] as any)?.count
+      media_files: (mediaCount[0] as any)?.count,
+      category_configurations: (categoryConfigsCount[0] as any)?.count
     });
     
   } catch (error) {
@@ -939,6 +958,7 @@ export async function recreateAllTables(): Promise<void> {
     await database.execAsync('DROP TABLE IF EXISTS risk_assessment_master');
     await database.execAsync('DROP TABLE IF EXISTS appointments');
     await database.execAsync('DROP TABLE IF EXISTS media_files');
+    await database.execAsync('DROP TABLE IF EXISTS category_configurations');
     
     console.log('🗑️ All tables dropped');
     
@@ -954,7 +974,7 @@ export async function recreateAllTables(): Promise<void> {
 }
 
 // Clear specific table data
-export async function clearTableData(tableName: 'risk_assessment_items' | 'risk_assessment_master' | 'appointments' | 'media_files'): Promise<void> {
+export async function clearTableData(tableName: 'risk_assessment_items' | 'risk_assessment_master' | 'appointments' | 'media_files' | 'category_configurations'): Promise<void> {
   try {
     console.log(`🗑️ Clearing ${tableName} table...`);
     
@@ -984,12 +1004,14 @@ export async function getTableStats(): Promise<{[key: string]: number}> {
     const mastersCount = await database.getAllAsync('SELECT COUNT(*) as count FROM risk_assessment_master');
     const appointmentsCount = await database.getAllAsync('SELECT COUNT(*) as count FROM appointments');
     const mediaCount = await database.getAllAsync('SELECT COUNT(*) as count FROM media_files');
+    const categoryConfigsCount = await database.getAllAsync('SELECT COUNT(*) as count FROM category_configurations');
     
     const stats = {
       risk_assessment_items: (itemsCount[0] as any)?.count || 0,
       risk_assessment_master: (mastersCount[0] as any)?.count || 0,
       appointments: (appointmentsCount[0] as any)?.count || 0,
-      media_files: (mediaCount[0] as any)?.count || 0
+      media_files: (mediaCount[0] as any)?.count || 0,
+      category_configurations: (categoryConfigsCount[0] as any)?.count || 0
     };
     
     console.log('📊 Current table statistics:', stats);
