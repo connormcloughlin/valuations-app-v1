@@ -24,3 +24,4 @@ if (API_KEY) {
 }
 
 console.log('🔧 === END API KEY CONFIGURATION TEST ===');
+

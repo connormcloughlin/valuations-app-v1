@@ -40,3 +40,4 @@ console.log('3. Restart the development server');
 console.log('4. Login to the app to set up user context');
 
 console.log('🔧 === END TEST ===');
+
