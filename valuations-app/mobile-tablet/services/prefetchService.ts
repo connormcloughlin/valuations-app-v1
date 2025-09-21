@@ -90,12 +90,7 @@ class PrefetchService {
 
   // Main prefetch method for appointments
   async startAppointmentPrefetch(appointmentId: string, orderNumber?: string): Promise<boolean> {
-    // Check if we already have data for this appointment
-    const cachedData = await this.checkPrefetchedData(appointmentId);
-    if (cachedData) {
-      console.log(`✅ Data already prefetched for appointment ${appointmentId} - skipping prefetch`);
-      return true;
-    }
+    console.log(`🚀 PREFETCH SERVICE - Starting prefetch for appointment ${appointmentId}, order ${orderNumber}`);
 
     // Check if we're already running a prefetch for this appointment
     if (this.isActive && this.currentStats?.appointmentId === appointmentId) {
@@ -109,6 +104,27 @@ class PrefetchService {
     }
 
     console.log(`🚀 Starting prefetch for appointment: ${appointmentId}`);
+    
+    // Check if we already have data for this appointment BEFORE making any API calls
+    const cachedData = await this.checkPrefetchedData(appointmentId);
+    console.log(`🔍 PREFETCH SERVICE - checkPrefetchedData returned: ${cachedData} for appointment ${appointmentId}`);
+    if (cachedData) {
+      // Check if existing data has null category IDs (from old incorrect mapping)
+      const { getAllRiskAssessmentItems } = await import('../utils/db');
+      const existingItems = await getAllRiskAssessmentItems();
+      const nullCategoryItems = existingItems.filter(item => 
+        item.riskassessmentcategoryid === null &&
+        String(item.appointmentid) === String(appointmentId)
+      );
+
+      if (nullCategoryItems.length > 0) {
+        console.log(`⚠️ PREFETCH SERVICE - Found ${nullCategoryItems.length} items with null category IDs, forcing re-prefetch`);
+        // Continue with prefetch to fix the data
+      } else {
+        console.log(`✅ PREFETCH SERVICE - Data already prefetched for appointment ${appointmentId} - skipping prefetch`);
+        return true;
+      }
+    }
     
     // Check network connectivity
     const netInfo = await NetInfo.fetch();
@@ -157,6 +173,8 @@ class PrefetchService {
   // Check if data is already prefetched
   private async checkPrefetchedData(appointmentId: string): Promise<boolean> {
     try {
+      console.log(`🔍 PREFETCH SERVICE - Checking if data already exists for appointment ${appointmentId}`);
+      
       // First check SQLite for risk assessment items specific to this appointment
       const db = await waitForDatabase();
       const results = await db.getAllAsync(
@@ -164,12 +182,19 @@ class PrefetchService {
         [appointmentId]
       );
       
+      console.log(`🔍 PREFETCH SERVICE - SQLite query results:`, results);
+      
       if (results && results.length > 0 && typeof results[0] === 'object' && results[0] !== null && 'count' in results[0]) {
         const count = (results[0] as { count: number }).count;
+        console.log(`🔍 PREFETCH SERVICE - Found ${count} items in SQLite for appointment ${appointmentId}`);
         if (count > 0) {
-          console.log(`✅ Found ${count} items in SQLite for appointment ${appointmentId}`);
+          console.log(`✅ PREFETCH SERVICE - Data already exists, skipping prefetch`);
           return true;
+        } else {
+          console.log(`❌ PREFETCH SERVICE - No items found in SQLite for appointment ${appointmentId}`);
         }
+      } else {
+        console.log(`❌ PREFETCH SERVICE - Invalid SQLite query results for appointment ${appointmentId}`);
       }
 
       // If no items in SQLite, check AsyncStorage as fallback
@@ -249,6 +274,14 @@ class PrefetchService {
       // Store the complete hierarchy data for processing
       this.completeHierarchyData = hierarchyData.data;
       
+      // Debug: Log sample category structure
+      if (assessmentMasters.length > 0 && assessmentMasters[0].sections && assessmentMasters[0].sections.length > 0) {
+        const firstSection = assessmentMasters[0].sections[0];
+        if (firstSection.categories && firstSection.categories.length > 0) {
+          console.log(`🔍 PREFETCH - Sample category structure:`, firstSection.categories[0]);
+        }
+      }
+      
       for (const master of assessmentMasters) {
         if (!master.sections) {
           continue;
@@ -260,13 +293,23 @@ class PrefetchService {
           }
           
           for (const category of section.categories) {
-            const categoryId = category.riskassessmentcategoryid || category.categoryId;
+            const categoryId = category.riskAssessmentCategoryId;
+            
+    // Skip categories without valid IDs
+    if (!categoryId) {
+      console.log(`⚠️ PREFETCH - Skipping category without valid ID:`, {
+        riskAssessmentCategoryId: category.riskAssessmentCategoryId,
+        categoryName: category.categoryName
+      });
+      continue;
+    }
+            
             const priority = this.getCategoryPriority(category, master.assessmenttypename || master.templateName);
             
             const task: PrefetchTask = {
               id: `category-${categoryId}`,
               type: 'category',
-              categoryId: categoryId.toString(),
+              categoryId: String(categoryId),
               priority,
               status: 'pending',
               // Store the category data from composite API
@@ -374,8 +417,8 @@ class PrefetchService {
           if (task.categoryData) {
             // Process category data from composite API instead of making individual API calls
             await this.processCategoryFromCompositeAPI(task.categoryData);
-            await this.prefetchFieldConfiguration(task.categoryData.riskassessmentcategoryid || task.categoryData.categoryId);
-            this.emitCategoryCompleted(task.categoryData.riskassessmentcategoryid || task.categoryData.categoryId);
+            await this.prefetchFieldConfiguration(task.categoryData.riskAssessmentCategoryId);
+            this.emitCategoryCompleted(task.categoryData.riskAssessmentCategoryId);
           }
           break;
         // Add other task types as needed
@@ -396,8 +439,13 @@ class PrefetchService {
 
   // Process category data from composite API (no individual API calls)
   private async processCategoryFromCompositeAPI(category: any): Promise<void> {
-    const categoryId = category.riskassessmentcategoryid || category.categoryId;
+    const categoryId = category.riskAssessmentCategoryId;
     console.log(`📦 PREFETCH - Processing category ${categoryId} from composite API data`);
+    console.log(`🔍 PREFETCH - Category object:`, {
+      riskAssessmentCategoryId: category.riskAssessmentCategoryId,
+      categoryName: category.categoryName,
+      resolved: categoryId
+    });
     
     // Ensure database is ready before proceeding
     if (!isDatabaseReady()) {
@@ -418,6 +466,17 @@ class PrefetchService {
       return;
     }
 
+    // Check if we have items with null category IDs (from old incorrect mapping)
+    const nullCategoryItems = existingItems.filter(item => 
+      item.riskassessmentcategoryid === null &&
+      String(item.appointmentid) === String(this.currentStats?.appointmentId)
+    );
+
+    if (nullCategoryItems.length > 0) {
+      console.log(`⚠️ PREFETCH - Found ${nullCategoryItems.length} items with null category IDs, forcing re-prefetch for category ${categoryId}`);
+      // Don't return - continue with processing to fix the data
+    }
+
     // Process items from composite API data
     const items = category.items || [];
     console.log(`📦 PREFETCH - Processing ${items.length} items for category ${categoryId} from composite API`);
@@ -429,33 +488,32 @@ class PrefetchService {
 
     // Prepare all items for batch insert
     const sqliteItems: RiskAssessmentItem[] = items.map((item: any, index: number) => {
-      // Removed excessive logging - was logging every single item
       
       return {
-        riskassessmentitemid: Number(item.riskassessmentitemid),
-        riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
-        itemprompt: item.itemprompt || '',
-        itemtype: Number(item.itemtype) || 0,
+        riskassessmentitemid: Number(item.riskAssessmentItemId),
+        riskassessmentcategoryid: Number(categoryId),
+        itemprompt: item.itemPrompt || '',
+        itemtype: Number(item.itemType) || 0,
         rank: Number(item.rank) || 0,
-        commaseparatedlist: item.commaseparatedlist || '',
-        selectedanswer: item.selectedanswer || '',
-        qty: Number(item.qty) || 1,
+        commaseparatedlist: item.commaSeperatedList || '',
+        selectedanswer: item.selectedAnswer || '',
+        qty: Number(item.qty) || 0,
         price: Number(item.price) || 0,
         description: item.description || '',
         model: item.model || '',
         location: item.location || '',
-        assessmentregisterid: Number(item.assessmentregisterid) || 0,
-        assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
-        datecreated: item.datecreated || new Date().toISOString(),
-        createdbyid: item.createdbyid || '',
-        dateupdated: item.dateupdated || new Date().toISOString(),
-        updatedbyid: item.updatedbyid || '',
-        issynced: Number(item.issynced) || 0,
-        syncversion: Number(item.syncversion) || 0,
-        deviceid: item.deviceid || '',
-        syncstatus: item.syncstatus || '',
-        synctimestamp: item.synctimestamp || new Date().toISOString(),
-        hasphoto: Number(item.hasphoto) || 0,
+        assessmentregisterid: Number(item.assessmentRegisterId) || 0,
+        assessmentregistertypeid: Number(item.assessmentRegisterTypeId) || 0,
+        datecreated: item.dateCreated || new Date().toISOString(),
+        createdbyid: item.createdById || '',
+        dateupdated: item.dateUpdated || new Date().toISOString(),
+        updatedbyid: item.updatedById || '',
+        issynced: Number(item.isSynced) || 0,
+        syncversion: Number(item.syncVersion) || 0,
+        deviceid: item.deviceId || '',
+        syncstatus: item.syncStatus || '',
+        synctimestamp: item.syncTimestamp || new Date().toISOString(),
+        hasphoto: Number(item.hasPhoto) || 0,
         latitude: Number(item.latitude) || 0,
         longitude: Number(item.longitude) || 0,
         notes: item.notes || '',
@@ -463,9 +521,13 @@ class PrefetchService {
       };
     });
     
+    // Add focused logging before batch insert
+    console.log(`🔍 PREFETCH - About to insert ${sqliteItems.length} items for category ${categoryId}`);
+    
     // Batch insert all items at once
     await batchInsertRiskAssessmentItems(sqliteItems);
     console.log(`✅ PREFETCH - Successfully processed ${items.length} items for category ${categoryId} from composite API`);
+    
   }
 
   // Prefetch field configuration for a specific category
@@ -1020,13 +1082,14 @@ class PrefetchService {
       'standard-survey': ['domestic-appliances', 'electronics']
     };
 
-    const categoryName = category.categoryname?.toLowerCase() || '';
+    // Try different possible property names for category name
+    const categoryName = (category.categoryname || category.categoryName || category.name || '').toLowerCase();
     
     if (highPriorityCategories.some(hpc => categoryName.includes(hpc))) {
       return 'high';
     }
     
-    const templateSpecific = templatePriorities[templateType.toLowerCase()] || [];
+    const templateSpecific = templatePriorities[templateType?.toLowerCase() || ''] || [];
     if (templateSpecific.some(tsc => categoryName.includes(tsc))) {
       return 'high';
     }

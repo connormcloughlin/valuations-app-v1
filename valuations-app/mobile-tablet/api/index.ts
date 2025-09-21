@@ -451,10 +451,56 @@ export default {
     }
   },
 
-  // Function to get complete risk assessment hierarchy (composite API)
+  // Function to get complete risk assessment hierarchy (composite API) with offline support
   getRiskAssessmentCompleteHierarchy: async (orderId: string): Promise<ApiResponse> => {
+    const cacheKey = `risk_assessment_hierarchy_${orderId}`;
+    
+    // Check network connectivity first
+    let isOnline = true;
     try {
-      console.log('🚀 Fetching complete risk assessment hierarchy for order:', orderId);
+      const NetInfo = await import('@react-native-community/netinfo');
+      const netInfo = await NetInfo.default.fetch();
+      isOnline = netInfo.isConnected === true && netInfo.isInternetReachable === true;
+      console.log(`🌐 Network status for hierarchy fetch: ${isOnline ? 'Online' : 'Offline'}`);
+    } catch (netError) {
+      console.warn('⚠️ Could not check network status, assuming online:', netError);
+    }
+    
+    // Try to get cached data first
+    let cachedData = null;
+    try {
+      cachedData = await getData(cacheKey);
+      console.log(`📦 Retrieved cached hierarchy data: ${cachedData ? 'Yes' : 'No'}`);
+    } catch (cacheError) {
+      console.error('Error reading cached hierarchy data:', cacheError);
+    }
+    
+    // If we're offline, use cached data
+    if (!isOnline) {
+      if (cachedData && cachedData.data) {
+        console.log(`📱 Using cached hierarchy data (offline) for order ${orderId}`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200,
+          message: 'Using cached data (offline)'
+        };
+      } else {
+        // No cached data available while offline
+        console.error(`❌ Offline and no cached hierarchy data available for order ${orderId}`);
+        return {
+          success: false,
+          message: 'You are offline and no cached hierarchy data is available.',
+          status: 0,
+          data: null
+        };
+      }
+    }
+    
+    // We're online, try to fetch from server
+    try {
+      console.log(`🚀 Fetching complete risk assessment hierarchy for order: ${orderId}`);
       const response = await axiosInstance.get(`/mobile/risk-assessment/${orderId}/complete-hierarchy`);
       
       console.log('📦 Composite API response structure:', {
@@ -464,32 +510,86 @@ export default {
       });
       
       if (response.data?.success) {
-        // Cache for offline use
-        await storeData(`risk_assessment_hierarchy_${orderId}`, response.data);
+        // Cache the fresh data for offline use
+        try {
+          await storeData(cacheKey, response.data);
+          console.log(`💾 Cached fresh hierarchy data for order ${orderId}`);
+        } catch (storageError) {
+          console.error('Error caching hierarchy data:', storageError);
+        }
+        
         return response.data;
       }
       
       throw new Error('Invalid response format from composite API');
     } catch (error) {
-      console.error('❌ Error fetching complete hierarchy:', error);
+      console.error('❌ Error fetching complete hierarchy from server:', error);
       
-      // Try cache if API fails
-      try {
-        const cachedData = await getData(`risk_assessment_hierarchy_${orderId}`);
-        if (cachedData) {
-          console.log('📦 Using cached hierarchy data');
-          return { ...cachedData, fromCache: true };
-        }
-      } catch (cacheError) {
-        console.error('❌ Cache retrieval error:', cacheError);
+      // If server request fails but we have cached data, use it
+      if (cachedData && cachedData.data) {
+        console.log(`📱 Using cached hierarchy data (server error) for order ${orderId}`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200,
+          message: 'Using cached data due to server error'
+        };
       }
       
+      // No cache available, return the error
       return handleApiError(error);
     }
   },
   
-  // Function to get all category field configurations for an order
+  // Function to get all category field configurations for an order with offline support
   getOrderCategoryFieldConfigurations: async (orderId: string): Promise<ApiResponse> => {
+    const cacheKey = `order_field_configurations_${orderId}`;
+    
+    // Check network connectivity first
+    let isOnline = true;
+    try {
+      const NetInfo = await import('@react-native-community/netinfo');
+      const netInfo = await NetInfo.default.fetch();
+      isOnline = netInfo.isConnected === true && netInfo.isInternetReachable === true;
+      console.log(`🌐 Network status for field config fetch: ${isOnline ? 'Online' : 'Offline'}`);
+    } catch (netError) {
+      console.warn('⚠️ Could not check network status, assuming online:', netError);
+    }
+    
+    // Try to get cached data first
+    let cachedData = null;
+    try {
+      cachedData = await getData(cacheKey);
+      console.log(`📦 Retrieved cached field config data: ${cachedData ? 'Yes' : 'No'}`);
+    } catch (cacheError) {
+      console.error('Error reading cached field config data:', cacheError);
+    }
+    
+    // If we're offline, use cached data
+    if (!isOnline) {
+      if (cachedData && cachedData.data) {
+        console.log(`📱 Using cached field config data (offline) for order ${orderId}`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200,
+          message: 'Using cached data (offline)'
+        };
+      } else {
+        // No cached data available while offline
+        console.error(`❌ Offline and no cached field config data available for order ${orderId}`);
+        return {
+          success: false,
+          message: 'You are offline and no cached field configuration data is available.',
+          status: 0,
+          data: null
+        };
+      }
+    }
+    
+    // We're online, try to fetch from server
     try {
       console.log('🚀 Fetching category field configurations for order:', orderId);
       const response = await axiosInstance.get(`/mobile/config/order/${orderId}/categories/complete`);
@@ -501,26 +601,34 @@ export default {
       });
       
       if (response.data?.success) {
-        // Cache for offline use
-        await storeData(`order_field_configurations_${orderId}`, response.data);
+        // Cache the fresh data for offline use
+        try {
+          await storeData(cacheKey, response.data);
+          console.log(`💾 Cached fresh field config data for order ${orderId}`);
+        } catch (storageError) {
+          console.error('Error caching field config data:', storageError);
+        }
+        
         return response.data;
       }
       
       throw new Error('Invalid response format from field config API');
     } catch (error) {
-      console.error('❌ Error fetching order field configurations:', error);
+      console.error('❌ Error fetching order field configurations from server:', error);
       
-      // Try cache if API fails
-      try {
-        const cachedData = await getData(`order_field_configurations_${orderId}`);
-        if (cachedData) {
-          console.log('📦 Using cached field configuration data');
-          return { ...cachedData, fromCache: true };
-        }
-      } catch (cacheError) {
-        console.error('❌ Cache retrieval error:', cacheError);
+      // If server request fails but we have cached data, use it
+      if (cachedData && cachedData.data) {
+        console.log(`📱 Using cached field config data (server error) for order ${orderId}`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200,
+          message: 'Using cached data due to server error'
+        };
       }
       
+      // No cache available, return the error
       return handleApiError(error);
     }
   },

@@ -47,42 +47,8 @@ export default function Dashboard() {
         await prefetchService.default.loadAllCategoryConfigurationsOnStartup();
       }, 1000); // Start after 1 second
 
-      // Get today's appointments to prefetch the first few
-      const today = new Date();
-      const startOfDay = new Date(today);
-      startOfDay.setHours(0, 0, 0, 0);
-      
-      const endOfDay = new Date(today);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      const startDateFrom = startOfDay.toISOString();
-      const startDateTo = endOfDay.toISOString();
-
-      // Import appointments API
-      const appointmentsApi = await import('../../api/appointments');
-      
-      // Fetch today's appointments
-      const response = await appointmentsApi.default.getAppointmentsByListView({
-        page: 1,
-        pageSize: 5, // Only prefetch first 5 appointments
-        status: 'Booked',
-        surveyor: '',
-        startDateFrom,
-        startDateTo
-      });
-
-      if (response && (response as any).success && (response as any).data) {
-        const appointments = (response as any).data;
-        console.log(`📦 Found ${appointments.length} appointments to prefetch`);
-
-        // Start prefetching for each appointment in the background
-        appointments.forEach((appointment: any, index: number) => {
-          setTimeout(() => {
-            console.log(`🚀 Starting background prefetch for appointment ${appointment.id} (${index + 1}/${appointments.length})`);
-            prefetchService.default.startAppointmentPrefetch(appointment.orderNumber || appointment.id);
-          }, (index + 2) * 2000); // Start after 2 seconds, then stagger by 2 seconds
-        });
-      }
+      // Removed startup prefetch - now using appointment-based prefetch only
+      console.log('📦 Skipping startup prefetch - using appointment-based prefetch instead');
     } catch (error) {
       console.error('❌ Error starting background prefetch:', error);
     }
@@ -216,6 +182,7 @@ export default function Dashboard() {
   console.log('🔐 Dashboard: User authenticated, rendering dashboard components');
 
   console.log('📊 Dashboard: About to render StatsCards component');
+  console.log('🔧 Dashboard: __DEV__ =', __DEV__);
   
      return (
      <>
@@ -224,6 +191,22 @@ export default function Dashboard() {
          <StatsCards onCardPress={handleCardPress} />
          <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} shouldFetchData={true} />
          <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} shouldFetchData={true} />
+         
+         {/* Debug info */}
+         {__DEV__ && (
+           <View style={{ padding: 20, backgroundColor: '#f0f0f0', margin: 10, borderRadius: 8 }}>
+             <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#333' }}>
+               🔧 Debug Info
+             </Text>
+             <Text style={{ fontSize: 14, color: '#666' }}>
+               __DEV__: {String(__DEV__)}
+             </Text>
+             <Text style={{ fontSize: 14, color: '#666' }}>
+               NODE_ENV: {process.env.NODE_ENV || 'undefined'}
+             </Text>
+           </View>
+         )}
+         
          <DevelopmentTools />
          
          {/* Manual refresh button for testing */}

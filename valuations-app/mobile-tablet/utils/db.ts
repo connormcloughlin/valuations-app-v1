@@ -226,7 +226,8 @@ export async function createTables() {
         longitude REAL,
         notes TEXT,
         pending_sync INTEGER DEFAULT 0,
-        appointmentid TEXT
+        appointmentid TEXT,
+        isDeleted INTEGER DEFAULT 0
       );
     `);
     
@@ -398,6 +399,7 @@ export interface RiskAssessmentItem {
   notes: string;
   pending_sync?: number;
   appointmentid?: string;
+  isDeleted?: number;
 }
 
 export interface MediaFile {
@@ -480,16 +482,6 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
       throw new Error('Database connection not available');
     }
 
-    // Log the item being inserted
-    console.log('Attempting to insert Risk Assessment Item:', {
-      id: i.riskassessmentitemid,
-      categoryId: i.riskassessmentcategoryid,
-      prompt: i.itemprompt,
-      type: i.itemtype,
-      rank: i.rank,
-      appointmentid: i.appointmentid,
-      pending_sync: i.pending_sync
-    });
 
     // Use parameterized query for better safety and reliability
     const sql = `
@@ -513,7 +505,7 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
       i.rank || 0,
       i.commaseparatedlist || '',
       i.selectedanswer || '',
-      i.qty || 1,
+      i.qty || 0,
       i.price || 0,
       i.description || '',
       i.model || '',
@@ -549,7 +541,7 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
       throw new Error('Item was not inserted successfully');
     }
     
-    console.log('Successfully inserted and verified item');
+    
     
   } catch (error) {
     console.error('Error inserting risk assessment item:', error);
@@ -589,39 +581,39 @@ export async function updateRiskAssessmentItem(i: RiskAssessmentItem) {
 }
 export async function deleteRiskAssessmentItem(id: number) {
   // Mark as deleted instead of actually deleting (for sync purposes)
-  await runSql('UPDATE risk_assessment_items SET pending_sync = 1, qty = 0, price = 0, description = "", model = "", location = "", notes = "" WHERE riskassessmentitemid = ?', [id]);
+  await runSql('UPDATE risk_assessment_items SET pending_sync = 1, isDeleted = 1 WHERE riskassessmentitemid = ?', [id]);
 }
 
 export async function hardDeleteRiskAssessmentItem(id: number) {
   // Actually delete the record from SQLite (after successful sync)
-  await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [id]);
+  console.log(`🗑️ hardDeleteRiskAssessmentItem: Attempting to delete item ${id} from SQLite`);
+  const result = await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [id]);
+  console.log(`🗑️ hardDeleteRiskAssessmentItem: Delete result for item ${id}:`, result);
+  return result;
 }
 
-export async function cleanupItemsMarkedForDeletion() {
-  // Clean up items that are marked for deletion (qty=0, price=0, etc.)
-  // This is used when we know the backend has processed the deletion but didn't return confirmation
+export async function cleanupDeletedItems(deletedItemIds: number[]) {
+  // Clean up items that have been confirmed as deleted by the backend
   try {
+    if (deletedItemIds.length === 0) return 0;
+    
+    const placeholders = deletedItemIds.map(() => '?').join(',');
     const result = await runSql(`
       DELETE FROM risk_assessment_items 
-      WHERE pending_sync = 1 
-        AND qty = 0 
-        AND price = 0 
-        AND description = '' 
-        AND model = '' 
-        AND location = '' 
-        AND notes = ''
-    `);
+      WHERE riskassessmentitemid IN (${placeholders})
+    `, deletedItemIds);
     
     if (__DEV__ && result.rowsAffected > 0) {
-      console.log(`🗑️ Cleaned up ${result.rowsAffected} items marked for deletion`);
+      console.log(`🗑️ Cleaned up ${result.rowsAffected} deleted items from SQLite`);
     }
     
     return result.rowsAffected;
   } catch (error) {
-    console.error('Error cleaning up items marked for deletion:', error);
+    console.error('Error cleaning up deleted items:', error);
     throw error;
   }
 }
+
 
 // Get all items that need to be synced to the server
 export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmentItem[]> {
@@ -633,7 +625,6 @@ export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmen
     }
     
     // Filter out items with temporary IDs (custom-new- or duplicate- prefixes)
-    // But include items marked for deletion (empty values) in the sync count
     const validItems = res.rows._array.filter((item: RiskAssessmentItem) => {
       const itemId = String(item.riskassessmentitemid);
       const isTemporaryId = itemId.startsWith('custom-new-') || itemId.startsWith('duplicate-');
@@ -649,14 +640,11 @@ export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmen
       console.log(`📊 Filtered ${res.rows._array.length - validItems.length} temporary IDs from sync count`);
     }
     
-    // Count items marked for deletion for debugging
-    const itemsMarkedForDeletion = validItems.filter(item => 
-      item.qty === 0 && item.price === 0 && item.description === '' && 
-      item.model === '' && item.location === '' && item.notes === ''
-    );
+    // Count deleted items for debugging
+    const deletedItems = validItems.filter(item => item.isDeleted === 1);
     
-    if (__DEV__ && itemsMarkedForDeletion.length > 0) {
-      console.log(`🗑️ Including ${itemsMarkedForDeletion.length} items marked for deletion in sync count`);
+    if (__DEV__ && deletedItems.length > 0) {
+      console.log(`🗑️ Including ${deletedItems.length} deleted items in sync count`);
     }
     
     return validItems;
@@ -1117,7 +1105,7 @@ export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]
                 item.rank || 0,
                 item.commaseparatedlist || '',
                 item.selectedanswer || '',
-                item.qty || 1,
+                item.qty || 0,
                 item.price || 0,
                 item.description || '',
                 item.model || '',
@@ -1149,6 +1137,7 @@ export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]
         const duration = performance.now() - start;
         console.log(`✅ Batch insert completed in ${duration.toFixed(2)}ms (${items.length} items)`);
         console.log(`📊 Performance: ${(duration / items.length).toFixed(2)}ms per item`);
+        
         
         transactionInProgress = false;
         processTransactionQueue(); // Process any queued transactions

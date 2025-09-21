@@ -152,21 +152,18 @@ export default function AppointmentDetails() {
   // Start prefetch when appointment data is loaded AND user is authenticated
   useEffect(() => {
     if (appointment && isAuthenticated && user) {
-      console.log(`🔐 User authenticated, starting prefetch for appointment ${appointment.id}`);
+      console.log(`🔐 User authenticated, starting prefetch for appointment ${appointment.id}, order ${appointment.orderNumber}`);
       
-      // Safety check: ensure category configurations are loaded before starting prefetch
-      const ensureConfigsLoaded = async () => {
+      const startPrefetch = async () => {
         try {
-          await prefetchService.ensureCategoryConfigurationsLoaded();
-          prefetchService.startAppointmentPrefetch(appointment.id, appointment.orderNumber);
+          const result = await prefetchService.startAppointmentPrefetch(appointment.id, appointment.orderNumber);
+          console.log(`🔍 APPOINTMENT DETAILS - Prefetch result:`, result);
         } catch (error) {
-          console.error('❌ Error ensuring category configurations loaded:', error);
-          // Still try to start prefetch even if safety check fails
-          prefetchService.startAppointmentPrefetch(appointment.id, appointment.orderNumber);
+          console.error(`❌ APPOINTMENT DETAILS - Prefetch error:`, error);
         }
       };
       
-      ensureConfigsLoaded();
+      startPrefetch();
     } else if (appointment && !isAuthenticated) {
       console.log(`⏳ Waiting for authentication before starting prefetch for appointment ${appointment.id}`);
     }

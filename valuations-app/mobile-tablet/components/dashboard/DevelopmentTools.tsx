@@ -11,10 +11,17 @@ import { Alert } from 'react-native';
 export const DevelopmentTools: React.FC = () => {
   const { logout } = useAuth();
   
+  // Debug logging to check development mode
+  console.log('🔧 DevelopmentTools: __DEV__ =', __DEV__);
+  console.log('🔧 DevelopmentTools: process.env.NODE_ENV =', process.env.NODE_ENV);
+  
   // Only render in development mode
   if (!__DEV__) {
+    console.log('🔧 DevelopmentTools: Not rendering because __DEV__ is false');
     return null;
   }
+  
+  console.log('🔧 DevelopmentTools: Rendering development tools');
 
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<string | null>(null);

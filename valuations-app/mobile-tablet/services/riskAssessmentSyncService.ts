@@ -288,6 +288,7 @@ const riskAssessmentSyncService = {
             latitude: item.latitude,
             longitude: item.longitude,
             notes: item.notes,
+            isDeleted: item.isDeleted ? true : false,
             _localId: item.riskassessmentitemid
           } as any;
 
@@ -302,6 +303,31 @@ const riskAssessmentSyncService = {
 
       if (response.success) {
         console.log('✅ Batch sync successful');
+        
+        // Handle deleted entities from backend response
+        console.log('🔍 Checking for deleted entities in response...');
+        console.log('🔍 response.data?.results?.deletedEntities:', response.data?.results?.deletedEntities);
+        
+        if (response.data?.results?.deletedEntities && response.data.results.deletedEntities.deletedItems && response.data.results.deletedEntities.deletedItems.length > 0) {
+          console.log('🗑️ Processing deleted entities from backend response...');
+          console.log('🗑️ Deleted items to process:', response.data.results.deletedEntities.deletedItems);
+          const { hardDeleteRiskAssessmentItem } = await import('../utils/db');
+          
+          for (const deletedEntity of response.data.results.deletedEntities.deletedItems) {
+            try {
+              if (deletedEntity.entityType === 'riskAssessmentItem') {
+                console.log(`🗑️ Actually deleting item ${deletedEntity.riskassessmentitemid} from SQLite (confirmed by backend)`);
+                const deleteResult = await hardDeleteRiskAssessmentItem(deletedEntity.riskassessmentitemid);
+                console.log(`🗑️ Delete result for item ${deletedEntity.riskassessmentitemid}:`, deleteResult);
+              }
+            } catch (error) {
+              console.error(`❌ Error deleting entity ${deletedEntity.riskassessmentitemid}:`, error);
+            }
+          }
+          console.log(`✅ Successfully processed ${response.data.results.deletedEntities.deletedItems.length} deleted entities`);
+        } else {
+          console.log('ℹ️ No deleted entities found in response');
+        }
         
         // Process updated items from backend response (new approach)
         if (response.data?.results?.riskAssessmentItems?.updatedItems) {
@@ -675,6 +701,7 @@ const riskAssessmentSyncService = {
             latitude: item.latitude,
             longitude: item.longitude,
             notes: item.notes,
+            isDeleted: item.isDeleted ? true : false,
             // Keep local ID for tracking response mapping
             _localId: item.riskassessmentitemid
           } as any; // Use any to allow deleting appointmentid
@@ -737,6 +764,9 @@ const riskAssessmentSyncService = {
           
           if (response.data.results.deletedEntities) {
             console.log('🗑️ Found deletedEntities in response:', response.data.results.deletedEntities);
+            if (response.data.results.deletedEntities.deletedItems) {
+              console.log('🗑️ Found deletedItems array with', response.data.results.deletedEntities.deletedItems.length, 'items');
+            }
           } else {
             console.log('⚠️ No deletedEntities found in response');
           }
@@ -745,6 +775,42 @@ const riskAssessmentSyncService = {
       
       if (response.success) {
         console.log('Server sync successful:', response.data);
+        
+        // Handle deleted entities from backend response
+        console.log('🔍 Checking for deleted entities in response...');
+        console.log('🔍 response.data?.results?.deletedEntities:', response.data?.results?.deletedEntities);
+        
+        if (response.data?.results?.deletedEntities && response.data.results.deletedEntities.deletedItems && response.data.results.deletedEntities.deletedItems.length > 0) {
+          console.log('🗑️ Processing deleted entities from backend response...');
+          console.log('🗑️ Deleted items to process:', response.data.results.deletedEntities.deletedItems);
+          const { hardDeleteRiskAssessmentItem } = await import('../utils/db');
+          
+          for (const deletedEntity of response.data.results.deletedEntities.deletedItems) {
+            try {
+              if (deletedEntity.entityType === 'riskAssessmentItem') {
+                console.log(`🗑️ Actually deleting item ${deletedEntity.riskassessmentitemid} from SQLite (confirmed by backend)`);
+                const deleteResult = await hardDeleteRiskAssessmentItem(deletedEntity.riskassessmentitemid);
+                console.log(`🗑️ Delete result for item ${deletedEntity.riskassessmentitemid}:`, deleteResult);
+              }
+            } catch (error) {
+              console.error(`❌ Error deleting entity ${deletedEntity.riskassessmentitemid}:`, error);
+            }
+          }
+          console.log(`✅ Successfully processed ${response.data.results.deletedEntities.deletedItems.length} deleted entities`);
+        } else {
+          // Backend did not return deletedEntities - items remain marked for deletion until backend confirms
+          const itemsMarkedForDeletion = pendingRiskAssessmentItems.filter(item => 
+            item.isDeleted === 1
+          );
+          
+          if (itemsMarkedForDeletion.length > 0) {
+            console.log('⚠️ Backend did not return deletedEntities confirmation for items marked for deletion');
+            console.log('🗑️ Items remain marked for deletion until backend confirms:', itemsMarkedForDeletion.map(item => item.riskassessmentitemid));
+            console.log('ℹ️ These items will be re-sent in the next sync attempt');
+          } else {
+            console.log('ℹ️ No items marked for deletion found in pending items');
+          }
+        }
 
         // Process updated items from backend response (new approach)
         if (response.data?.results?.riskAssessmentItems?.updatedItems && response.data.results.riskAssessmentItems.updatedItems.length > 0) {
@@ -844,46 +910,10 @@ const riskAssessmentSyncService = {
           // Note: Deleted entities are processed outside this block to avoid duplication
         }
         
-        // Handle deleted entities from backend response (outside of updatedItems block)
-        if (response.data?.results?.deletedEntities && response.data.results.deletedEntities.length > 0) {
-          console.log('🗑️ Processing deleted entities from backend response...');
-          const { hardDeleteRiskAssessmentItem } = await import('../utils/db');
-          
-          for (const deletedEntity of response.data.results.deletedEntities) {
-            try {
-              if (deletedEntity.entityType === 'riskAssessmentItem') {
-                console.log(`🗑️ Actually deleting item ${deletedEntity.riskassessmentitemid} from SQLite (confirmed by backend)`);
-                await hardDeleteRiskAssessmentItem(deletedEntity.riskassessmentitemid);
-              }
-            } catch (error) {
-              console.error(`❌ Error deleting entity ${deletedEntity.riskassessmentitemid}:`, error);
-            }
-          }
-          console.log(`✅ Successfully processed ${response.data.results.deletedEntities.length} deleted entities`);
-        } else {
-          // Backend did not return deletedEntities - items remain marked for deletion until backend confirms
-          const itemsMarkedForDeletion = pendingRiskAssessmentItems.filter(item => 
-            item.qty === 0 && item.price === 0 && item.description === '' && 
-            item.model === '' && item.location === '' && item.notes === ''
-          );
-          
-          if (itemsMarkedForDeletion.length > 0) {
-            console.log('⚠️ Backend did not return deletedEntities confirmation for items marked for deletion');
-            console.log('🗑️ Items remain marked for deletion until backend confirms:', itemsMarkedForDeletion.map(item => item.riskassessmentitemid));
-            console.log('ℹ️ These items will be re-sent in the next sync attempt');
-            
-            // Optional: Clean up items marked for deletion if we're confident the backend processed them
-            // Uncomment the following lines if you want to automatically clean up after successful sync
-            // const { cleanupItemsMarkedForDeletion } = await import('../utils/db');
-            // const cleanedCount = await cleanupItemsMarkedForDeletion();
-            // console.log(`🗑️ Cleaned up ${cleanedCount} items marked for deletion`);
-          }
-        }
         
         // Only mark items as synced if they are NOT marked for deletion
         const itemsNotMarkedForDeletion = pendingRiskAssessmentItems.filter(item => 
-          !(item.qty === 0 && item.price === 0 && item.description === '' && 
-            item.model === '' && item.location === '' && item.notes === '')
+          item.isDeleted !== 1
         );
         
         if (itemsNotMarkedForDeletion.length > 0) {

@@ -25,6 +25,7 @@ export interface Item {
   commaseparatedlist?: string;
   rank?: number; // Add rank property for item ordering
   itemtype?: number; // Add itemtype property for database compatibility
+  qty?: number; // Add original database qty value for hasDataCaptured function
 }
 
 // Define the API response type
@@ -60,6 +61,7 @@ export interface PredefinedItemsListProps {
   dynamicFieldConfig?: import('../../../../types/dynamicUI').FieldConfiguration[]; // New dynamic field configuration
   useCustomFields?: boolean; // Whether to use custom field configuration
   groupingStrategy?: import('../../../../types/dynamicUI').GroupingStrategy; // Grouping strategy configuration
+  assessmentType?: string; // Assessment type to determine default quantity behavior
   onRefresh?: () => void;
   onSelectItem: (item: Item) => void;
   onAddNewItem?: (addFunction: () => void) => void;

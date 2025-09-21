@@ -19,6 +19,9 @@ export default function ItemStates({
       <View style={itemStatesStyles.loadingContainer}>
         <ActivityIndicator size="large" color="#4a90e2" />
         <Text style={itemStatesStyles.loadingText}>Loading items...</Text>
+        <Text style={[itemStatesStyles.loadingText, { fontSize: 14, marginTop: 8, opacity: 0.7 }]}>
+          Please select an appointment to load assessment data
+        </Text>
       </View>
     );
   }

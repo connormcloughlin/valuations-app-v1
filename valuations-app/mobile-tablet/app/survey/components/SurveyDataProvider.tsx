@@ -99,7 +99,61 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
         console.log('✅ Using cached survey data');
         setSurvey(cachedData.data);
         setLoading(false);
-        // Continue to fetch fresh data in background
+        
+        // Check network connectivity before attempting API call
+        const NetInfo = await import('@react-native-community/netinfo');
+        const netInfo = await NetInfo.default.fetch();
+        
+        if (!netInfo.isConnected) {
+          console.log('📱 Offline: Using cached data only');
+          return; // Exit early if offline - we already have cached data
+        }
+        
+        // Continue to fetch fresh data in background if online
+        console.log('🌐 Online: Fetching fresh data in background...');
+      } else {
+        // No cached data - check if we're offline and try SQLite fallback
+        const NetInfo = await import('@react-native-community/netinfo');
+        const netInfo = await NetInfo.default.fetch();
+        
+        if (!netInfo.isConnected) {
+          console.log('📱 Offline: No cached data, trying SQLite fallback...');
+          
+          // Try to get appointment data from SQLite
+          const { getAppointmentById } = await import('../../../utils/db');
+          const sqliteAppointment = await getAppointmentById(parseInt(surveyId));
+          
+          if (sqliteAppointment) {
+            console.log('✅ Found appointment data in SQLite');
+            
+            // Map SQLite appointment data to Survey interface
+            const surveyData: Survey = {
+              id: surveyId,
+              address: String(sqliteAppointment.location || 'No address provided'),
+              client: String(sqliteAppointment.category || 'Unknown client'),
+              date: sqliteAppointment.startTime || new Date().toISOString(),
+              policyNo: 'N/A',
+              sumInsured: 'Not specified',
+              orderNumber: String(sqliteAppointment.orderID || 'Unknown'),
+              lastEdited: sqliteAppointment.dateModified || new Date().toISOString().split('T')[0],
+              broker: 'Not specified',
+              appointmentId: String(sqliteAppointment.appointmentID || surveyId),
+              status: sqliteAppointment.inviteStatus || 'unknown',
+              categories: [],
+              totalValue: 0,
+              completedCategories: 0
+            };
+            
+            setSurvey(surveyData);
+            setLoading(false);
+            return; // Exit early - we have SQLite data
+          } else {
+            console.log('❌ No appointment data found in SQLite either');
+            setError('Survey not found. You are offline and no cached data is available.');
+            setLoading(false);
+            return;
+          }
+        }
       }
       
       // Use the same API approach as appointment details screen
@@ -135,11 +189,26 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
         await storeDataForKey(cacheKey, surveyData);
       } else {
         console.error('❌ Failed to fetch appointment:', response);
-        setError('Failed to load survey data');
+        
+        // Only set error if we don't have cached data
+        if (!cachedData || !cachedData.data) {
+          setError('Failed to load survey data');
+        } else {
+          console.log('📱 Using cached data despite API failure');
+        }
       }
     } catch (err) {
       console.error('❌ Error fetching survey data:', err);
-      setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      
+      // Only set error if we don't have cached data
+      const cacheKey = `survey_data_${surveyId}`;
+      const cachedData = await getDataForKey(cacheKey);
+      
+      if (!cachedData || !cachedData.data) {
+        setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      } else {
+        console.log('📱 Using cached data despite error');
+      }
     } finally {
       setLoading(false);
     }
@@ -295,6 +364,24 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
     
     initializeSurvey();
   }, [surveyId]);
+
+  // Start prefetch when survey data is loaded
+  useEffect(() => {
+    if (survey && survey.orderNumber) {
+      const startPrefetch = async () => {
+        try {
+          console.log(`🚀 SURVEY DATA PROVIDER - Starting prefetch for survey ${surveyId}, order ${survey.orderNumber}`);
+          const prefetchService = await import('../../../services/prefetchService');
+          const prefetchResult = await prefetchService.default.startAppointmentPrefetch(surveyId, survey.orderNumber);
+          console.log(`🔍 SURVEY DATA PROVIDER - Prefetch result:`, prefetchResult);
+        } catch (error) {
+          console.error('❌ SURVEY DATA PROVIDER - Prefetch error:', error);
+        }
+      };
+      
+      startPrefetch();
+    }
+  }, [survey, surveyId]);
 
   const contextValue: SurveyContextType = {
     survey,

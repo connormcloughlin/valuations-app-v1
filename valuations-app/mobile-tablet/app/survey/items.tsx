@@ -58,6 +58,38 @@ export default function ItemsScreen() {
     };
   }, []);
 
+
+  // Function to fetch assessment type from database
+  const fetchAssessmentType = useCallback(async () => {
+    try {
+      const { getAllRiskAssessmentMasters } = await import('../../utils/db');
+      const masters = await getAllRiskAssessmentMasters();
+      
+      if (masters.length > 0) {
+        // Get the first master's assessment type name
+        const assessmentTypeName = masters[0].assessmenttypename;
+        if (assessmentTypeName) {
+          console.log('📋 Found assessment type:', assessmentTypeName);
+          setAssessmentType(assessmentTypeName);
+        } else {
+          console.log('📋 No assessment type found in masters');
+          setAssessmentType(undefined);
+        }
+      } else {
+        console.log('📋 No risk assessment masters found');
+        setAssessmentType(undefined);
+      }
+    } catch (error) {
+      console.error('Error fetching assessment type:', error);
+      setAssessmentType(undefined);
+    }
+  }, []);
+
+  // Fetch assessment type on component mount
+  useEffect(() => {
+    fetchAssessmentType();
+  }, [fetchAssessmentType]);
+
   // This useEffect will be moved after fetchCategoryItems is declared
 
 
@@ -71,6 +103,9 @@ export default function ItemsScreen() {
   const [useCustomFields, setUseCustomFields] = useState(false);
   const [groupingStrategy, setGroupingStrategy] = useState<GroupingStrategy | undefined>(undefined);
   const [fieldConfigLoading, setFieldConfigLoading] = useState(false);
+  
+  // Assessment type for determining default quantity behavior
+  const [assessmentType, setAssessmentType] = useState<string | undefined>(undefined);
   
   // Category totals (calculated from predefined items)
   const [categoryItemCount, setCategoryItemCount] = useState(0);
@@ -221,6 +256,25 @@ export default function ItemsScreen() {
     }
   };
 
+  // Helper function to check if quantity field is visible
+  const isQuantityFieldVisible = useCallback(() => {
+    // Check dynamic field configuration first
+    if (dynamicFieldConfig && dynamicFieldConfig.length > 0) {
+      const quantityField = dynamicFieldConfig.find(f => f.item_fields === 'quantity');
+      return quantityField && quantityField.display_on_ui === 1;
+    }
+    
+    // Fall back to legacy field configuration
+    if (!useCustomFields || !fieldConfig || fieldConfig.length === 0) {
+      // No custom configuration, show all fields
+      return true;
+    }
+    
+    // Check legacy field configuration for 'Qty' field
+    const qtyField = fieldConfig.find(f => f.fieldName === 'Qty');
+    return qtyField && qtyField.visible !== false;
+  }, [dynamicFieldConfig, useCustomFields, fieldConfig]);
+
   // Fetch items from SQLite first, then API (following ItemComponents.tsx pattern)
   const fetchCategoryItems = useCallback(async () => {
     // Make sure we have a category ID
@@ -252,6 +306,9 @@ export default function ItemsScreen() {
       const { getAllRiskAssessmentItems } = await import('../../utils/db');
       const localItems = await getAllRiskAssessmentItems();
       
+      console.log(`📊 FETCH: Total items in SQLite: ${localItems.length}`);
+      
+      
       const categoryItems = localItems.filter(item => 
         String(item.riskassessmentcategoryid) === String(currentCategoryId)
       );
@@ -259,105 +316,17 @@ export default function ItemsScreen() {
       console.log(`📂 FETCH: Found ${categoryItems.length} items for category ${currentCategoryId}`);
       
       if (categoryItems.length === 0) {
-        // No items in SQLite, fetch from API
-        console.log('No items in SQLite for category, fetching from API:', currentCategoryId);
-        const apiResponse = await api.getRiskAssessmentItems(currentCategoryId as string) as ApiResponse;
+        // No items in SQLite - this means complete-hierarchy prefetch hasn't run yet
+        console.log('No items in SQLite for category - waiting for complete-hierarchy prefetch:', currentCategoryId);
+        console.log('ℹ️ Items will be loaded when user selects an appointment and prefetch completes');
         
-        // Check if the data is from cache
-        if (apiResponse.fromCache) {
-          setFromCache(true);
-        }
+        // Show loading state while waiting for prefetch
+        setLoading(true);
+        setError(null); // Clear any previous errors
         
-        if (apiResponse?.success && Array.isArray(apiResponse.data)) {
-          console.log('Got items from API, storing in SQLite:', apiResponse.data.length);
-          
-          // Debug: Check for commaseparatedlist in API response
-          const itemsWithCommaList = apiResponse.data.filter((item: any) => item.commaseparatedlist);
-          if (itemsWithCommaList.length > 0) {
-            console.log('🔍 API items with commaseparatedlist:', itemsWithCommaList.length);
-            console.log('🔍 Sample commaseparatedlist values:', itemsWithCommaList.slice(0, 3).map((item: any) => ({
-              id: item.riskassessmentitemid,
-              commaseparatedlist: item.commaseparatedlist,
-              type: typeof item.commaseparatedlist
-            })));
-          }
-          
-          // Store each item in SQLite (same as ItemComponents)
-          const { insertRiskAssessmentItem } = await import('../../utils/db');
-          for (const item of apiResponse.data) {
-            const sqliteItem = {
-              riskassessmentitemid: Number(item.riskassessmentitemid),
-              riskassessmentcategoryid: Number(item.riskassessmentcategoryid),
-              itemprompt: item.itemprompt || '',
-              itemtype: Number(item.itemtype) || 0,
-              rank: Number(item.rank) || 0,
-              commaseparatedlist: item.commaseparatedlist || '',
-              selectedanswer: item.selectedanswer || '',
-              qty: Number(item.qty) || 1,
-              price: Number(item.price) || 0,
-              description: item.description || '',
-              model: item.model || '',
-              location: item.location || '',
-              assessmentregisterid: Number(item.assessmentregisterid) || 0,
-              assessmentregistertypeid: Number(item.assessmentregistertypeid) || 0,
-              datecreated: item.datecreated || new Date().toISOString(),
-              createdbyid: item.createdbyid || '',
-              dateupdated: item.dateupdated || new Date().toISOString(),
-              updatedbyid: item.updatedbyid || '',
-              issynced: Number(item.issynced) || 0,
-              syncversion: Number(item.syncversion) || 0,
-              deviceid: item.deviceid || '',
-              syncstatus: item.syncstatus || '',
-              synctimestamp: item.synctimestamp || new Date().toISOString(),
-              hasphoto: Number(item.hasphoto) || 0,
-              latitude: Number(item.latitude) || 0,
-              longitude: Number(item.longitude) || 0,
-              notes: item.notes || '',
-              pending_sync: 0
-            };
-            
-            try {
-              await insertRiskAssessmentItem(sqliteItem);
-            } catch (insertError) {
-              console.warn('Failed to insert item to SQLite:', insertError);
-            }
-          }
-          
-          // Get updated items from SQLite after insertion
-          const updatedLocalItems = await getAllRiskAssessmentItems();
-          const updatedCategoryItems = updatedLocalItems.filter(item => 
-            String(item.riskassessmentcategoryid) === String(currentCategoryId)
-          );
-          
-          // Transform SQLite items to match interface
-          const formattedItems = updatedCategoryItems.map((item: any) => ({
-            id: String(item.riskassessmentitemid) || '',
-            categoryId: String(currentCategoryId), // Set the categoryId for new items
-            type: item.itemprompt || '',
-            description: item.description || '',
-            model: item.model || '',
-            selection: '',
-            quantity: String(item.qty) || '1',
-            price: String(item.price) || '',
-            room: item.location || '',
-            notes: item.notes || '',
-            photo: undefined,
-            commaseparatedlist: item.commaseparatedlist || '',
-            selectedanswer: item.selectedanswer || '',
-            rank: item.rank || 0, // Include rank field from database
-            itemtype: item.itemtype || 0, // Include itemtype field from database
-          }));
-          
-          console.log(`Using newly stored SQLite items: ${formattedItems.length}`);
-          // Combine with preserved new items
-          setPredefinedItems([...formattedItems, ...newItemsInProgress]);
-        } else {
-          console.log(`No items found in API for category: ${currentCategoryId}`);
-          // Only set new items in progress if no API items found
-          setPredefinedItems(newItemsInProgress);
-          // Don't set error for empty categories - this is a normal state
-          setError(null);
-        }
+        // Set empty items for now - they will be populated when prefetch completes
+        setPredefinedItems(newItemsInProgress);
+        return; // Exit early to show loading state
       } else {
         // Use existing SQLite items
         console.log('Using existing SQLite items for category:', categoryItems.length);
@@ -373,26 +342,20 @@ export default function ItemsScreen() {
               description: item.description || '',
               model: item.model || '',
               selection: '',
-              quantity: String(item.qty) || '1',
+              quantity: ((item.qty === 0 || item.qty === null) && isQuantityFieldVisible()) ? '1' : String(item.qty || 0),
               price: String(item.price) || '',
               room: item.location || '',
               notes: item.notes || '',
               photo: undefined,
               commaseparatedlist: item.commaseparatedlist || '',
+              // Add original database values for hasDataCaptured function
+              qty: item.qty === null ? 0 : (item.qty || 0),
               selectedanswer: item.selectedanswer || '',
               rank: item.rank || 0, // Include rank field from database
               itemtype: item.itemtype || 0, // Include itemtype field from database
             };
           
-          // Debug logging for ALL items to see what's being loaded
-          console.log(`🔍 [fetchCategoryItems] Item ${mappedItem.id} mapping:`, {
-            sqliteSelectedAnswer: item.selectedanswer,
-            mappedSelectedAnswer: mappedItem.selectedanswer,
-            itemId: mappedItem.id,
-            hasSelectedAnswer: !!item.selectedanswer
-          });
-          
-          // Log any items with empty types for debugging
+          // Only log items with issues for debugging
           if (!mappedItem.type && item.riskassessmentitemid > 1000000000000) {
             console.warn(`⚠️ Item ${mappedItem.id} has empty type - itemprompt was: "${item.itemprompt}"`);
           }
@@ -402,15 +365,8 @@ export default function ItemsScreen() {
         
         console.log(`✅ FETCH: Mapped ${formattedItems.length} items for UI`);
         
-        // Debug: Log the final items being set in state
+        // Set final items in state
         const finalItems = [...formattedItems, ...newItemsInProgress];
-        console.log(`🔍 [fetchCategoryItems] Final items being set in state:`, 
-          finalItems.map(item => ({
-            id: item.id,
-            selectedanswer: item.selectedanswer,
-            hasSelectedAnswer: !!item.selectedanswer
-          }))
-        );
         
         // Combine with preserved new items
         setPredefinedItems(finalItems);
@@ -423,7 +379,37 @@ export default function ItemsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [categoryId]); // Dependencies for useCallback
+  }, [categoryId, isQuantityFieldVisible]); // Dependencies for useCallback
+
+  // Listen for prefetch completion to refresh items
+  useEffect(() => {
+    const setupPrefetchListener = async () => {
+      try {
+        const prefetchService = await import('../../services/prefetchService');
+        
+        // Listen for category completion events
+        const unsubscribe = prefetchService.default.onCategoryCompleted((completedCategoryId: string) => {
+          console.log(`🔄 Prefetch completed for category ${completedCategoryId}, checking if refresh needed...`);
+          if (String(completedCategoryId) === String(categoryId)) {
+            // Refresh items for this category
+            console.log(`🔄 Refreshing items for category ${categoryId} after prefetch completion`);
+            fetchCategoryItems();
+          }
+        });
+        
+        return unsubscribe;
+      } catch (error) {
+        console.error('Error setting up prefetch listener:', error);
+        return () => {};
+      }
+    };
+    
+    const unsubscribe = setupPrefetchListener();
+    
+    return () => {
+      unsubscribe.then(unsub => unsub());
+    };
+  }, [categoryId, fetchCategoryItems]);
   
   // Fetch predefined items and field configuration when component loads or categoryId changes
   useEffect(() => {
@@ -582,6 +568,7 @@ export default function ItemsScreen() {
             dynamicFieldConfig={dynamicFieldConfig} // New dynamic field configuration
             useCustomFields={useCustomFields}
             groupingStrategy={groupingStrategy} // Pass grouping strategy configuration
+            assessmentType={assessmentType} // Pass assessment type for quantity defaulting
             onSelectItem={() => {}} // No longer needed since items are edited inline
             onAddNewItem={(func) => {
               console.log('Setting addNewItemFunction via ref:', func);

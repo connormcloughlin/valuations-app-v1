@@ -36,6 +36,7 @@ export default function PredefinedItemsList({
   dynamicFieldConfig = [],
   useCustomFields = false,
   groupingStrategy,
+  assessmentType,
   onRefresh, 
   onSelectItem,
   onAddNewItem,
@@ -162,7 +163,7 @@ export default function PredefinedItemsList({
       type: '', // Empty - user will fill this in
       description: '',
       model: '',
-      quantity: '1',
+      quantity: assessmentType === 'INVENTORY' ? '1' : '',
       price: '',
       room: '',
       notes: '',
@@ -197,7 +198,7 @@ export default function PredefinedItemsList({
         type: '',
         description: '',
         model: '',
-        quantity: '1',
+        quantity: assessmentType === 'INVENTORY' ? '1' : '',
         price: '',
         room: '',
         notes: ''
@@ -210,6 +211,16 @@ export default function PredefinedItemsList({
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, []); // Remove categoryId dependency since it's stable from props
+
+  // Helper function to get default quantity based on assessment type
+  const getDefaultQuantity = useCallback((item: Item): string => {
+    // Only default to '1' if assessment type is "INVENTORY"
+    if (assessmentType === 'INVENTORY') {
+      return item.quantity || '1';
+    }
+    // For non-inventory assessments, return empty string or existing value
+    return item.quantity || '';
+  }, [assessmentType]);
 
   // Helper function to get item field value based on field name from strategy config
   const getItemFieldValue = useCallback((item: Item, fieldName: string): string => {
@@ -229,7 +240,7 @@ export default function PredefinedItemsList({
         value = item.model || 'No Model';
         break;
       case 'Qty':
-        value = item.quantity || '1';
+        value = getDefaultQuantity(item);
         break;
       case 'Price':
         value = item.price || '0';
@@ -244,7 +255,7 @@ export default function PredefinedItemsList({
     }
     
     return value;
-  }, []);
+  }, [getDefaultQuantity]);
 
   // Calculate and expose totals to parent component
   const calculateTotals = useCallback(() => {
@@ -256,7 +267,7 @@ export default function PredefinedItemsList({
       const editedItem = editItems[itemId];
       
       // Count item if it has been edited and has a quantity > 0, or if it's an original item with values
-      const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '1', 10);
+      const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(getDefaultQuantity(item), 10);
       const price = editedItem?.price ? parseFloat(editedItem.price) : parseFloat(item.price || '0');
       
       // Include items that have been edited or have existing values
@@ -269,7 +280,7 @@ export default function PredefinedItemsList({
     });
 
     return { itemCount, totalValue };
-  }, [items, editItems]);
+  }, [items, editItems, getDefaultQuantity]);
 
   // CONSOLIDATED USEEFFECT 1: Data Loading and Initialization
   // Handles: items-dependent operations, photos loading, pending count, camera permissions
@@ -319,21 +330,28 @@ export default function PredefinedItemsList({
     const editedItem = editItems[itemId];
     
     // Get current values (edited or original)
-    const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt(item.quantity || '1', 10);
+    // For hasDataCaptured, we need to check the actual database value, not the display default
+    // If user has edited, use the edited value; otherwise use the original DB value
+    const quantity = editedItem?.quantity ? parseInt(editedItem.quantity, 10) : parseInt((item as any).qty || 0, 10);
     const price = editedItem?.price ? parseFloat(editedItem.price) : parseFloat(item.price || '0');
     const description = editedItem?.description || item.description || '';
     const model = editedItem?.model || item.model || '';
     const notes = editedItem?.notes || item.notes || '';
     
+    // Check if quantity has meaningful data:
+    // - For INVENTORY: quantity > 0 (since DB stores 0, but UI displays 1 as default)
+    // - For non-INVENTORY: quantity > 0
+    const hasQuantityData = quantity > 0;
+    
     // Has data if ANY meaningful field has a value:
-    // - quantity different from default (1)
-    // - price different from default (0) 
+    // - quantity greater than 0 (actual DB value, not display default)
+    // - price greater than 0
     // - description is not empty
     // - model is not empty
     // - notes is not empty
-    return (quantity !== 1) || (price > 0) || (description && description.trim() !== '') || 
+    return hasQuantityData || (price > 0) || (description && description.trim() !== '') || 
            (model && model.trim() !== '') || (notes && notes.trim() !== '');
-  }, [editItems]);
+  }, [editItems, assessmentType]);
 
   // Handle sync
   const handleSync = useCallback(async () => {
@@ -567,7 +585,7 @@ export default function PredefinedItemsList({
         ...existingItem,
         itemprompt: changes.type ?? existingItem.itemprompt ?? '',
         selectedanswer: changes.selectedanswer ?? existingItem.selectedanswer ?? '',
-        qty: Number(changes.quantity ?? existingItem.qty) || 1,
+        qty: Number(changes.quantity ?? getDefaultQuantity(item)) || 0,
         price: Number(changes.price ?? existingItem.price) || 0,
         description: changes.description ?? existingItem.description ?? '',
         model: changes.model ?? existingItem.model ?? '',
@@ -605,7 +623,7 @@ export default function PredefinedItemsList({
         rank: item.rank ?? 0, // Preserve the original rank
         commaseparatedlist: item.commaseparatedlist ?? '',
         selectedanswer: changes.selectedanswer ?? item.selectedanswer ?? '',
-        qty: Number(changes.quantity ?? item.quantity) || 1,
+        qty: Number(changes.quantity ?? getDefaultQuantity(item)) || 0,
         price: Number(changes.price ?? item.price) || 0,
         description: changes.description ?? item.description ?? '',
         model: changes.model ?? item.model ?? '',
@@ -640,7 +658,7 @@ export default function PredefinedItemsList({
           String(prevItem.id) === id ? {
             ...prevItem,
             type: changes.type ?? prevItem.type ?? '',
-            quantity: changes.quantity ?? prevItem.quantity ?? '1',
+            quantity: changes.quantity ?? getDefaultQuantity(prevItem),
             price: changes.price ?? prevItem.price ?? '0',
             description: changes.description ?? prevItem.description ?? '',
             model: changes.model ?? prevItem.model ?? '',
@@ -658,7 +676,7 @@ export default function PredefinedItemsList({
           String(prevItem.id) === id ? {
             ...prevItem,
             type: changes.type ?? prevItem.type ?? '',
-            quantity: changes.quantity ?? prevItem.quantity ?? '1',
+            quantity: changes.quantity ?? getDefaultQuantity(prevItem),
             price: changes.price ?? prevItem.price ?? '0',
             description: changes.description ?? prevItem.description ?? '',
             model: changes.model ?? prevItem.model ?? '',
@@ -768,7 +786,7 @@ export default function PredefinedItemsList({
             ...prevItem,
             id: newItemId, // Change to database ID
             type: changes.type ?? prevItem.type ?? '',
-            quantity: changes.quantity ?? prevItem.quantity ?? '1',
+            quantity: changes.quantity ?? getDefaultQuantity(prevItem),
             price: changes.price ?? prevItem.price ?? '0',
             description: changes.description ?? prevItem.description ?? '',
             model: changes.model ?? prevItem.model ?? '',
@@ -1266,200 +1284,36 @@ export default function PredefinedItemsList({
   const deleteItem = useCallback(async (itemToDelete: Item) => {
     const itemId = String(itemToDelete.id);
     
-    // Check if this item is the only one with data in its group
-    const groupInfo = findItemGroup(itemToDelete);
-    let isOnlyItemWithData = false;
-    
-    console.log('🗑️ DELETE ATTEMPT - Item details:', {
-      itemId,
-      itemType: itemToDelete.type,
-      hasData: hasDataCaptured(itemToDelete),
-      groupInfo,
-      isNestedGrouping: isNestedGrouping(groupedItems)
-    });
-    
-    if (groupInfo?.items) {
-      const itemsWithData = groupInfo.items.filter(item => hasDataCaptured(item));
-      isOnlyItemWithData = itemsWithData.length === 1 && hasDataCaptured(itemToDelete);
-      
-      console.log('🗑️ GROUP ANALYSIS:', {
-        totalItemsInGroup: groupInfo.items.length,
-        itemsWithData: itemsWithData.length,
-        isOnlyItemWithData,
-        condition1: itemsWithData.length === 1,
-        condition2: hasDataCaptured(itemToDelete),
-        itemsWithDataIds: itemsWithData.map(item => ({ id: item.id, type: item.type, hasData: hasDataCaptured(item) }))
-      });
-      
-      console.log('🗑️ Group analysis for item deletion:', {
-        itemId,
-        groupSize: groupInfo.items.length,
-        itemsWithDataCount: itemsWithData.length,
-        isOnlyItemWithData,
-        currentItemHasData: hasDataCaptured(itemToDelete),
-        isSecondaryGroup: isNestedGrouping(groupedItems) && groupInfo.secondaryGroup,
-        primaryGroup: groupInfo.primaryGroup,
-        secondaryGroup: groupInfo.secondaryGroup,
-        group: groupInfo.group
-      });
-    }
-    
-    const actionText = isOnlyItemWithData ? 'Clear' : 'Delete';
-    
-    // Determine if this is a secondary group for better messaging
-    const isSecondaryGroup = isNestedGrouping(groupedItems) && groupInfo?.secondaryGroup;
-    const groupType = isSecondaryGroup ? 'secondary group' : 'group';
-    
-    const actionDescription = isOnlyItemWithData 
-      ? `This is the only item with data in its ${groupType}. Clear all values instead of deleting?`
-      : 'Are you sure you want to delete this item?';
-    
     Alert.alert(
-      `${actionText} Item`,
-      `${actionDescription}${itemToDelete.type ? `\n\nItem: ${itemToDelete.type}` : ''}`,
+      'Delete Item',
+      `Are you sure you want to delete this item?${itemToDelete.type ? `\n\nItem: ${itemToDelete.type}` : ''}`,
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: actionText,
-          style: isOnlyItemWithData ? 'default' : 'destructive',
+          text: 'Delete',
+          style: 'destructive',
           onPress: async () => {
             try {
-              console.log(`${actionText.toLowerCase()}ing item:`, itemId);
+              console.log('🗑️ Deleting item:', itemId);
               
-              if (isOnlyItemWithData) {
-                // Clear values instead of deleting
-                console.log('🧹 Clearing item values instead of deleting (only item with data in group)');
+              // If it's not a new item, mark it for deletion in the database
+              if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
+                console.log('🗑️ Marking existing item for deletion in SQLite database:', itemToDelete.id);
                 
-                // If it's not a new item, update it in the database with cleared values
-                if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
-                  // Get existing SQLite record
-                  const existingItems = await getAllRiskAssessmentItems();
-                  const existingItem = existingItems.find(dbItem => 
-                    String(dbItem.riskassessmentitemid) === String(itemToDelete.id)
-                  );
-
-                  if (existingItem) {
-                    // Reset to default values while preserving grouping fields
-                    const updated: RiskAssessmentItem = {
-                      ...existingItem,
-                      qty: 1, // Reset to default quantity
-                      price: 0, // Reset price
-                      description: '', // Clear description
-                      model: '', // Clear model if not used for grouping
-                      location: existingItem.location, // Preserve location for grouping
-                      notes: '', // Clear notes
-                      pending_sync: 1,
-                      issynced: 0,
-                      dateupdated: new Date().toISOString(),
-                    };
-                    
-                    // Preserve grouping field values based on strategy
-                    if (groupingStrategy?.strategy_type) {
-                      const strategyConfig = groupingStrategy.strategy_config;
-                      let parsedConfig: any = null;
-                      try {
-                        parsedConfig = typeof strategyConfig === 'string' ? JSON.parse(strategyConfig) : strategyConfig;
-                      } catch (error) {
-                        parsedConfig = null;
-                      }
-                      
-                      // For nested grouping, preserve both primary and secondary group fields
-                      if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
-                        // Preserve fields used for grouping
-                        if (parsedConfig.primary_group !== 'Location') updated.location = existingItem.location;
-                        if (parsedConfig.secondary_group !== 'Location') updated.location = existingItem.location;
-                        if (parsedConfig.primary_group === 'Model' || parsedConfig.secondary_group === 'Model') {
-                          updated.model = existingItem.model; // Preserve model if used for grouping
-                        }
-                      } else {
-                        // For single-tier grouping, preserve the grouping field
-                        switch (groupingStrategy.strategy_type) {
-                          case 'by_location':
-                            updated.location = existingItem.location;
-                            break;
-                          case 'by_brand':
-                            updated.model = existingItem.model;
-                            break;
-                          case 'by_type':
-                            // itemprompt is preserved by default
-                            break;
-                        }
-                      }
-                    }
-                    
-                    await updateRiskAssessmentItem(updated);
-                    
-                    // Update pending changes count
-                    const count = await riskAssessmentSyncService.getPendingChangesCount();
-                    setPendingChangesCount(count.total);
-                  }
-                }
+                // Mark as deleted (will be synced to backend)
+                const { deleteRiskAssessmentItem } = await import('../../../../utils/db');
+                await deleteRiskAssessmentItem(Number(itemToDelete.id));
                 
-                // Clear edit state and reset local item state to defaults
-                setEditItems(prev => {
-                  const newEditItems = { ...prev };
-                  delete newEditItems[itemId];
-                  return newEditItems;
-                });
+                console.log('✅ Record marked for deletion in SQLite database');
                 
-                // Update local items state to reflect cleared values
-                setItems(prevItems => {
-                  const updatedItems = prevItems.map(item => 
-                    item.id === itemToDelete.id ? {
-                      ...item,
-                      quantity: '1',
-                      price: '0',
-                      description: '',
-                      model: (groupingStrategy?.strategy_type === 'by_brand') ? item.model : '', // Preserve model only if used for grouping
-                      room: item.room, // Always preserve room/location
-                      // Don't preserve type - let it be cleared to maintain original behavior
-                      notes: ''
-                    } : item
-                  );
-
-                  console.log('🧹 Connor');
-                  console.log('🧹 Updated items after clearing:', {
-                    itemId,
-                    totalItems: updatedItems.length,
-                    clearedItem: updatedItems.find(item => item.id === itemToDelete.id),
-                    hasDataAfterClear: hasDataCaptured(updatedItems.find(item => item.id === itemToDelete.id) || itemToDelete)
-                  });
-                  
-                  return updatedItems;
-                });
-                
-                // Clear auto-saved state
-                setAutoSavedItems(prev => {
-                  const newAutoSaved = { ...prev };
-                  delete newAutoSaved[itemId];
-                  return newAutoSaved;
-                });
-                
-                console.log('Item values cleared successfully:', itemId);
-                
+                // Update pending changes count
+                const count = await riskAssessmentSyncService.getPendingChangesCount();
+                setPendingChangesCount(count.total);
               } else {
-                // Proceed with normal deletion (mark for sync deletion)
-                console.log('🗑️ Marking item for deletion (not the only item with data in group)');
-              
-                // If it's not a new item, mark it for deletion in the database
-                if (!itemToDelete.id.startsWith('custom-new-') && !itemToDelete.id.startsWith('duplicate-')) {
-                  console.log('🗑️ Marking existing item for deletion in SQLite database:', itemToDelete.id);
-                  
-                  // Mark as deleted (will be synced to backend)
-                  const { deleteRiskAssessmentItem } = await import('../../../../utils/db');
-                  await deleteRiskAssessmentItem(Number(itemToDelete.id));
-                  
-                  console.log('✅ Record marked for deletion in SQLite database');
-                  
-                  // Update pending changes count
-                  const count = await riskAssessmentSyncService.getPendingChangesCount();
-                  setPendingChangesCount(count.total);
-                } else {
-                  console.log('🗑️ Deleting new/temporary item (no database record to delete)');
-                }
+                console.log('🗑️ Deleting new/temporary item (no database record to delete)');
               }
               
               // Remove from local state
@@ -1487,10 +1341,10 @@ export default function PredefinedItemsList({
               console.log('Item deleted successfully:', itemId);
               
             } catch (error) {
-              console.error('Error processing item:', error);
+              console.error('Error deleting item:', error);
               Alert.alert(
-                `${actionText} Failed`,
-                `Failed to ${actionText.toLowerCase()} the item. Please try again.`,
+                'Delete Failed',
+                'Failed to delete the item. Please try again.',
                 [{ text: 'OK' }]
               );
             }
@@ -1498,7 +1352,7 @@ export default function PredefinedItemsList({
         },
       ]
     );
-  }, [expandedItem, findItemGroup, hasDataCaptured, groupingStrategy]);
+  }, [expandedItem]);
 
   // Function to duplicate an item with the same itemprompt
   const duplicateItem = useCallback((originalItem: Item) => {
@@ -1547,7 +1401,7 @@ export default function PredefinedItemsList({
         type: originalItem.type,
         description: '',
         model: '',
-        quantity: '1',
+        quantity: assessmentType === 'INVENTORY' ? '1' : '',
         price: '',
         room: '',
         notes: '',
@@ -1618,7 +1472,7 @@ export default function PredefinedItemsList({
         type: originalItem.type, // Keep the same itemprompt
         description: '',
         model: '',
-        quantity: '1',
+        quantity: assessmentType === 'INVENTORY' ? '1' : '',
         price: '',
         room: '',
         notes: '',
@@ -1689,7 +1543,7 @@ export default function PredefinedItemsList({
         type: duplicatedItem.type,
         description: duplicatedItem.description || '',
         model: duplicatedItem.model || '',
-        quantity: duplicatedItem.quantity || '1',
+        quantity: duplicatedItem.quantity || (assessmentType === 'INVENTORY' ? '1' : ''),
         price: duplicatedItem.price || '',
         room: duplicatedItem.room || '', // Preserve the room from duplication
         notes: duplicatedItem.notes || ''
@@ -1897,7 +1751,7 @@ export default function PredefinedItemsList({
         
         // Fallback to original item values
         switch (fieldName) {
-          case 'quantity': return String(item.quantity || '1');
+          case 'quantity': return getDefaultQuantity(item);
           case 'price': return (item.price && String(item.price) !== '0') ? String(item.price) : '';
           case 'description': return item.description || '';
           case 'model': return item.model || '';
@@ -2061,7 +1915,7 @@ export default function PredefinedItemsList({
         ))}
       </>
     );
-  }, [dynamicFieldConfig, validationErrors, handleEdit, items, itemPhotos, handleViewPhotos, autoSaveItem, groupingStrategy]);
+  }, [dynamicFieldConfig, validationErrors, handleEdit, items, itemPhotos, handleViewPhotos, autoSaveItem, groupingStrategy, getDefaultQuantity]);
 
   // Helper function to check if a field should be visible
   const isFieldVisible = useCallback((fieldName: string) => {
@@ -2135,7 +1989,7 @@ export default function PredefinedItemsList({
 
     const isNewItem = item.id.startsWith('custom-new-');
     const type = editData.type ?? (item.type || '');
-    const quantity = editData.quantity ?? String(item.quantity || '1');
+    const quantity = editData.quantity ?? getDefaultQuantity(item);
     const price = editData.price ?? ((item.price && String(item.price) !== '0') ? String(item.price) : '');
     const description = editData.description ?? (item.description || '');
     const model = editData.model ?? (item.model || '');
@@ -2279,7 +2133,7 @@ export default function PredefinedItemsList({
         )}
       </>
     );
-  }, [items, isFieldVisible, handleEdit, autoSaveItem, itemPhotos, handleViewPhotos]);
+  }, [items, isFieldVisible, handleEdit, autoSaveItem, itemPhotos, handleViewPhotos, getDefaultQuantity]);
 
   return (
     <>
