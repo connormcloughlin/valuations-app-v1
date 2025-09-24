@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import azureAdService from '../services/azureAdService';
 import authApi from '../api/auth';
-import apiClient from '../api/client';
+// Note: Using transport client for API calls instead of deprecated apiClient
 import { initializeDatabase } from '../utils/db';
 import { AppState, AppStateStatus } from 'react-native';
 
@@ -188,21 +188,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Optionally try server validation, but don't fail if endpoint doesn't exist
       try {
-        // Store the current auth header before setting the token
-        const originalAuth = apiClient.defaults.headers.common['Authorization'];
-        
+        // Note: JWT validation removed - using API key mode instead
         // Set the token temporarily for this validation request
         authApi.setAuthToken(token);
         
         // Call the verify endpoint (this might not exist in external APIs)
         const response = await authApi.verifyToken();
-        
-        // Restore original auth token
-        if (originalAuth) {
-          apiClient.defaults.headers.common['Authorization'] = originalAuth;
-        } else {
-          delete apiClient.defaults.headers.common['Authorization'];
-        }
 
         // Handle the new response format from the implemented backend
         if (response && (response as any).data) {
@@ -294,7 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else {
             // JWT mode - try to get fresh user data from the verify endpoint
             try {
-              const originalAuth = apiClient.defaults.headers.common['Authorization'];
+              // Note: JWT validation removed - using API key mode instead
               authApi.setAuthToken(token);
               const verifyResponse = await authApi.verifyToken();
               
@@ -325,13 +316,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   token,
                   azureToken: azureToken || undefined
                 });
-              }
-              
-              // Restore original auth header
-              if (originalAuth) {
-                apiClient.defaults.headers.common['Authorization'] = originalAuth;
-              } else {
-                delete apiClient.defaults.headers.common['Authorization'];
               }
             } catch (verifyError) {
               console.log('🔐 Could not get fresh user data, using stored data');

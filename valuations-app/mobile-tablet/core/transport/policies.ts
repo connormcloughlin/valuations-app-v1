@@ -1,0 +1,166 @@
+/**
+ * Transport policies for different endpoint types
+ * Maps endpoint IDs to their specific timeout, retry, and caching policies
+ */
+
+export interface TransportPolicy {
+  timeoutMs: number;
+  retry: {
+    attempts: number;
+    strategy: 'exponential' | 'linear' | 'fixed';
+  };
+  cacheTTL?: number;
+  interpretEmptyPolicyKey?: string;
+}
+
+export const policies = new Map<string, TransportPolicy>([
+  // Appointments endpoints
+  ['appointments.list', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 5 * 60 * 1000, // 5 minutes
+    interpretEmptyPolicyKey: 'appointments_empty'
+  }],
+  
+  ['appointments.detail', {
+    timeoutMs: 10000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 10 * 60 * 1000, // 10 minutes
+    interpretEmptyPolicyKey: 'appointments_empty'
+  }],
+  
+  ['appointments.update', {
+    timeoutMs: 15000,
+    retry: { attempts: 3, strategy: 'exponential' },
+    interpretEmptyPolicyKey: 'appointments_empty'
+  }],
+
+  // Risk Templates endpoints
+  ['risk-templates.list', {
+    timeoutMs: 20000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 24 * 60 * 60 * 1000, // 24 hours
+    interpretEmptyPolicyKey: 'risk_templates_empty'
+  }],
+  
+  ['risk-templates.sections', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours
+    interpretEmptyPolicyKey: 'risk_templates_empty'
+  }],
+  
+  ['risk-templates.categories', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours
+    interpretEmptyPolicyKey: 'risk_templates_empty'
+  }],
+  
+  ['risk-templates.items', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours
+    interpretEmptyPolicyKey: 'risk_templates_empty'
+  }],
+
+  // Risk Assessment endpoints
+  ['risk-assessments.sections', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 30 * 60 * 1000, // 30 minutes
+    interpretEmptyPolicyKey: 'risk_assessments_empty'
+  }],
+  
+  ['risk-assessments.categories', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 30 * 60 * 1000, // 30 minutes
+    interpretEmptyPolicyKey: 'risk_assessments_empty'
+  }],
+  
+  ['risk-assessments.items', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 30 * 60 * 1000, // 30 minutes
+    interpretEmptyPolicyKey: 'risk_assessments_empty'
+  }],
+
+  // Surveys endpoints
+  ['surveys.list', {
+    timeoutMs: 10000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 30 * 60 * 1000, // 30 minutes
+    interpretEmptyPolicyKey: 'surveys_empty'
+  }],
+  
+  ['surveys.submit', {
+    timeoutMs: 30000,
+    retry: { attempts: 3, strategy: 'exponential' },
+    interpretEmptyPolicyKey: 'surveys_empty'
+  }],
+
+  // Media endpoints
+  ['media.upload', {
+    timeoutMs: 60000, // 1 minute for uploads
+    retry: { attempts: 1, strategy: 'fixed' }, // Don't retry uploads aggressively
+    interpretEmptyPolicyKey: 'media_empty'
+  }],
+  
+  ['media.download', {
+    timeoutMs: 30000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 60 * 60 * 1000, // 1 hour
+    interpretEmptyPolicyKey: 'media_empty'
+  }],
+
+  // Sync endpoints
+  ['sync.changes', {
+    timeoutMs: 20000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    interpretEmptyPolicyKey: 'sync_empty'
+  }],
+  
+  ['sync.batch', {
+    timeoutMs: 45000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    interpretEmptyPolicyKey: 'sync_empty'
+  }],
+
+  // Mobile composite endpoints
+  ['mobile.hierarchy', {
+    timeoutMs: 30000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 15 * 60 * 1000, // 15 minutes
+    interpretEmptyPolicyKey: 'mobile_empty'
+  }],
+  
+  ['mobile.config', {
+    timeoutMs: 20000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 30 * 60 * 1000, // 30 minutes
+    interpretEmptyPolicyKey: 'mobile_empty'
+  }],
+
+  // Default policy for unknown endpoints
+  ['default', {
+    timeoutMs: 10000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 5 * 60 * 1000, // 5 minutes
+    interpretEmptyPolicyKey: 'default_empty'
+  }]
+]);
+
+/**
+ * Get policy for endpoint ID, fallback to default
+ */
+export function getPolicy(endpointId: string): TransportPolicy {
+  return policies.get(endpointId) || policies.get('default')!;
+}
+
+/**
+ * Check if endpoint has specific policy
+ */
+export function hasPolicy(endpointId: string): boolean {
+  return policies.has(endpointId);
+}

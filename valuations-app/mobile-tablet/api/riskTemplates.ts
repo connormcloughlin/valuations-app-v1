@@ -1,9 +1,9 @@
-import apiClient from './client';
+import transportClient from '../core/transport/transportClient';
 import offlineStorage from '../utils/offlineStorage';
 import connectionUtils from '../utils/connectionUtils';
 
 /**
- * Risk template related API methods
+ * Risk template related API methods using unified transport
  */
 const riskTemplatesApi = {
   /**
@@ -47,22 +47,25 @@ const riskTemplatesApi = {
     
     // We're online, try to fetch from server
     try {
-      console.log(`Fetching risk templates from ${apiClient.defaults.baseURL}/risk-templates`);
-      const response = await apiClient.get('/risk-templates');
+      console.log(`Fetching risk templates from server`);
+      const response = await transportClient.get('risk-templates.list', '/risk-templates');
       
-      if (response.success && response.data) {
-        console.log(`Got ${response.data.length || 0} templates from server`);
+      if (response) {
+        console.log(`Got ${Array.isArray(response) ? response.length : 'unknown count'} templates from server`);
         
         // Cache the templates for offline use
         try {
-          await offlineStorage.storeRiskTemplates(response.data);
+          await offlineStorage.storeRiskTemplates(response);
           console.log('Templates cached successfully');
         } catch (storageError) {
           console.error('Error caching templates:', storageError);
         }
       }
       
-      return response;
+      return {
+        success: true,
+        data: response
+      };
     } catch (error) {
       console.error('Error fetching templates from server:', error);
       
@@ -79,7 +82,7 @@ const riskTemplatesApi = {
       }
       
       // No cache, return the error
-      return error.success === false ? error : { 
+      return { 
         success: false, 
         message: error.message || 'Network error',
         status: error.status || 0
@@ -92,7 +95,7 @@ const riskTemplatesApi = {
    * @param {string} templateId - ID of the risk template
    * @returns {Promise<Object>} Response with template sections
    */
-    getRiskTemplateSections: async (templateId) => {
+  getRiskTemplateSections: async (templateId: string) => {
     // Check if we're online first
     const isOnline = connectionUtils.isConnected();
     console.log(`Connection status before fetching sections: ${isOnline ? 'Online' : 'Offline'}`);
@@ -131,48 +134,25 @@ const riskTemplatesApi = {
     try {
       console.log(`Fetching sections for template: ${templateId}`);
       
-      // Fix: Try multiple endpoint formats to handle different API structures
-      let response;
-      let endpoints = [
-        `/risk-assessment-sections/assessment/${templateId}`,
-      ];
+      // Try the endpoint with transport client
+      const response = await transportClient.get('risk-templates.sections', `/risk-assessment-sections/assessment/${templateId}`);
       
-      // Log the endpoints we're trying
-      console.log(`Attempting to fetch sections with the following endpoints: ${JSON.stringify(endpoints)}`);
-      
-      // Try each endpoint until one works
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`Trying endpoint: ${endpoint}`);
-          response = await apiClient.get(endpoint);
-          if (response.success) {
-            console.log(`Successful response from endpoint: ${endpoint}`);
-            break;
-          }
-        } catch (endpointError) {
-          console.log(`Endpoint ${endpoint} failed with: ${endpointError.message || 'Unknown error'}`);
-          // Continue to the next endpoint
-        }
-      }
-      
-      // If no endpoint worked, throw an error
-      if (!response) {
-        throw new Error('All section endpoints failed');
-      }
-      
-      if (response.success && response.data) {
-        console.log(`Got ${response.data.length || 0} sections from server`);
+      if (response) {
+        console.log(`Got ${Array.isArray(response) ? response.length : 'unknown count'} sections from server`);
         
         // Cache the sections for offline use
         try {
-          await offlineStorage.storeTemplateSections(templateId, response.data);
+          await offlineStorage.storeTemplateSections(templateId, response);
           console.log('Sections cached successfully');
         } catch (storageError) {
           console.error('Error caching sections:', storageError);
         }
       }
       
-      return response;
+      return {
+        success: true,
+        data: response
+      };
     } catch (error) {
       console.error(`Error fetching sections from server:`, error);
       
@@ -189,7 +169,7 @@ const riskTemplatesApi = {
       }
       
       // No cache, return the error
-      return error.success === false ? error : { 
+      return { 
         success: false, 
         message: error.message || 'Network error',
         status: error.status || 0
@@ -203,7 +183,7 @@ const riskTemplatesApi = {
    * @param {string} sectionId - ID of the section
    * @returns {Promise<Object>} Response with template categories
    */
-  getRiskTemplateCategories: async (templateId, sectionId) => {
+  getRiskTemplateCategories: async (templateId: string, sectionId: string) => {
     // Check if we're online first
     const isOnline = connectionUtils.isConnected();
     console.log(`Connection status before fetching categories: ${isOnline ? 'Online' : 'Offline'}`);
@@ -242,51 +222,24 @@ const riskTemplatesApi = {
     try {
       console.log(`Fetching categories for section: ${sectionId}`);
       
-      // Fix: Try multiple endpoint formats to handle different API structures
-      let response;
-      let endpoints = [
-        `/risk-template-categories/section/${sectionId}`,
-        `/risk-templates/${templateId}/sections/${sectionId}/categories`,
-        `/risk-template-sections/${sectionId}/categories`,
-        `/risk-template/${templateId}/section/${sectionId}/categories`
-      ];
+      const response = await transportClient.get('risk-templates.categories', `/risk-assessment-categories/section/${sectionId}`);
       
-      // Log the endpoints we're trying
-      console.log(`Attempting to fetch categories with the following endpoints: ${JSON.stringify(endpoints)}`);
-      
-      // Try each endpoint until one works
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`Trying endpoint: ${endpoint}`);
-          response = await apiClient.get(endpoint);
-          if (response.success) {
-            console.log(`Successful response from endpoint: ${endpoint}`);
-            break;
-          }
-        } catch (endpointError) {
-          console.log(`Endpoint ${endpoint} failed with: ${endpointError.message || 'Unknown error'}`);
-          // Continue to the next endpoint
-        }
-      }
-      
-      // If no endpoint worked, throw an error
-      if (!response) {
-        throw new Error('All category endpoints failed');
-      }
-      
-      if (response.success && response.data) {
-        console.log(`Got ${response.data.length || 0} categories from server`);
+      if (response) {
+        console.log(`Got ${Array.isArray(response) ? response.length : 'unknown count'} categories from server`);
         
         // Cache the categories for offline use
         try {
-          await offlineStorage.storeTemplateCategories(templateId, sectionId, response.data);
+          await offlineStorage.storeTemplateCategories(templateId, sectionId, response);
           console.log('Categories cached successfully');
         } catch (storageError) {
           console.error('Error caching categories:', storageError);
         }
       }
       
-      return response;
+      return {
+        success: true,
+        data: response
+      };
     } catch (error) {
       console.error(`Error fetching categories from server:`, error);
       
@@ -303,7 +256,7 @@ const riskTemplatesApi = {
       }
       
       // No cache, return the error
-      return error.success === false ? error : { 
+      return { 
         success: false, 
         message: error.message || 'Network error',
         status: error.status || 0
@@ -316,7 +269,7 @@ const riskTemplatesApi = {
    * @param {string} categoryId - ID of the category
    * @returns {Promise<Object>} Response with category items
    */
-  getRiskTemplateItems: async (categoryId) => {
+  getRiskTemplateItems: async (categoryId: string) => {
     // Check if we're online first
     const isOnline = connectionUtils.isConnected();
     console.log(`Connection status before fetching items: ${isOnline ? 'Online' : 'Offline'}`);
@@ -355,51 +308,24 @@ const riskTemplatesApi = {
     try {
       console.log(`Fetching items for category: ${categoryId}`);
       
-      // Fix: Try multiple endpoint formats to handle different API structures
-      let response;
-      let endpoints = [
-        `/risk-template-items/category/${categoryId}`,
-        `/risk-template-categories/${categoryId}/items`,
-        `/categories/${categoryId}/items`,
-        `/risk-items/category/${categoryId}`
-      ];
+      const response = await transportClient.get('risk-templates.items', `/risk-assessment-items/category/${categoryId}`);
       
-      // Log the endpoints we're trying
-      console.log(`Attempting to fetch items with the following endpoints: ${JSON.stringify(endpoints)}`);
-      
-      // Try each endpoint until one works
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`Trying endpoint: ${endpoint}`);
-          response = await apiClient.get(endpoint);
-          if (response.success) {
-            console.log(`Successful response from endpoint: ${endpoint}`);
-            break;
-          }
-        } catch (endpointError) {
-          console.log(`Endpoint ${endpoint} failed with: ${endpointError.message || 'Unknown error'}`);
-          // Continue to the next endpoint
-        }
-      }
-      
-      // If no endpoint worked, throw an error
-      if (!response) {
-        throw new Error('All item endpoints failed');
-      }
-      
-      if (response.success && response.data) {
-        console.log(`Got ${response.data.length || 0} items from server`);
+      if (response) {
+        console.log(`Got ${Array.isArray(response) ? response.length : 'unknown count'} items from server`);
         
         // Cache the items for offline use
         try {
-          await offlineStorage.storeTemplateItems(categoryId, response.data);
+          await offlineStorage.storeTemplateItems(categoryId, response);
           console.log('Items cached successfully');
         } catch (storageError) {
           console.error('Error caching items:', storageError);
         }
       }
       
-      return response;
+      return {
+        success: true,
+        data: response
+      };
     } catch (error) {
       console.error(`Error fetching items from server:`, error);
       
@@ -416,7 +342,7 @@ const riskTemplatesApi = {
       }
       
       // No cache, return the error
-      return error.success === false ? error : { 
+      return { 
         success: false, 
         message: error.message || 'Network error',
         status: error.status || 0
@@ -429,7 +355,7 @@ const riskTemplatesApi = {
    * @param {string} riskAssessmentId - ID of the risk assessment
    * @returns {Promise<Object>} Response with assessment sections
    */
-    getRiskAssessmentSections: async (riskAssessmentId) => {
+  getRiskAssessmentSections: async (riskAssessmentId: string) => {
     const isOnline = connectionUtils.isConnected();
     console.log(`Connection status before fetching assessment sections: ${isOnline ? 'Online' : 'Offline'}`);
 
@@ -462,24 +388,23 @@ const riskTemplatesApi = {
 
     try {
       console.log(`Fetching sections for assessment: ${riskAssessmentId}`);
-      let response;
-      let endpoint = `/risk-assessment-sections/assessment/${riskAssessmentId}`;
-      console.log(`Trying CONNOR endpoint: ${endpoint}`);
-      response = await apiClient.get(endpoint);
-       if (response.success) {
-        console.log(`✅ ${endpoint} - ${Array.isArray(response.data) ? response.data.length : 'N/A'} items`);
-     
-        if (response.data) {
-          try {
-            await offlineStorage.storeAssessmentSections(riskAssessmentId, response.data);
-            console.log('Assessment sections cached successfully');
-          } catch (storageError) {
-            console.error('Error caching assessment sections:', storageError);
-          }
+      const response = await transportClient.get('risk-assessments.sections', `/risk-assessment-sections/assessment/${riskAssessmentId}`);
+      
+      if (response) {
+        console.log(`✅ Got ${Array.isArray(response) ? response.length : 'N/A'} assessment sections`);
+        
+        try {
+          await offlineStorage.storeAssessmentSections(riskAssessmentId, response);
+          console.log('Assessment sections cached successfully');
+        } catch (storageError) {
+          console.error('Error caching assessment sections:', storageError);
         }
-        return response;
       }
-      throw new Error('All assessment section endpoints failed');
+      
+      return {
+        success: true,
+        data: response
+      };
     } catch (error) {
       console.error(`Error fetching assessment sections from server:`, error);
       if (cachedData && cachedData.data) {
@@ -492,7 +417,7 @@ const riskTemplatesApi = {
           message: 'Using cached data due to server error'
         };
       }
-      return error.success === false ? error : {
+      return {
         success: false,
         message: error.message || 'Network error',
         status: error.status || 0
@@ -505,171 +430,169 @@ const riskTemplatesApi = {
    * @param {string} riskAssessmentSectionId - ID of the risk assessment section
    * @returns {Promise<Object>} Response with assessment categories
    */
-  getRiskAssessmentCategories: async (riskAssessmentSectionId) => {
+  getRiskAssessmentCategories: async (riskAssessmentSectionId: string) => {
     const isOnline = connectionUtils.isConnected();
-  console.log(`Connection status before fetching assessment sections: ${isOnline ? 'Online' : 'Offline'}`);
+    console.log(`Connection status before fetching assessment categories: ${isOnline ? 'Online' : 'Offline'}`);
 
-  let cachedData = null;
-  try {
-    cachedData = await offlineStorage.getAssessmentCategories(riskAssessmentSectionId);
-    console.log(`Retrieved cached categories for assessment ${riskAssessmentSectionId}: ${cachedData ? 'Yes' : 'No'}`);
-  } catch (cacheError) {
-    console.error('Error reading cached assessment categories:', cacheError);
-  }
-
-  if (!isOnline) {
-    if (cachedData && cachedData.data) {
-      console.log(`Using ${cachedData.data.length} cached assessment categories (offline)`);
-      return {
-        success: true,
-        data: cachedData.data,
-        fromCache: true,
-        status: 200
-      };
-    } else {
-      console.error('Offline and no cached assessment categories available');
-      return {
-        success: false,
-        message: 'You are offline and no cached assessment categories  data is available.',
-        status: 0
-      };
+    let cachedData = null;
+    try {
+      cachedData = await offlineStorage.getAssessmentCategories(riskAssessmentSectionId);
+      console.log(`Retrieved cached categories for assessment ${riskAssessmentSectionId}: ${cachedData ? 'Yes' : 'No'}`);
+    } catch (cacheError) {
+      console.error('Error reading cached assessment categories:', cacheError);
     }
-  }
 
-  try {
-    console.log(`Fetching categories for assessment: ${riskAssessmentSectionId}`);
-    let response;
-    let endpoint = `/risk-assessment-categories/section/${riskAssessmentSectionId}`;
-    console.log(`Trying CONNOR endpoint: ${endpoint}`);
-    response = await apiClient.get(endpoint);
-     if (response.success) {
-      console.log(`✅ ${endpoint} - ${Array.isArray(response.data) ? response.data.length : 'N/A'} items`);
-   
-      if (response.data) {
+    if (!isOnline) {
+      if (cachedData && cachedData.data) {
+        console.log(`Using ${cachedData.data.length} cached assessment categories (offline)`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200
+        };
+      } else {
+        console.error('Offline and no cached assessment categories available');
+        return {
+          success: false,
+          message: 'You are offline and no cached assessment categories data is available.',
+          status: 0
+        };
+      }
+    }
+
+    try {
+      console.log(`Fetching categories for assessment: ${riskAssessmentSectionId}`);
+      const response = await transportClient.get('risk-assessments.categories', `/risk-assessment-categories/section/${riskAssessmentSectionId}`);
+      
+      if (response) {
+        console.log(`✅ Got ${Array.isArray(response) ? response.length : 'N/A'} assessment categories`);
+        
         try {
-          await offlineStorage.storeAssessmentCategories(riskAssessmentSectionId, response.data);
+          await offlineStorage.storeAssessmentCategories(riskAssessmentSectionId, response);
           console.log('Assessment categories cached successfully');
         } catch (storageError) {
           console.error('Error caching assessment categories:', storageError);
         }
       }
-      return response;
-    }
-    throw new Error('All assessment categories endpoints failed');
-  } catch (error) {
-    console.error(`Error fetching assessment categories from server:`, error);
-    if (cachedData && cachedData.data) {
-      console.log(`Using ${cachedData.data.length} cached assessment categories (server error)`);
+      
       return {
         success: true,
-        data: cachedData.data,
-        fromCache: true,
-        status: 200,
-        message: 'Using cached data due to server error'
+        data: response
+      };
+    } catch (error) {
+      console.error(`Error fetching assessment categories from server:`, error);
+      if (cachedData && cachedData.data) {
+        console.log(`Using ${cachedData.data.length} cached assessment categories (server error)`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200,
+          message: 'Using cached data due to server error'
+        };
+      }
+      return {
+        success: false,
+        message: error.message || 'Network error',
+        status: error.status || 0
       };
     }
-    return error.success === false ? error : {
-      success: false,
-      message: error.message || 'Network error',
-      status: error.status || 0
-    };
-  }
-},
+  },
 
   /**
    * Get items for a specific risk assessment category with offline support
    * @param {string} riskAssessmentCategoryId - ID of the risk assessment category
    * @returns {Promise<Object>} Response with assessment items
    */
-  getRiskAssessmentItems: async (riskAssessmentCategoryId) => {
-  const isOnline = connectionUtils.isConnected();
-  console.log(`Connection status before fetching assessment items: ${isOnline ? 'Online' : 'Offline'}`);
-  console.log(`riskAssessmentCategoryId: ${riskAssessmentCategoryId}`);
+  getRiskAssessmentItems: async (riskAssessmentCategoryId: string) => {
+    const isOnline = connectionUtils.isConnected();
+    console.log(`Connection status before fetching assessment items: ${isOnline ? 'Online' : 'Offline'}`);
+    console.log(`riskAssessmentCategoryId: ${riskAssessmentCategoryId}`);
 
-let cachedData = null;
-try {
-  cachedData = await offlineStorage.getAssessmentItems(riskAssessmentCategoryId);
-  console.log(`Retrieved cached items for assessment ${riskAssessmentCategoryId}: ${cachedData ? 'Yes' : 'No'}`);
-} catch (cacheError) {
-  console.error('Error reading cached assessment items:', cacheError);
-}
+    let cachedData = null;
+    try {
+      cachedData = await offlineStorage.getAssessmentItems(riskAssessmentCategoryId);
+      console.log(`Retrieved cached items for assessment ${riskAssessmentCategoryId}: ${cachedData ? 'Yes' : 'No'}`);
+    } catch (cacheError) {
+      console.error('Error reading cached assessment items:', cacheError);
+    }
 
-if (!isOnline) {
-  if (cachedData && cachedData.data) {
-    console.log(`Using ${cachedData.data.length} cached assessment items (offline)`);
-    return {
-      success: true,
-      data: cachedData.data,
-      fromCache: true,
-      status: 200
-    };
-  } else {
-    console.error('Offline and no cached assessment items available');
-    return {
-      success: false,
-      message: 'You are offline and no cached assessment items data is available.',
-      status: 0
-    };
-  }
-}
-
-try {
-  console.log(`Fetching items for assessment: ${riskAssessmentCategoryId}`);
-  let response;
-  let endpoint = `/risk-assessment-items/category/${riskAssessmentCategoryId}`;
-  console.log(`Trying CONNOR endpoint: ${endpoint}`);
-  response = await apiClient.get(endpoint);
-   if (response.success) {
-    console.log(`✅ ${endpoint} - ${Array.isArray(response.data) ? response.data.length : 'N/A'} items`);
- 
-    if (response.data) {
-      try {
-        await offlineStorage.storeAssessmentItems(riskAssessmentCategoryId, response.data);
-        console.log('Assessment items cached successfully');
-      } catch (storageError) {
-        console.error('Error caching assessment items:', storageError);
+    if (!isOnline) {
+      if (cachedData && cachedData.data) {
+        console.log(`Using ${cachedData.data.length} cached assessment items (offline)`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200
+        };
+      } else {
+        console.error('Offline and no cached assessment items available');
+        return {
+          success: false,
+          message: 'You are offline and no cached assessment items data is available.',
+          status: 0
+        };
       }
     }
-    return response;
-  }
-  throw new Error('All assessment items endpoints failed');
-} catch (error) {
-  // Handle 404s gracefully for "no items found" scenarios
-  if (error.status === 404) {
-    const errorMessage = error.message || '';
-    const isNoContentScenario = errorMessage.toLowerCase().includes('no items found') || 
-                                errorMessage.toLowerCase().includes('no data found') ||
-                                errorMessage.toLowerCase().includes('not found for this category');
-    
-    if (isNoContentScenario) {
-      console.log(`📦 No items found for category ${riskAssessmentCategoryId} - this is normal`);
+
+    try {
+      console.log(`Fetching items for assessment: ${riskAssessmentCategoryId}`);
+      const response = await transportClient.get('risk-assessments.items', `/risk-assessment-items/category/${riskAssessmentCategoryId}`);
+      
+      if (response) {
+        console.log(`✅ Got ${Array.isArray(response) ? response.length : 'N/A'} assessment items`);
+        
+        try {
+          await offlineStorage.storeAssessmentItems(riskAssessmentCategoryId, response);
+          console.log('Assessment items cached successfully');
+        } catch (storageError) {
+          console.error('Error caching assessment items:', storageError);
+        }
+      }
+      
       return {
         success: true,
-        data: [],
-        status: 204,
-        message: errorMessage
+        data: response
+      };
+    } catch (error) {
+      // Handle 404s gracefully for "no items found" scenarios
+      if (error.status === 404) {
+        const errorMessage = error.message || '';
+        const isNoContentScenario = errorMessage.toLowerCase().includes('no items found') || 
+                                    errorMessage.toLowerCase().includes('no data found') ||
+                                    errorMessage.toLowerCase().includes('not found for this category');
+        
+        if (isNoContentScenario) {
+          console.log(`📦 No items found for category ${riskAssessmentCategoryId} - this is normal`);
+          return {
+            success: true,
+            data: [],
+            status: 204,
+            message: errorMessage
+          };
+        }
+      }
+      
+      console.error(`Error fetching assessment items from server:`, error);
+      if (cachedData && cachedData.data) {
+        console.log(`Using ${cachedData.data.length} cached assessment items (server error)`);
+        return {
+          success: true,
+          data: cachedData.data,
+          fromCache: true,
+          status: 200,
+          message: 'Using cached data due to server error'
+        };
+      }
+      return {
+        success: false,
+        message: error.message || 'Network error',
+        status: error.status || 0
       };
     }
   }
-  
-  console.error(`Error fetching assessment items from server:`, error);
-  if (cachedData && cachedData.data) {
-    console.log(`Using ${cachedData.data.length} cached assessment items (server error)`);
-    return {
-      success: true,
-      data: cachedData.data,
-      fromCache: true,
-      status: 200,
-      message: 'Using cached data due to server error'
-    };
-  }
-  return error.success === false ? error : {
-    success: false,
-    message: error.message || 'Network error',
-    status: error.status || 0
-  };
-}
-}
 };
 
-export default riskTemplatesApi; 
+export default riskTemplatesApi;

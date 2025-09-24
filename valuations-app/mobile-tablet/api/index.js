@@ -5,7 +5,7 @@ import surveysApi from './surveys';
 import riskTemplatesApi from './riskTemplates';
 import appointmentsApi from './appointments';
 import offlineApi from './offline';
-import apiClient from './client';
+import transportClient from '../core/transport/transportClient';
 import { Platform } from 'react-native';
 
 /**
@@ -61,7 +61,7 @@ const api = {
         });
       }
 
-      const response = await apiClient.post('/sync/batch', syncData);
+      const response = await transportClient.post('sync.batch', '/sync/batch', syncData);
       
       if (__DEV__) {
         console.log('=== SYNC RESPONSE ===');
@@ -95,7 +95,7 @@ const api = {
       
       const formData = convertToFormData(mediaData);
       
-      const response = await apiClient.post('/sync/media/upload', formData, {
+      const response = await transportClient.post('sync.media.upload', '/sync/media/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -120,7 +120,7 @@ const api = {
     try {
       console.log('Fetching media from sync API for:', { entityName, entityID });
       
-      const response = await apiClient.get(`/sync/media/entity/${entityName}/${entityID}`);
+      const response = await transportClient.get('sync.media.entity', `/sync/media/entity/${entityName}/${entityID}`);
       
       return {
         success: true,
@@ -141,7 +141,7 @@ const api = {
     try {
       console.log('Deleting media from backend:', mediaID);
       
-      const response = await apiClient.delete(`/media/${mediaID}`);
+      const response = await transportClient.delete('media.delete', `/media/${mediaID}`);
       
       return {
         success: true,
@@ -162,7 +162,7 @@ const api = {
   getRiskAssessmentMasterByOrder: async (orderId) => {
     try {
       console.log('Fetching risk assessment master for order:', orderId);
-      const response = await apiClient.get(`/risk-assessment-master/by-order/${orderId}`);
+      const response = await transportClient.get('risk-assessment.master', `/risk-assessment-master/by-order/${orderId}`);
       
       if (response.data) {
         return {
@@ -187,18 +187,18 @@ const api = {
   getRiskAssessmentCompleteHierarchy: async (orderId) => {
     try {
       console.log('🚀 Fetching complete risk assessment hierarchy for order:', orderId);
-      const response = await apiClient.get(`/mobile/risk-assessment/${orderId}/complete-hierarchy`);
+      const response = await transportClient.get('risk-assessment.hierarchy', `/mobile/risk-assessment/${orderId}/complete-hierarchy`);
       
       console.log('📦 Composite API response structure:', {
-        success: response.data?.success,
-        hasAssessmentMasters: !!response.data?.data?.assessmentMasters,
-        mastersCount: response.data?.data?.assessmentMasters?.length || 0
+        success: response?.success,
+        hasAssessmentMasters: !!response?.data?.assessmentMasters,
+        mastersCount: response?.data?.assessmentMasters?.length || 0
       });
       
-      if (response.data?.success) {
+      if (response?.success) {
         // Cache for offline use
-        await offlineApi.storeData(`risk_assessment_hierarchy_${orderId}`, response.data);
-        return response.data;
+        await offlineApi.storeData(`risk_assessment_hierarchy_${orderId}`, response);
+        return response;
       }
       
       throw new Error('Invalid response format from composite API');
@@ -228,18 +228,18 @@ const api = {
   getOrderCategoryFieldConfigurations: async (orderId) => {
     try {
       console.log('🚀 Fetching category field configurations for order:', orderId);
-      const response = await apiClient.get(`/mobile/config/order/${orderId}/categories/complete`);
+      const response = await transportClient.get('config.order.categories', `/mobile/config/order/${orderId}/categories/complete`);
       
       console.log('📦 Field config response structure:', {
-        success: response.data?.success,
-        totalCategories: response.data?.data?.summary?.totalCategories || 0,
-        totalFields: response.data?.data?.summary?.totalFields || 0
+        success: response?.success,
+        totalCategories: response?.data?.summary?.totalCategories || 0,
+        totalFields: response?.data?.summary?.totalFields || 0
       });
       
-      if (response.data?.success) {
+      if (response?.success) {
         // Cache for offline use
-        await offlineApi.storeData(`order_field_configurations_${orderId}`, response.data);
-        return response.data;
+        await offlineApi.storeData(`order_field_configurations_${orderId}`, response);
+        return response;
       }
       
       throw new Error('Invalid response format from field config API');
@@ -282,7 +282,7 @@ const api = {
           
           const formData = convertToFormData(mediaFile);
           
-          const response = await apiClient.post('/sync/media/upload', formData, {
+          const response = await transportClient.post('sync.media.upload', '/sync/media/upload', formData, {
             headers: {
               'Content-Type': 'multipart/form-data',
             },

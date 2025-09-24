@@ -90,27 +90,29 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
         return; // Exit early if we have valid cached data
       }
       
-      console.log('Fetching today\'s appointments:', { startDateFrom, startDateTo });
-      
-      // Fetch appointments using the list-view endpoint with date filtering
-      const response = await appointmentsApi.getAppointmentsByListView({
+      const requestParams = {
         page: 1,
         pageSize: 50, // Get more appointments to ensure we don't miss any
         status: 'Booked', // Default to booked appointments
         surveyor: '', // Add empty surveyor parameter
         startDateFrom,
         startDateTo
-      });
+      };
+      
+      console.log('🏠 TodaysAppointments calling getAppointmentsByListView with:', requestParams);
+      
+      // Fetch appointments using the list-view endpoint with date filtering
+      const response = await appointmentsApi.getAppointmentsByListView(requestParams);
       
       if ((response as any).success && Array.isArray((response as any).data)) {
         // Map the response data to our interface
-        const todaysAppointments: Appointment[] = (response as any).data.map((appointment: any) => ({
-          id: appointment.id || appointment.appointmentId,
-          address: appointment.address || appointment.fullAddress || 'No address provided',
-          client: appointment.client || 'Unknown client',
-          date: appointment.date || new Date().toISOString(),
-          policyNo: appointment.policyNo || appointment.policyNumber || 'No policy',
-          status: appointment.status,
+        const todaysAppointments: Appointment[] = (response as any).data.map((appointment: any, index: number) => ({
+          id: appointment.id || appointment.appointmentId || `appointment_${index}`,
+          address: appointment.address || appointment.fullAddress || appointment.location || 'No address provided',
+          client: appointment.client || appointment.Client || 'Unknown client',
+          date: appointment.date || appointment.Start_Time || new Date().toISOString(),
+          policyNo: appointment.policyNo || appointment.policyNumber || appointment.Policy || 'No policy',
+          status: appointment.status || appointment.Invite_Status,
           Invite_Status: appointment.Invite_Status
         }));
         

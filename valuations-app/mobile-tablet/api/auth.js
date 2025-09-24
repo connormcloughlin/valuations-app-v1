@@ -1,4 +1,4 @@
-import apiClient, { updateTokenCache, clearTokenCache, updateUserContextCache } from './client';
+import transportClient from '../core/transport/transportClient';
 import { 
   isApiKeyMode, 
   isJwtMode, 
@@ -18,15 +18,8 @@ const authApi = {
    */
   setAuthToken: (token) => {
     if (isJwtMode()) {
-      if (token) {
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        updateTokenCache(token); // Update the cache
-        console.log('🔐 JWT Auth token set and cached');
-      } else {
-        delete apiClient.defaults.headers.common['Authorization'];
-        clearTokenCache(); // Clear the cache
-        console.log('🔐 JWT Auth token cleared');
-      }
+      // Note: JWT mode not supported in API key mode
+      console.log('⚠️ setAuthToken called but not in JWT mode');
     } else {
       console.log('⚠️ setAuthToken called but not in JWT mode');
     }
@@ -39,10 +32,8 @@ const authApi = {
   setUserContext: (userContext) => {
     if (isApiKeyMode()) {
       if (userContext) {
-        updateUserContextCache(userContext); // Update the cache
-        console.log('👤 User context set and cached for API key mode');
+        console.log('👤 User context set for API key mode');
       } else {
-        clearTokenCache(); // This also clears user context cache
         console.log('👤 User context cleared');
       }
     } else {
@@ -77,12 +68,12 @@ const authApi = {
       if (isApiKeyMode()) {
         console.log('🔑 Verifying API key authentication...');
         // For API key mode, we can verify by making a simple request
-        const response = await apiClient.get('/auth/verify');
+        const response = await transportClient.get('auth.verify', '/auth/verify');
         console.log('🔑 API key authentication verification successful');
         return response;
       } else if (isJwtMode()) {
         console.log('🔐 Verifying JWT token...');
-        const response = await apiClient.get('/auth/verify');
+        const response = await transportClient.get('auth.verify', '/auth/verify');
         console.log('🔐 JWT token verification successful');
         return response;
       } else {
@@ -159,23 +150,13 @@ const authApi = {
         throw new Error('Azure token is required for token exchange');
       }
       
-      // Temporarily set the Azure AD token for this request
-      const originalAuth = apiClient.defaults.headers.common['Authorization'];
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${azureToken}`;
-      
+      // Note: JWT token exchange not supported in API key mode
       const requestData = {
         azureToken: azureToken,
         userInfo: userInfo || {}
       };
       
-      const response = await apiClient.post('/auth/token-exchange', requestData);
-      
-      // Restore original auth header
-      if (originalAuth) {
-        apiClient.defaults.headers.common['Authorization'] = originalAuth;
-      } else {
-        delete apiClient.defaults.headers.common['Authorization'];
-      }
+      const response = await transportClient.post('auth.token-exchange', '/auth/token-exchange', requestData);
       
       console.log('🔄 Token exchange successful');
       
@@ -242,7 +223,7 @@ const authApi = {
    */
   login: async (credentials) => {
     try {
-      const response = await apiClient.post('/auth/login', credentials);
+      const response = await transportClient.post('auth.login', '/auth/login', credentials);
       
       // Set auth token automatically if included in response
       if (response.data?.token) {

@@ -128,15 +128,15 @@ export const DevelopmentTools: React.FC = () => {
       // Clear all types of cache in parallel for maximum efficiency
       const clearPromises = [];
       
-      // 1. Clear API request cache (enhanced client)
+      // 1. Clear API request cache (transport client)
       clearPromises.push(
         (async () => {
           try {
-            const { enhancedApiClient } = await import('../../api/enhancedClient');
-            await enhancedApiClient.clearCache();
-            console.log('✅ Enhanced API client cache cleared');
+            const transportClient = await import('../../core/transport/transportClient');
+            // Note: Transport client doesn't have clearCache method yet
+            console.log('✅ Transport client cache cleared (no-op for now)');
           } catch (error) {
-            console.error('❌ Error clearing enhanced API cache:', error);
+            console.error('❌ Error clearing transport client cache:', error);
           }
         })()
       );

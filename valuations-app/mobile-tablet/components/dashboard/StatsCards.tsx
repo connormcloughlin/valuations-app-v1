@@ -4,7 +4,7 @@ import { View } from '../Themed';
 import { Card, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { enhancedApiClient } from '../../api/enhancedClient';
+import transportClient from '../../core/transport/transportClient';
 import { statsCardsStyles } from '../../app/GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
 import { useDashboard } from '../../context/DashboardContext';
@@ -58,11 +58,11 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
       const startTime = Date.now();
       console.log(`📊 Fetching dashboard stats from: ${endpoint}`);
       console.log(`📊 Surveyor filtering will be handled by backend based on X-User-Context header`);
-      const response = await enhancedApiClient.get(endpoint);
+      const response = await transportClient.get('appointments.list', endpoint);
       const loadTime = Date.now() - startTime;
       
-      if (response?.data?.success && response?.data?.data) {
-        const data = response.data.data;
+      if (response?.success && response?.data) {
+        const data = response.data;
         
         console.log(`📊 Dashboard stats loaded in ${loadTime}ms:`, data);
         

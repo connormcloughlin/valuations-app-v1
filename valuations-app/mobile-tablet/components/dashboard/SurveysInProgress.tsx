@@ -76,26 +76,28 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
         return; // Exit early if we have valid cached data
       }
       
-      console.log('Fetching in-progress surveys from API...');
-      // @ts-ignore - this method exists in the API
-      const response = await api.getAppointmentsByListView({
+      const requestParams = {
         status: 'In-Progress', // Use exact status from the working component
         page: 1,
         pageSize: 5,
         surveyor: null
-      });
+      };
+      
+      console.log('📊 SurveysInProgress calling getAppointmentsByListView with:', requestParams);
+      // @ts-ignore - this method exists in the API
+      const response = await api.getAppointmentsByListView(requestParams);
       
       if (response && response.success) {
         const appointmentsArray = Array.isArray(response.data) ? response.data : [];
         console.log('Found in-progress appointments:', appointmentsArray.length);
         
         // Map API response to Survey interface
-        const surveysData: Survey[] = appointmentsArray.map((appointment: any) => ({
-          id: String(appointment.appointmentID || appointment.appointmentId || appointment.id),
-          address: String(appointment.address || 'No address provided'),
-          client: String(appointment.client || 'Unknown client'),
-          date: appointment.startTime || appointment.date || '',
-          policyNo: String(appointment.policyNo || appointment.orderNumber || appointment.orderID || 'N/A'),
+        const surveysData: Survey[] = appointmentsArray.map((appointment: any, index: number) => ({
+          id: String(appointment.id || appointment.appointmentId || appointment.AppointmentID || `survey_${index}`),
+          address: String(appointment.address || appointment.location || appointment.Location || 'No address provided'),
+          client: String(appointment.client || appointment.Client || 'Unknown client'),
+          date: appointment.date || appointment.Start_Time || appointment.startTime || '',
+          policyNo: String(appointment.policyNo || appointment.Policy || appointment.orderNumber || appointment.OrderID || 'N/A'),
           lastEdited: appointment.lastEdited || appointment.dateModified || new Date().toISOString().split('T')[0]
         }));
         

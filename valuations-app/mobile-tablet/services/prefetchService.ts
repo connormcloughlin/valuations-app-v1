@@ -228,28 +228,18 @@ class PrefetchService {
       // Use composite hierarchy API instead of individual calls
       console.log(`🚀 Using composite hierarchy API for order: ${orderNumber}`);
       
-            // Use the configured API client instead of manual fetch with JWT
-      const apiClient = await import('../api/client');
+            // Use the transport client instead of deprecated client
+      const transportClient = await import('../core/transport/transportClient');
       
       try {
         // Only fetch hierarchy - field configurations come from prefetched all categories
-        const hierarchyResponse = await apiClient.default.get(`/mobile/risk-assessment/${orderNumber}/complete-hierarchy`);
+        const hierarchyResponse = await transportClient.default.get('risk-assessment.hierarchy', `/mobile/risk-assessment/${orderNumber}/complete-hierarchy`);
         
-        console.log(`📡 COMPOSITE API - Response status: ${hierarchyResponse.status}`);
+        console.log(`📡 COMPOSITE API - Response received`);
         console.log(`📡 FIELD CONFIG - Using prefetched all category configurations (no order-specific call)`);
         
-        // Handle authentication errors
-        if (hierarchyResponse.status === 401 || hierarchyResponse.status === 403) {
-          console.log(`❌ COMPOSITE API - Authentication required, skipping...`);
-          return false;
-        }
-        
-        if (hierarchyResponse.status !== 200) {
-          console.log(`❌ COMPOSITE API - Failed with status ${hierarchyResponse.status}`);
-          return false;
-        }
-        
-        const hierarchyData = hierarchyResponse.data;
+        // Transport client returns data directly
+        const hierarchyData = hierarchyResponse;
       
       const mastersCount = hierarchyData?.data?.assessmentMasters?.length || 0;
       console.log(`📦 COMPOSITE API - Found ${mastersCount} assessment masters`);

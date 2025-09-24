@@ -4,7 +4,7 @@ import { Card, ActivityIndicator, Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../../../api';
 import { API_BASE_URL } from '../../../constants/apiConfig';
-import axios from 'axios';
+import transportClient from '../../../core/transport/transportClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Import GlobalStyles constants
@@ -46,21 +46,20 @@ const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<Ris
   try {
     console.log(`Fetching templates for order ID: ${orderId}`);
     
-    // Use the configured API client instead of creating a new axios instance
-    const apiClient = await import('../../../api/client');
-    const response = await apiClient.default.get(`/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`);
+    // Use the transport client instead of the deprecated API client
+    const response = await transportClient.get('risk-assessments.sections', `/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`);
     
-    console.log('API response:', JSON.stringify(response.data, null, 2));
+    console.log('API response:', JSON.stringify(response, null, 2));
     
     // Ensure we return an array, even if API returns different structure
-    const templatesArray = Array.isArray(response.data) ? response.data : 
-                          response.data && Array.isArray(response.data.data) ? response.data.data :
-                          response.data && Array.isArray(response.data.templates) ? response.data.templates : [];
+    const templatesArray = Array.isArray(response) ? response : 
+                          response && Array.isArray(response.data) ? response.data :
+                          response && Array.isArray(response.templates) ? response.templates : [];
     
     return {
       success: true,
       data: templatesArray,
-      status: response.status
+      status: 200
     };
   } catch (error: any) {
     console.error(`❌ Error in API call: ${error instanceof Error ? error.message : String(error)}`);
