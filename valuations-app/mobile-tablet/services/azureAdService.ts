@@ -16,6 +16,7 @@ interface AuthResult {
     username: string;
     name: string;
   };
+  roles?: string[]; // Add roles to the interface
 }
 
 class AzureAdService {
@@ -74,6 +75,14 @@ class AzureAdService {
         usePKCE: true,
         extraParams: {
           prompt: 'select_account',
+          // Request roles claim in the token
+          claims: JSON.stringify({
+            "id_token": {
+              "roles": {
+                "essential": true
+              }
+            }
+          })
         },
       });
 
@@ -118,13 +127,18 @@ class AzureAdService {
         
         console.log('🔐 Parsed ID token claims:', userInfo);
         
+        // Extract roles from the token
+        const roles = userInfo.roles || [];
+        console.log('🔐 User roles from Azure AD:', roles);
+        
         const authResult: AuthResult = {
           accessToken: tokenResult.accessToken,
           account: {
             identifier: userInfo.oid || userInfo.sub || 'user_' + Date.now(), // Use Object ID (oid) as primary identifier
             username: userInfo.preferred_username || userInfo.email || 'user@company.com',
             name: userInfo.name || 'User',
-          }
+          },
+          roles: roles // Add roles to the result
         };
 
         console.log('🔐 Azure AD authentication successful:', authResult.account.username);

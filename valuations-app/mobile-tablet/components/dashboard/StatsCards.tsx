@@ -52,10 +52,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
     try {
       setLoading(true);
       
-      // Use the optimized mobile dashboard API endpoint with enhanced client for caching
+      // Use the optimized mobile dashboard API endpoint (no fallback)
       const endpoint = '/mobile/appointment/dashboard/status-counts';
       
       const startTime = Date.now();
+      console.log(`📊 Fetching dashboard stats from: ${endpoint}`);
+      console.log(`📊 Surveyor filtering will be handled by backend based on X-User-Context header`);
       const response = await enhancedApiClient.get(endpoint);
       const loadTime = Date.now() - startTime;
       
@@ -64,7 +66,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         
         console.log(`📊 Dashboard stats loaded in ${loadTime}ms:`, data);
         
-        // Handle the new statusCounts array format
+        // Handle the statusCounts array format (surveyor filtering handled by backend)
         let scheduled = 0, inProgress = 0, completed = 0, finalise = 0;
         
         if (data.statusCounts && Array.isArray(data.statusCounts)) {
@@ -86,7 +88,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
             }
           });
         } else if (data.byInviteStatus) {
-          // Old format: byInviteStatus object
+          // Fallback format: byInviteStatus object
           scheduled = data.byInviteStatus?.['Booked'] || 0;
           inProgress = data.byInviteStatus?.['In-Progress'] || 0;
           completed = data.byInviteStatus?.['Completed'] || 0;
@@ -111,9 +113,19 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         setStats(newStats);
       } else {
         console.error('❌ Failed to load dashboard stats:', response?.data?.message || 'Unknown error');
+        // Set error state for user feedback
+        setStats(prevStats => ({
+          ...prevStats,
+          lastSync: 'Error loading stats'
+        }));
       }
     } catch (error) {
       console.error('❌ Error fetching dashboard stats:', error);
+      // Set error state for user feedback
+      setStats(prevStats => ({
+        ...prevStats,
+        lastSync: 'Error loading stats'
+      }));
     } finally {
       setLoading(false);
     }

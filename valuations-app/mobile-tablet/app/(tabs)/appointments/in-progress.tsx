@@ -8,6 +8,7 @@ import api from '../../../api';
 import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { appointmentsInProgressStyles, colors } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
+import { SurveyorFilterIndicator } from '../../../components/SurveyorFilterIndicator';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -57,63 +58,40 @@ export default function InProgressAppointmentsScreen() {
       setLoading(true);
       setError(null);
       
-      // Use the new list-view API method
+      // Use the list-view API method (no fallback)
       console.log(`Fetching in-progress appointments page ${pageNum}...`);
-      try {
-        // @ts-ignore - this method exists in the API
-        const response = await api.getAppointmentsByListView({
-          status: 'In-Progress', // Use 'In-Progress' status for in-progress appointments
+      // @ts-ignore - this method exists in the API
+      const response = await api.getAppointmentsByListView({
+        status: 'In-Progress', // Use 'In-Progress' status for in-progress appointments
+        page: pageNum,
+        pageSize: paginationInfo.pageSize
+        // surveyor filtering handled automatically by backend based on user context
+      });
+      
+      if (response.success && response.data) {
+        const appointmentsArray = Array.isArray(response.data) ? response.data : [];
+        console.log(`Loaded ${appointmentsArray.length} in-progress appointments for page ${pageNum}`);
+        
+        // Get pagination info from response
+        const pageInfo: PaginationInfo = response.pagination || {
           page: pageNum,
           pageSize: paginationInfo.pageSize,
-          surveyor: null // No surveyor filter by default
-        });
+          totalItems: appointmentsArray.length,
+          totalPages: 1,
+          hasMore: false
+        };
         
-        if (response.success && response.data) {
-          const appointmentsArray = Array.isArray(response.data) ? response.data : [];
-          console.log(`Loaded ${appointmentsArray.length} in-progress appointments for page ${pageNum}`);
-          
-          // Get pagination info from response
-          const pageInfo: PaginationInfo = response.pagination || {
-            page: pageNum,
-            pageSize: paginationInfo.pageSize,
-            totalItems: appointmentsArray.length,
-            totalPages: 1,
-            hasMore: false
-          };
-          
-          // Update pagination info
-          setPaginationInfo(pageInfo);
-          
-          // Set appointments
-          setAppointments(appointmentsArray);
-          setFilteredAppointments(appointmentsArray);
-        } else {
-          console.error('Failed to load appointments:', response.message);
-          setError('Failed to load appointments. Please try again.');
-          setAppointments([]);
-          setFilteredAppointments([]);
-        }
-      } catch (err) {
-        console.error('Error fetching appointments:', err);
+        // Update pagination info
+        setPaginationInfo(pageInfo);
         
-        // Fall back to regular getAppointmentsByStatus
-        console.log('Trying fallback to regular appointment API...');
-        try {
-          // @ts-ignore - This method exists in API
-          const fallbackResponse = await api.getAppointmentsByStatus('in-progress');
-          
-          if (fallbackResponse.success && fallbackResponse.data) {
-            setAppointments(fallbackResponse.data);
-            setFilteredAppointments(fallbackResponse.data);
-          } else {
-            throw new Error('Both API methods failed');
-          }
-        } catch (fallbackErr) {
-          console.error('Error with fallback API method:', fallbackErr);
-          setError('Error loading appointments. Please try again.');
-          setAppointments([]);
-          setFilteredAppointments([]);
-        }
+        // Set appointments
+        setAppointments(appointmentsArray);
+        setFilteredAppointments(appointmentsArray);
+      } else {
+        console.error('Failed to load appointments:', response.message);
+        setError('Failed to load appointments. Please try again.');
+        setAppointments([]);
+        setFilteredAppointments([]);
       }
     } finally {
       setLoading(false);
@@ -314,6 +292,10 @@ export default function InProgressAppointmentsScreen() {
           </View>
         ) : filteredAppointments.length > 0 ? (
           <>
+            <SurveyorFilterIndicator 
+              appointmentCount={filteredAppointments.length}
+              showEmptyState={false}
+            />
             <FlatList
               data={filteredAppointments || []}
               renderItem={renderAppointmentItem}
@@ -352,6 +334,10 @@ export default function InProgressAppointmentsScreen() {
           </>
         ) : (
           <View style={appointmentsInProgressStyles.emptyContainer}>
+            <SurveyorFilterIndicator 
+              appointmentCount={0}
+              showEmptyState={true}
+            />
             <MaterialCommunityIcons name="calendar-search" size={64} color="#ccc" />
             <Text style={appointmentsInProgressStyles.emptyText}>No appointments found</Text>
             <Text style={appointmentsInProgressStyles.emptySubtext}>Try a different search term or page</Text>

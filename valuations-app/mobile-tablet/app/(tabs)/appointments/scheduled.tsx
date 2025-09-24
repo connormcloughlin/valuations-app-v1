@@ -8,6 +8,7 @@ import api from '../../../api';
 import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { scheduledAppointmentsStyles, colors } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
+import { SurveyorFilterIndicator } from '../../../components/SurveyorFilterIndicator';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -60,69 +61,46 @@ export default function ScheduledAppointmentsScreen() {
       setLoading(true);
       setError(null);
       
-      // Use the new list-view API method
+      // Use the list-view API method (no fallback)
       console.log(`Fetching scheduled appointments page ${pageNum}...`);
-      try {
-        // @ts-ignore - this method exists in the API
-        const response = await api.getAppointmentsByListView({
-          status: 'Booked', // Use 'Booked' status for scheduled appointments
+      // @ts-ignore - this method exists in the API
+      const response = await api.getAppointmentsByListView({
+        status: 'Booked', // Use 'Booked' status for scheduled appointments
+        page: pageNum,
+        pageSize: pageSize
+        // surveyor filtering handled automatically by backend based on user context
+      });
+      
+      if (response.success && response.data) {
+        const appointmentsArray = Array.isArray(response.data) ? response.data : [];
+        console.log(`Loaded ${appointmentsArray.length} scheduled appointments for page ${pageNum}`);
+        
+        // Get pagination info from response
+        const pageInfo: PaginationInfo = response.pagination || {
           page: pageNum,
           pageSize: pageSize,
-          surveyor: null // No surveyor filter by default
-        });
+          totalItems: appointmentsArray.length,
+          totalPages: 1,
+          hasMore: false
+        };
         
-        if (response.success && response.data) {
-          const appointmentsArray = Array.isArray(response.data) ? response.data : [];
-          console.log(`Loaded ${appointmentsArray.length} scheduled appointments for page ${pageNum}`);
-          
-          // Get pagination info from response
-          const pageInfo: PaginationInfo = response.pagination || {
-            page: pageNum,
-            pageSize: pageSize,
-            totalItems: appointmentsArray.length,
-            totalPages: 1,
-            hasMore: false
-          };
-          
-          // Update pagination info
-          setPaginationInfo(pageInfo);
-          
-          // Map appointments with proper ID handling (same as TodaysAppointments)
-          const mappedAppointments = appointmentsArray.map((appointment: any) => ({
-            ...appointment,
-            id: String(appointment.id || appointment.appointmentId || appointment.appointmentID || appointment.AppointmentID)
-          }));
-          
-          // Set appointments
-          setAppointments(mappedAppointments);
-          setFilteredAppointments(mappedAppointments);
-        } else {
-          console.error('Failed to load appointments:', response.message);
-          setError('Failed to load appointments. Please try again.');
-          setAppointments([]);
-          setFilteredAppointments([]);
-        }
-      } catch (err) {
-        console.error('Error fetching appointments:', err);
+        // Update pagination info
+        setPaginationInfo(pageInfo);
         
-        // Fall back to regular getAppointmentsByStatus
-        console.log('Trying fallback to regular appointment API...');
-        try {
-          // @ts-ignore - This method exists in API
-          const fallbackResponse = await api.getAppointmentsByStatus('scheduled');
-          
-          if (fallbackResponse.success && fallbackResponse.data) {
-            setAppointments(fallbackResponse.data);
-            setFilteredAppointments(fallbackResponse.data);
-          } else {
-            throw new Error('Both API methods failed');
-          }
-        } catch (fallbackErr) {
-          console.error('Error with fallback API method:', fallbackErr);
-          setError('Error loading appointments. Please try again.');
-          setAppointments([]);
-          setFilteredAppointments([]);
-        }
+        // Map appointments with proper ID handling (same as TodaysAppointments)
+        const mappedAppointments = appointmentsArray.map((appointment: any) => ({
+          ...appointment,
+          id: String(appointment.id || appointment.appointmentId || appointment.appointmentID || appointment.AppointmentID)
+        }));
+        
+        // Set appointments
+        setAppointments(mappedAppointments);
+        setFilteredAppointments(mappedAppointments);
+      } else {
+        console.error('Failed to load appointments:', response.message);
+        setError('Failed to load appointments. Please try again.');
+        setAppointments([]);
+        setFilteredAppointments([]);
       }
     } finally {
       setLoading(false);
@@ -238,6 +216,10 @@ export default function ScheduledAppointmentsScreen() {
           </View>
         ) : filteredAppointments.length > 0 ? (
           <>
+            <SurveyorFilterIndicator 
+              appointmentCount={filteredAppointments.length}
+              showEmptyState={false}
+            />
             <FlatList
               data={filteredAppointments}
               renderItem={renderAppointmentItem}
@@ -274,6 +256,10 @@ export default function ScheduledAppointmentsScreen() {
           </>
         ) : (
           <View style={scheduledAppointmentsStyles.emptyContainer}>
+            <SurveyorFilterIndicator 
+              appointmentCount={0}
+              showEmptyState={true}
+            />
             <MaterialCommunityIcons name="calendar-search" size={64} color="#ccc" />
             <Text style={scheduledAppointmentsStyles.emptyText}>No appointments found</Text>
             <Text style={scheduledAppointmentsStyles.emptySubtext}>Try a different search term or page</Text>

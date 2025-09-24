@@ -962,7 +962,7 @@ const appointmentsApi = {
       }
       
       // Online - fetch from server with parameters
-      console.log(`Fetching appointments from list-view with status: ${status}, page: ${page}`);
+      console.log(`📋 Fetching appointments from list-view with status: ${status}, page: ${page}`);
       
       // Build query parameters
       const params = {
@@ -985,8 +985,9 @@ const appointmentsApi = {
       }
       
       // Make the API call with parameters - try with direct axios call to troubleshoot
-      console.log(`Calling API endpoint with params: ${JSON.stringify(params)}`);
-      console.log(`API base URL is: ${API_BASE_URL}`);
+      console.log(`📋 Calling API endpoint with params: ${JSON.stringify(params)}`);
+      console.log(`📋 API base URL is: ${API_BASE_URL}`);
+      console.log(`📋 Surveyor filtering will be handled by backend based on X-User-Context header`);
       
       try {
         // Use apiClient which has bearer token authentication

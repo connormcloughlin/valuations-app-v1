@@ -122,6 +122,143 @@ export const DevelopmentTools: React.FC = () => {
     }
   };
 
+  const handleClearAllCache = async () => {
+    console.log('🗑️ Clearing ALL system cache...');
+    try {
+      // Clear all types of cache in parallel for maximum efficiency
+      const clearPromises = [];
+      
+      // 1. Clear API request cache (enhanced client)
+      clearPromises.push(
+        (async () => {
+          try {
+            const { enhancedApiClient } = await import('../../api/enhancedClient');
+            await enhancedApiClient.clearCache();
+            console.log('✅ Enhanced API client cache cleared');
+          } catch (error) {
+            console.error('❌ Error clearing enhanced API cache:', error);
+          }
+        })()
+      );
+      
+      // 2. Clear offline storage cache
+      clearPromises.push(
+        (async () => {
+          try {
+            const offlineStorage = await import('../../utils/offlineStorage');
+            await offlineStorage.clearAllOfflineData();
+            console.log('✅ Offline storage cache cleared');
+          } catch (error) {
+            console.error('❌ Error clearing offline storage:', error);
+          }
+        })()
+      );
+      
+      // 3. Clear API cached data (risk templates, assessments, etc.)
+      clearPromises.push(
+        (async () => {
+          try {
+            const api = await import('../../api/index');
+            await api.default.clearAllCachedData();
+            console.log('✅ API cached data cleared');
+          } catch (error) {
+            console.error('❌ Error clearing API cached data:', error);
+          }
+        })()
+      );
+      
+      // 4. Clear database tables
+      clearPromises.push(
+        (async () => {
+          try {
+            const { clearAllCachedTables } = await import('../../utils/db');
+            await clearAllCachedTables();
+            console.log('✅ Database tables cleared');
+          } catch (error) {
+            console.error('❌ Error clearing database tables:', error);
+          }
+        })()
+      );
+      
+      // 5. Clear configuration cache
+      clearPromises.push(
+        (async () => {
+          try {
+            await ConfigurationService.clearCache();
+            console.log('✅ Configuration cache cleared');
+          } catch (error) {
+            console.error('❌ Error clearing configuration cache:', error);
+          }
+        })()
+      );
+      
+      // 6. Clear category configurations
+      clearPromises.push(
+        (async () => {
+          try {
+            const { prefetchService } = await import('../../services/prefetchService');
+            await prefetchService.clearAllCategoryConfigurationsFromSQLite();
+            console.log('✅ Category configurations cleared');
+          } catch (error) {
+            console.error('❌ Error clearing category configurations:', error);
+          }
+        })()
+      );
+      
+      // 7. Clear AsyncStorage cache keys
+      clearPromises.push(
+        (async () => {
+          try {
+            const AsyncStorage = await import('@react-native-async-storage/async-storage');
+            const keys = await AsyncStorage.default.getAllKeys();
+            
+            // Filter out authentication and user data, keep only cache keys
+            const cacheKeys = keys.filter(key => 
+              key.includes('cache') || 
+              key.includes('api_cache') || 
+              key.includes('mobile_dashboard') ||
+              key.includes('appointmentsByListView') ||
+              key.includes('todays_appointments') ||
+              key.includes('surveys_in_progress') ||
+              key.includes('risk_assessment_hierarchy') ||
+              key.includes('assessment_') ||
+              key.includes('template_') ||
+              key.includes('field_config_')
+            );
+            
+            if (cacheKeys.length > 0) {
+              await AsyncStorage.default.multiRemove(cacheKeys);
+              console.log(`✅ Cleared ${cacheKeys.length} AsyncStorage cache keys`);
+            }
+          } catch (error) {
+            console.error('❌ Error clearing AsyncStorage cache keys:', error);
+          }
+        })()
+      );
+      
+      // Wait for all cache clearing operations to complete
+      await Promise.all(clearPromises);
+      
+      console.log('🎉 ALL CACHE CLEARED SUCCESSFULLY!');
+      Alert.alert(
+        'Cache Cleared', 
+        '✅ All system cache has been cleared successfully!\n\n' +
+        '• Enhanced API client cache\n' +
+        '• Offline storage cache\n' +
+        '• API cached data\n' +
+        '• Database tables\n' +
+        '• Configuration cache\n' +
+        '• Category configurations\n' +
+        '• AsyncStorage cache keys\n\n' +
+        'The app will now fetch fresh data from all APIs on next request.'
+      );
+      
+    } catch (error: any) {
+      console.error('❌ Error clearing all cache:', error);
+      Alert.alert('Cache Clear Error', `Error: ${error.message}`);
+    }
+  };
+
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
     setUpdateResult(null);
@@ -226,6 +363,16 @@ export const DevelopmentTools: React.FC = () => {
              disabled={checkingUpdate}
            >
              Check for Updates
+           </Button>
+
+           <Button 
+             mode="contained" 
+             onPress={handleClearAllCache}
+             style={[developmentToolsStyles.debugButton, { backgroundColor: '#d32f2f', marginTop: 10 }]}
+             icon="delete-sweep"
+             buttonColor="#d32f2f"
+           >
+             🗑️ Clear ALL Cache
            </Button>
           {checkingUpdate && <ActivityIndicator style={{ marginTop: 8 }} />}
           {updateResult && <Text style={{ marginTop: 8 }}>{updateResult}</Text>}

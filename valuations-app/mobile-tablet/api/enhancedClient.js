@@ -276,10 +276,59 @@ class EnhancedApiClient {
       if (API_KEY) {
         headers[API_KEY_HEADER_NAME] = API_KEY;
         
-        // Add user context header
+        // Add user context header and individual headers
         const userContext = await getCachedUserContext();
         if (userContext) {
+          // Send the JSON context header
           headers[USER_CONTEXT_HEADER_NAME] = JSON.stringify(userContext);
+          
+          // Send individual user context headers for backend compatibility
+          headers['x-user-id'] = userContext.id || userContext.azureId;
+          headers['x-user-email'] = userContext.email;
+          headers['x-user-name'] = userContext.name;
+          headers['x-user-type'] = userContext.role || userContext.userType || 'Surveyor'; // Use role from context or default
+          headers['x-user-roles'] = userContext.roles || userContext.userRoles || 'Surveyor'; // Use roles from context or default
+          headers['x-user-groups'] = ''; // Empty for now
+          headers['x-user-entity-mappings'] = ''; // Empty for now
+          
+          // Send mobile-specific headers
+          headers['x-mobile-user-id'] = userContext.id || userContext.azureId;
+          headers['x-mobile-user-email'] = userContext.email;
+          headers['x-mobile-user-name'] = userContext.name;
+          headers['x-mobile-user-type'] = userContext.role || userContext.userType || 'Surveyor'; // Use role from context or default
+          headers['x-mobile-user-roles'] = userContext.roles || userContext.userRoles || 'Surveyor'; // Use roles from context or default
+          headers['x-mobile-user-groups'] = ''; // Empty for now
+          headers['x-mobile-entity-mappings'] = ''; // Empty for now
+          
+          // Determine user role based on email
+          const email = userContext.email?.toLowerCase() || '';
+          if (email.includes('admin') || email.includes('administrator')) {
+            headers['x-user-type'] = 'Admin';
+            headers['x-user-roles'] = 'Admin';
+            headers['x-mobile-user-type'] = 'Admin';
+            headers['x-mobile-user-roles'] = 'Admin';
+          } else if (email.includes('manager') || email.includes('supervisor')) {
+            headers['x-user-type'] = 'Manager';
+            headers['x-user-roles'] = 'Manager';
+            headers['x-mobile-user-type'] = 'Manager';
+            headers['x-mobile-user-roles'] = 'Manager';
+          } else if (email.includes('office') || email.includes('backoffice')) {
+            headers['x-user-type'] = 'Office Staff';
+            headers['x-user-roles'] = 'Office Staff';
+            headers['x-mobile-user-type'] = 'Office Staff';
+            headers['x-mobile-user-roles'] = 'Office Staff';
+          }
+          
+          console.log('🔐 Enhanced client: User context headers set:', {
+            'x-user-email': headers['x-user-email'],
+            'x-user-name': headers['x-user-name'],
+            'x-user-type': headers['x-user-type'],
+            'x-user-roles': headers['x-user-roles'],
+            'x-mobile-user-email': headers['x-mobile-user-email'],
+            'x-mobile-user-name': headers['x-mobile-user-name'],
+            'x-mobile-user-type': headers['x-mobile-user-type'],
+            'x-mobile-user-roles': headers['x-mobile-user-roles']
+          });
         }
       }
     } else if (isJwtMode()) {

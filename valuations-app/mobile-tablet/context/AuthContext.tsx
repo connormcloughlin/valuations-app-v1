@@ -13,6 +13,7 @@ interface User {
   email: string;
   token: string;
   azureToken?: string; // Store Azure token separately for potential refresh
+  roles?: string[]; // Add roles to user interface
 }
 
 interface AuthContextType {
@@ -480,7 +481,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: authResult.account.name || 'Azure User',
           email: authResult.account.username,
           token: 'api-key-mode', // Placeholder for API key mode
-          azureToken: authResult.accessToken // Store Azure token for potential refresh
+          azureToken: authResult.accessToken, // Store Azure token for potential refresh
+          roles: authResult.roles || [] // Include roles from Azure AD
         };
 
         // Store user data for API key authentication
@@ -497,7 +499,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: azureUser.id,
           name: azureUser.name,
           email: azureUser.email,
-          azureId: authResult.account.identifier
+          azureId: authResult.account.identifier,
+          roles: authResult.roles || [], // Include roles from Azure AD
+          role: authResult.roles?.[0] || 'Surveyor' // Primary role (first role or default)
         };
         await AsyncStorage.setItem('userContext', JSON.stringify(userContext));
         

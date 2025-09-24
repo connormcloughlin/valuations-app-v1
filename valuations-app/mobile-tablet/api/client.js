@@ -232,10 +232,62 @@ apiClient.interceptors.request.use(
         if (API_KEY) {
           config.headers[API_KEY_HEADER_NAME] = API_KEY;
           
-          // Add user context header
+          // Add user context header and individual headers
           const userContext = await getCachedUserContext();
           if (userContext) {
+            // Send the JSON context header
             config.headers[USER_CONTEXT_HEADER_NAME] = JSON.stringify(userContext);
+            
+            // Send individual user context headers for backend compatibility
+            config.headers['x-user-id'] = userContext.id || userContext.azureId;
+            config.headers['x-user-email'] = userContext.email;
+            config.headers['x-user-name'] = userContext.name;
+            config.headers['x-user-type'] = userContext.role || userContext.userType || 'Surveyor'; // Use role from context or default
+            config.headers['x-user-roles'] = userContext.roles || userContext.userRoles || 'Surveyor'; // Use roles from context or default
+            config.headers['x-user-groups'] = ''; // Empty for now
+            config.headers['x-user-entity-mappings'] = ''; // Empty for now
+            
+            // Send mobile-specific headers
+            config.headers['x-mobile-user-id'] = userContext.id || userContext.azureId;
+            config.headers['x-mobile-user-email'] = userContext.email;
+            config.headers['x-mobile-user-name'] = userContext.name;
+            config.headers['x-mobile-user-type'] = userContext.role || userContext.userType || 'Surveyor'; // Use role from context or default
+            config.headers['x-mobile-user-roles'] = userContext.roles || userContext.userRoles || 'Surveyor'; // Use roles from context or default
+            config.headers['x-mobile-user-groups'] = ''; // Empty for now
+            config.headers['x-mobile-entity-mappings'] = ''; // Empty for now
+            
+            // Determine user role based on email
+            const email = userContext.email?.toLowerCase() || '';
+            if (email.includes('admin') || email.includes('administrator')) {
+              config.headers['x-user-type'] = 'Admin';
+              config.headers['x-user-roles'] = 'Admin';
+              config.headers['x-mobile-user-type'] = 'Admin';
+              config.headers['x-mobile-user-roles'] = 'Admin';
+            } else if (email.includes('manager') || email.includes('supervisor')) {
+              config.headers['x-user-type'] = 'Manager';
+              config.headers['x-user-roles'] = 'Manager';
+              config.headers['x-mobile-user-type'] = 'Manager';
+              config.headers['x-mobile-user-roles'] = 'Manager';
+            } else if (email.includes('office') || email.includes('backoffice')) {
+              config.headers['x-user-type'] = 'Office Staff';
+              config.headers['x-user-roles'] = 'Office Staff';
+              config.headers['x-mobile-user-type'] = 'Office Staff';
+              config.headers['x-mobile-user-roles'] = 'Office Staff';
+            }
+            
+            // Log the headers being sent for debugging
+            if (__DEV__) {
+              console.log('🔐 Basic client: User context headers set:', {
+                'x-user-email': config.headers['x-user-email'],
+                'x-user-name': config.headers['x-user-name'],
+                'x-user-type': config.headers['x-user-type'],
+                'x-user-roles': config.headers['x-user-roles'],
+                'x-mobile-user-email': config.headers['x-mobile-user-email'],
+                'x-mobile-user-name': config.headers['x-mobile-user-name'],
+                'x-mobile-user-type': config.headers['x-mobile-user-type'],
+                'x-mobile-user-roles': config.headers['x-mobile-user-roles']
+              });
+            }
           }
           
           // Log user information for debugging (only in dev)

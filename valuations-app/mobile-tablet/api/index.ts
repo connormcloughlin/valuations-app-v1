@@ -11,7 +11,7 @@ const axiosInstance = axios.create({
   }
 });
 
-// Add request interceptor to include bearer token
+// Add request interceptor to include bearer token and user context
 axiosInstance.interceptors.request.use(
   async (config) => {
     try {
@@ -24,7 +24,85 @@ axiosInstance.interceptors.request.use(
       }
       
       if (userContext) {
-        config.headers[USER_CONTEXT_HEADER_NAME] = userContext;
+        // Ensure user context includes email for surveyor filtering
+        try {
+          const parsedContext = JSON.parse(userContext);
+          if (parsedContext.email) {
+            // Send the JSON context header
+            config.headers[USER_CONTEXT_HEADER_NAME] = userContext;
+            
+            // Send individual user context headers for backend compatibility
+            config.headers['x-user-id'] = parsedContext.id || parsedContext.azureId;
+            config.headers['x-user-email'] = parsedContext.email;
+            config.headers['x-user-name'] = parsedContext.name;
+            config.headers['x-user-type'] = parsedContext.role || parsedContext.userType || 'Surveyor'; // Use role from context or default
+            config.headers['x-user-roles'] = parsedContext.roles || parsedContext.userRoles || 'Surveyor'; // Use roles from context or default
+            config.headers['x-user-groups'] = ''; // Empty for now
+            config.headers['x-user-entity-mappings'] = ''; // Empty for now
+            
+            // Send mobile-specific headers
+            config.headers['x-mobile-user-id'] = parsedContext.id || parsedContext.azureId;
+            config.headers['x-mobile-user-email'] = parsedContext.email;
+            config.headers['x-mobile-user-name'] = parsedContext.name;
+            config.headers['x-mobile-user-type'] = parsedContext.role || parsedContext.userType || 'Surveyor'; // Use role from context or default
+            config.headers['x-mobile-user-roles'] = parsedContext.roles || parsedContext.userRoles || 'Surveyor'; // Use roles from context or default
+            config.headers['x-mobile-user-groups'] = ''; // Empty for now
+            config.headers['x-mobile-entity-mappings'] = ''; // Empty for now
+            
+            // Determine user role for logging
+            const email = parsedContext.email.toLowerCase();
+            let userRole = 'Surveyor'; // Default role
+            
+            if (email.includes('admin') || email.includes('administrator')) {
+              userRole = 'Admin';
+              config.headers['x-user-type'] = 'Admin';
+              config.headers['x-user-roles'] = 'Admin';
+              config.headers['x-mobile-user-type'] = 'Admin';
+              config.headers['x-mobile-user-roles'] = 'Admin';
+            } else if (email.includes('manager') || email.includes('supervisor')) {
+              userRole = 'Manager';
+              config.headers['x-user-type'] = 'Manager';
+              config.headers['x-user-roles'] = 'Manager';
+              config.headers['x-mobile-user-type'] = 'Manager';
+              config.headers['x-mobile-user-roles'] = 'Manager';
+            } else if (email.includes('office') || email.includes('backoffice')) {
+              userRole = 'Office Staff';
+              config.headers['x-user-type'] = 'Office Staff';
+              config.headers['x-user-roles'] = 'Office Staff';
+              config.headers['x-mobile-user-type'] = 'Office Staff';
+              config.headers['x-mobile-user-roles'] = 'Office Staff';
+            }
+            
+            console.log('🔐 User context sent with API request:', { 
+              email: parsedContext.email,
+              id: parsedContext.id,
+              name: parsedContext.name,
+              role: userRole,
+              endpoint: config.url,
+              headersSent: {
+                'x-user-email': config.headers['x-user-email'],
+                'x-user-name': config.headers['x-user-name'],
+                'x-user-type': config.headers['x-user-type'],
+                'x-user-roles': config.headers['x-user-roles'],
+                'x-mobile-user-email': config.headers['x-mobile-user-email'],
+                'x-mobile-user-name': config.headers['x-mobile-user-name'],
+                'x-mobile-user-type': config.headers['x-mobile-user-type'],
+                'x-mobile-user-roles': config.headers['x-mobile-user-roles']
+              }
+            });
+          } else {
+            console.warn('⚠️ User context missing email field:', parsedContext);
+            // Still send the context but log the issue
+            config.headers[USER_CONTEXT_HEADER_NAME] = userContext;
+          }
+        } catch (parseError) {
+          console.error('❌ Error parsing user context:', parseError);
+          // Still send the raw context in case backend can handle it
+          config.headers[USER_CONTEXT_HEADER_NAME] = userContext;
+        }
+      } else {
+        console.warn('⚠️ No user context available for API request - this may affect surveyor filtering');
+        // Don't send empty context header
       }
     } catch (error) {
       console.error('Error setting API key headers for API request:', error);
