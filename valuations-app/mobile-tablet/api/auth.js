@@ -2,10 +2,7 @@ import transportClient from '../core/transport/transportClient';
 import { 
   isApiKeyMode, 
   isJwtMode, 
-  API_KEY, 
-  API_KEY_HEADER_NAME, 
-  USER_CONTEXT_HEADER_NAME,
-  validateApiKeyConfig 
+  USER_CONTEXT_HEADER_NAME
 } from '../constants/apiConfig';
 
 /**
@@ -52,11 +49,11 @@ const authApi = {
   },
 
   /**
-   * Check if API key configuration is valid
+   * Check if authentication configuration is valid (JWT-only mode)
    * @returns {boolean} True if valid
    */
-  isApiKeyConfigValid: () => {
-    return validateApiKeyConfig();
+  isAuthConfigValid: () => {
+    return isJwtMode();
   },
 
   /**
@@ -323,24 +320,23 @@ const authApi = {
   },
 
   /**
-   * Login user and get authentication token
+   * DEPRECATED: Legacy username/password login method
+   * @deprecated Use Azure AD authentication via AuthContext.loginWithAzure() instead
    * @param {Object} credentials - User credentials
-   * @returns {Promise<Object>} Response with token
+   * @returns {Promise<Object>} Response with error message
    */
   login: async (credentials) => {
-    try {
-      const response = await transportClient.post('auth.login', '/auth/login', credentials);
-      
-      // Set auth token automatically if included in response
-      if (response.data?.token) {
-        authApi.setAuthToken(response.data.token);
-      }
-      
-      return response;
-    } catch (error) {
-      console.error('Login error:', error);
-      return error.success === false ? error : { success: false, message: error.message };
-    }
+    console.warn('⚠️ DEPRECATED: authApi.login() is deprecated. Use Azure AD authentication via AuthContext.loginWithAzure() instead.');
+    
+    return {
+      success: false,
+      data: {
+        message: 'Legacy username/password login is deprecated. Please use Azure AD authentication.',
+        code: 'DEPRECATED_METHOD',
+        redirectTo: 'Use AuthContext.loginWithAzure() for proper Azure AD authentication'
+      },
+      message: 'This authentication method is no longer supported. Please use Azure AD login.'
+    };
   }
 };
 

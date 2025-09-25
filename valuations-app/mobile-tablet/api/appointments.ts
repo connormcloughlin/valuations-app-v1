@@ -579,7 +579,7 @@ const appointmentsApi = {
       });
       
       // Online - fetch from server
-      const response = await transportClient.get('appointments.list-view', '/appointments/list-view', params, {
+      const response = await transportClient.get('appointments.list-view', '/mobile/appointment/list-view', params, {
         timeout: 45000 // 45 second timeout for list-view endpoint
       });
       console.log('API call successful');

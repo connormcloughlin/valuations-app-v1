@@ -10,21 +10,9 @@ if (!API_BASE_URL) {
   console.error('❌ API_BASE_URL is not configured. Set EXPO_PUBLIC_API_BASE_URL or app.config extra.apiBaseUrl');
 }
 
-// API Key Authentication Configuration
-export const API_KEY = Constants.expoConfig?.extra?.apiKey;
-export const API_KEY_HEADER_NAME = Constants.expoConfig?.extra?.apiKeyHeaderName || 'X-API-Key';
+// User Context Header Configuration (JWT-only mode)
 export const USER_CONTEXT_HEADER_NAME = Constants.expoConfig?.extra?.userContextHeaderName || 'X-User-Context';
-
 
 // Authentication mode detection (JWT only as per S2 requirements)
 export const isApiKeyMode = () => false; // Never use API key mode
-export const isJwtMode = () => true; // Always use JWT mode
-
-// API Key validation
-export const validateApiKeyConfig = () => {
-  if (isApiKeyMode() && !API_KEY) {
-    console.warn('API Key mode enabled but no API key provided');
-    return false;
-  }
-  return true;
-}; 
+export const isJwtMode = () => true; // Always use JWT mode 

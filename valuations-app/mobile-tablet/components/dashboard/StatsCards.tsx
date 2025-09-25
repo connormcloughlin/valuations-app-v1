@@ -76,7 +76,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
               case 'Booked':
                 scheduled = item.count;
                 break;
-              case 'In-progress':
+              case 'In-Progress':  // Fixed: API returns "In-Progress" not "In-progress"
                 inProgress = item.count;
                 break;
               case 'Completed':

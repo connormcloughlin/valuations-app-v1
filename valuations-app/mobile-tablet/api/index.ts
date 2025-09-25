@@ -11,17 +11,13 @@ const axiosInstance = axios.create({
   }
 });
 
-// Add request interceptor to include bearer token and user context
+// Add request interceptor to include user context (JWT-only mode)
 axiosInstance.interceptors.request.use(
   async (config) => {
     try {
-      // Get API key and user context from constants
-      const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
+      // Get user context from constants (JWT-only mode)
+      const { USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
       const userContext = await AsyncStorage.getItem('userContext');
-      
-      if (API_KEY) {
-        config.headers[API_KEY_HEADER_NAME] = API_KEY;
-      }
       
       if (userContext) {
         // Ensure user context includes email for surveyor filtering
