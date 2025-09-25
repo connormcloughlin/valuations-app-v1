@@ -19,7 +19,7 @@ interface RequestOptions {
 }
 
 interface HeaderProvider {
-  (): Promise<Record<string, string>>;
+  (endpointId?: string): Promise<Record<string, string>>;
 }
 
 class TransportClient {
@@ -63,7 +63,9 @@ class TransportClient {
         // Add headers from provider if available
         if (this.headerProvider) {
           try {
-            const headers = await this.headerProvider();
+            // Pass endpointId to header provider if available
+            const endpointId = (config as any)._endpointId;
+            const headers = await this.headerProvider(endpointId);
             Object.assign(config.headers, headers);
           } catch (error) {
             console.warn('Failed to get headers from provider:', error);
@@ -113,6 +115,9 @@ class TransportClient {
       ...config,
       timeout: timeout || policy?.timeoutMs || this.config.timeout,
     };
+    
+    // Store endpointId for header provider
+    (requestConfig as any)._endpointId = endpointId;
 
     // Apply retry logic
     const maxRetries = retries ?? policy?.retry?.attempts ?? this.config.retries;
@@ -129,6 +134,14 @@ class TransportClient {
             headers: Object.keys(requestConfig.headers || {}),
             timeout: requestConfig.timeout
           });
+          
+          // For auth endpoints, add extra logging
+          if (config.url?.includes('auth')) {
+            console.log(`🔐 AUTH REQUEST - EndpointId: ${endpointId}`);
+            console.log(`🔐 AUTH REQUEST - Full URL: ${requestConfig.url}`);
+            console.log(`🔐 AUTH REQUEST - Headers:`, requestConfig.headers);
+            console.log(`🔐 AUTH REQUEST - Data:`, typeof requestConfig.data === 'object' ? JSON.stringify(requestConfig.data, null, 2) : requestConfig.data);
+          }
         }
 
         const response = await this.axiosInstance(requestConfig);

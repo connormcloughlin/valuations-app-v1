@@ -144,31 +144,59 @@ const authApi = {
 
     try {
       console.log('🔄 Starting token exchange...');
+      console.log('🔄 Endpoint: /auth/token-exchange');
+      console.log('🔄 Azure token length:', azureToken ? azureToken.length : 'null');
+      console.log('🔄 User info:', userInfo);
       
       // Validate inputs
       if (!azureToken) {
         throw new Error('Azure token is required for token exchange');
       }
       
-      // Note: JWT token exchange not supported in API key mode
       const requestData = {
         azureToken: azureToken,
         userInfo: userInfo || {}
       };
       
+      console.log('🔄 Request data structure:', {
+        hasAzureToken: !!requestData.azureToken,
+        azureTokenPreview: requestData.azureToken ? requestData.azureToken.substring(0, 20) + '...' : 'null',
+        userInfo: requestData.userInfo
+      });
+      
+      console.log('🔄 Making POST request to /auth/token-exchange...');
       const response = await transportClient.post('auth.token-exchange', '/auth/token-exchange', requestData);
       
-      console.log('🔄 Token exchange successful');
+      console.log('🔄 Token exchange response received:');
+      console.log('🔄 Response success:', response?.success);
+      console.log('🔄 Response status:', response?.status);
+      console.log('🔄 Response data keys:', response?.data ? Object.keys(response.data) : 'no data');
+      console.log('🔄 Full response structure:', JSON.stringify(response, null, 2));
       
-      // Set the new API token automatically if included in response
-      if (response.data?.token) {
-        authApi.setAuthToken(response.data.token);
+      // Normalize success shapes from backend (token may be top-level or under data)
+      const normalized = {
+        success: response?.success ?? true,
+        status: response?.status ?? 200,
+        data: response?.data ?? response
+      };
+
+      const token = normalized.data?.token || normalized.token;
+      const refreshToken = normalized.data?.refreshToken || normalized.refreshToken;
+
+      if (token) {
+        authApi.setAuthToken(token);
         console.log('🔄 API token set in client for subsequent requests');
       }
       
-      return response;
+      return normalized;
     } catch (error) {
-      console.error('❌ Token exchange error:', error.message);
+      console.error('❌ Token exchange error details:');
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error response status:', error.response?.status);
+      console.error('❌ Error response data:', error.response?.data);
+      console.error('❌ Error response headers:', error.response?.headers);
+      console.error('❌ Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       
       // Handle different types of errors
       if (error.response?.data) {
@@ -211,6 +239,84 @@ const authApi = {
             message: 'An unexpected error occurred during token exchange.'
           },
           message: error.message || 'Unknown error during token exchange'
+        };
+      }
+    }
+  },
+
+  /**
+   * Refresh JWT token using refresh token
+   * @param {string} refreshToken - Refresh token
+   * @returns {Promise<Object>} Response with new token
+   */
+  refreshToken: async (refreshToken) => {
+    if (!isJwtMode()) {
+      console.warn('⚠️ refreshToken called but not in JWT mode');
+      return {
+        success: false,
+        data: {
+          message: 'Token refresh is not available in API key mode',
+          code: 'DEPRECATED_METHOD'
+        }
+      };
+    }
+
+    try {
+      console.log('🔄 Starting token refresh...');
+      
+      if (!refreshToken) {
+        throw new Error('Refresh token is required');
+      }
+      
+      const requestData = {
+        refreshToken: refreshToken
+      };
+      
+      const response = await transportClient.post('auth.refresh-token', '/auth/refresh-token', requestData);
+      
+      console.log('🔄 Token refresh successful');
+      
+      return response;
+    } catch (error) {
+      console.error('❌ Token refresh error:', error.message);
+      
+      // Handle different types of errors
+      if (error.response?.data) {
+        return {
+          success: false,
+          status: error.response.status,
+          data: error.response.data,
+          message: error.response.data.message || error.message
+        };
+      } else if (error.code === 'ERR_NETWORK') {
+        return {
+          success: false,
+          status: 0,
+          data: {
+            code: 'NETWORK_ERROR',
+            message: 'Unable to reach the server. Please check your connection.'
+          },
+          message: 'Network error during token refresh'
+        };
+      } else if (error.code === 'ECONNABORTED') {
+        return {
+          success: false,
+          status: 0,
+          data: {
+            code: 'TIMEOUT_ERROR',
+            message: 'Request timed out. Please try again.'
+          },
+          message: 'Token refresh request timed out'
+        };
+      } else {
+        return {
+          success: false,
+          status: 0,
+          data: {
+            code: 'UNKNOWN_ERROR',
+            message: 'An unexpected error occurred during token refresh.'
+          },
+          message: error.message || 'Unknown error during token refresh'
         };
       }
     }

@@ -2,6 +2,7 @@ import api from '../api';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../constants/apiConfig';
+import transportClient from '../core/transport/transportClient';
 import {
   insertRiskAssessmentItem,
   batchInsertRiskAssessmentItems,
@@ -228,12 +229,9 @@ class PrefetchService {
       // Use composite hierarchy API instead of individual calls
       console.log(`🚀 Using composite hierarchy API for order: ${orderNumber}`);
       
-            // Use the transport client instead of deprecated client
-      const transportClient = await import('../core/transport/transportClient');
-      
       try {
         // Only fetch hierarchy - field configurations come from prefetched all categories
-        const hierarchyResponse = await transportClient.default.get('risk-assessment.hierarchy', `/mobile/risk-assessment/${orderNumber}/complete-hierarchy`);
+        const hierarchyResponse = await transportClient.get('risk-assessment.hierarchy', `/mobile/risk-assessment/${orderNumber}/complete-hierarchy`);
         
         console.log(`📡 COMPOSITE API - Response received`);
         console.log(`📡 FIELD CONFIG - Using prefetched all category configurations (no order-specific call)`);
@@ -534,31 +532,13 @@ class PrefetchService {
         return;
       }
 
-      // Fetch from API - requires API key authentication
-      const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
-      const userContext = await AsyncStorage.getItem('userContext');
+      console.log(`🚀 PREFETCH - Using transport client for field configuration category ${categoryId}...`);
+      const response = await transportClient.get('config.field-config', `/risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
       
-      if (!API_KEY) {
-        console.log('❌ PREFETCH - No API key available for field configuration, skipping...');
-        return;
-      }
-
-      const axios = await import('axios');
-      const axiosInstance = axios.default.create({
-        baseURL: API_BASE_URL,
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-          [API_KEY_HEADER_NAME]: API_KEY,
-          ...(userContext && { [USER_CONTEXT_HEADER_NAME]: userContext })
-        }
-      });
-
-      const response = await axiosInstance.get(`/risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
-      
-      if (response.data) {
+      // Transport client returns data directly
+      if (response) {
         console.log(`💾 PREFETCH - Caching field configuration for category ${categoryId}`);
-        await storeFieldConfiguration(categoryId, response.data);
+        await storeFieldConfiguration(categoryId, response);
       }
 
     } catch (error: any) {
@@ -589,37 +569,13 @@ class PrefetchService {
       
       console.log('🌐 PREFETCH - All Categories Config URL:', fullUrl);
       
-      // Fetch from API - requires API key authentication
-      const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
-      const userContext = await AsyncStorage.getItem('userContext');
-      
-      if (!API_KEY) {
-        console.log('❌ PREFETCH - No API key available for all category configurations, skipping...');
-        return false;
-      }
-
-      const axios = await import('axios');
-      const axiosInstance = axios.default.create({
-        baseURL: API_BASE_URL,
-        timeout: 30000, // Longer timeout for large data
-        headers: {
-          'Content-Type': 'application/json',
-          [API_KEY_HEADER_NAME]: API_KEY
-        }
+      console.log('🚀 PREFETCH - Using transport client for all category configurations...');
+      const response = await transportClient.get('config.categories-all', '/api/mobile/config/categories/all/complete', {}, {
+        timeout: 30000 // Longer timeout for large data
       });
-
-      if (userContext) {
-        axiosInstance.defaults.headers[USER_CONTEXT_HEADER_NAME] = userContext;
-      }
-
-      const response = await axiosInstance.get('/api/mobile/config/categories/all/complete');
       
-      if (response.status !== 200) {
-        console.log('❌ PREFETCH - All category config API returned status:', response.status);
-        return false;
-      }
-
-      const configData = response.data;
+      // Transport client returns data directly
+      const configData = response;
       
       if (!configData?.success || !configData?.data?.categories) {
         console.log('❌ PREFETCH - Invalid response format from all category config API');
@@ -764,37 +720,13 @@ class PrefetchService {
       
       console.log('🌐 FETCHING - All Categories Config URL:', fullUrl);
       
-      // Fetch from API - requires API key authentication
-      const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
-      const userContext = await AsyncStorage.getItem('userContext');
-      
-      if (!API_KEY) {
-        console.log('❌ FETCHING - No API key available for all category configurations, skipping...');
-        return false;
-      }
-
-      const axios = await import('axios');
-      const axiosInstance = axios.default.create({
-        baseURL: API_BASE_URL,
-        timeout: 30000, // Longer timeout for large data
-        headers: {
-          'Content-Type': 'application/json',
-          [API_KEY_HEADER_NAME]: API_KEY
-        }
+      console.log('🚀 FETCHING - Using transport client for all category configurations...');
+      const response = await transportClient.get('config.categories-all', '/mobile/config/categories/all/complete', {}, {
+        timeout: 30000 // Longer timeout for large data
       });
-
-      if (userContext) {
-        axiosInstance.defaults.headers[USER_CONTEXT_HEADER_NAME] = userContext;
-      }
-
-      const response = await axiosInstance.get('/mobile/config/categories/all/complete');
       
-      if (response.status !== 200) {
-        console.log('❌ FETCHING - All category config API returned status:', response.status);
-        return false;
-      }
-
-      const configData = response.data;
+      // Transport client returns data directly
+      const configData = response;
       
       if (!configData?.success || !configData?.data?.categories) {
         console.log('❌ FETCHING - Invalid response format from all category config API');

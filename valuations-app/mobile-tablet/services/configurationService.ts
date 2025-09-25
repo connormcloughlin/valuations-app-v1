@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
 import { API_BASE_URL } from '../constants/apiConfig';
 import connectionUtils from '../utils/connectionUtils';
+import transportClient from '../core/transport/transportClient';
 import {
   CategoryConfiguration,
   FieldConfiguration,
@@ -13,38 +13,11 @@ import {
 } from '../types/dynamicUI';
 
 class ConfigurationService {
-  private axiosInstance;
   private cachePrefix = 'dynamic_ui_config_';
   private cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
   constructor() {
-    this.axiosInstance = axios.create({
-      baseURL: API_BASE_URL,
-      timeout: 10000,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-
-    // Add API key and user context interceptor
-    this.axiosInstance.interceptors.request.use(async (config) => {
-      try {
-        // Get API key and user context from constants
-        const { API_KEY, API_KEY_HEADER_NAME, USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
-        const userContext = await AsyncStorage.getItem('userContext');
-        
-        if (API_KEY) {
-          config.headers[API_KEY_HEADER_NAME] = API_KEY;
-        }
-        
-        if (userContext) {
-          config.headers[USER_CONTEXT_HEADER_NAME] = userContext;
-        }
-      } catch (error) {
-        console.error('Error setting API key headers:', error);
-      }
-      return config;
-    });
+    // No longer need axios instance - using transportClient instead
   }
 
   /**
@@ -106,15 +79,15 @@ class ConfigurationService {
         // Call debug method to get detailed information
         await this.debugCategoryConfiguration(categoryId);
         
-        const categoryResponse = await this.axiosInstance.get(`/risk-assessment-categories/${categoryId}`);
+        // Use transport client with JWT authentication
+        const categoryResponse = await transportClient.get('config.category-details', `/risk-assessment-categories/${categoryId}`);
         
-        // Debug: Log the raw response
-        console.log('🔍 Raw category response status:', categoryResponse.status);
-        console.log('🔍 Raw category response data:', JSON.stringify(categoryResponse.data, null, 2));
+        // Transport client returns data directly
+        console.log('🔍 Raw category response data:', JSON.stringify(categoryResponse, null, 2));
         
         // Check if response has success/data wrapper or is direct data
-        const hasSuccessWrapper = categoryResponse.data?.success !== undefined;
-        const hasDataWrapper = categoryResponse.data?.data !== undefined;
+        const hasSuccessWrapper = categoryResponse?.success !== undefined;
+        const hasDataWrapper = categoryResponse?.data !== undefined;
         
         console.log('🔍 Has success wrapper:', hasSuccessWrapper);
         console.log('🔍 Has data wrapper:', hasDataWrapper);
@@ -122,18 +95,18 @@ class ConfigurationService {
         let categoryData;
         if (hasSuccessWrapper && hasDataWrapper) {
           // API returns { success: true, data: {...} }
-          if (!categoryResponse.data.success || !categoryResponse.data.data) {
-            console.error('❌ Failed to fetch category details:', categoryResponse.data?.message);
-            return null;
-          }
-          categoryData = categoryResponse.data.data;
-        } else {
-          // API returns data directly
-          if (!categoryResponse.data) {
-            console.error('❌ Failed to fetch category details: No data received');
+          if (!categoryResponse.success || !categoryResponse.data) {
+            console.error('❌ Failed to fetch category details:', categoryResponse?.message);
             return null;
           }
           categoryData = categoryResponse.data;
+        } else {
+          // API returns data directly
+          if (!categoryResponse) {
+            console.error('❌ Failed to fetch category details: No data received');
+            return null;
+          }
+          categoryData = categoryResponse;
         }
         console.log('📝 Category data received:', JSON.stringify(categoryData, null, 2));
         
@@ -169,14 +142,15 @@ class ConfigurationService {
       console.log('🌐 RiskTemplateCategoryID:', finalRiskTemplateCategoryId);
       console.log('🌐 Original CategoryID:', categoryId);
       
-      const configResponse = await this.axiosInstance.get(endpoint);
+      const configResponse = await transportClient.get('config.category-complete', endpoint);
 
-      if (!configResponse.data.success || !configResponse.data.data) {
-        console.error('❌ Failed to fetch complete configuration:', configResponse.data.message);
+      // Transport client returns data directly
+      if (!configResponse.success || !configResponse.data) {
+        console.error('❌ Failed to fetch complete configuration:', configResponse.message);
         return null;
       }
 
-      const completeConfig = configResponse.data.data;
+      const completeConfig = configResponse.data;
       console.log('📝 Complete config data from backend:', JSON.stringify(completeConfig, null, 2));
 
       // Map backend field names to UI field names
@@ -313,16 +287,15 @@ class ConfigurationService {
    */
   async getDropdownOptions(fieldId: number): Promise<DropdownOption[]> {
     try {
-      const response = await this.axiosInstance.get<MobileConfigResponse<DropdownOption[]>>(
-        `/mobile/config/field/${fieldId}/options`
-      );
+      const response = await transportClient.get('config.field-options', `/mobile/config/field/${fieldId}/options`);
 
-      if (!response.data.success || !response.data.data) {
+      // Transport client returns data directly
+      if (!response.success || !response.data) {
         return [];
       }
 
       // Sort options by display order
-      return response.data.data.sort((a, b) => a.display_order - b.display_order);
+      return response.data.sort((a: any, b: any) => a.display_order - b.display_order);
     } catch (error) {
       console.error('Error fetching dropdown options:', error);
       return [];
@@ -334,15 +307,14 @@ class ConfigurationService {
    */
   async getTemplateConfiguration(templateId: number): Promise<CategoryConfiguration[]> {
     try {
-      const response = await this.axiosInstance.get<MobileConfigResponse<CategoryConfiguration[]>>(
-        `/mobile/config/template/${templateId}/categories`
-      );
+      const response = await transportClient.get('config.template-categories', `/mobile/config/template/${templateId}/categories`);
 
-      if (!response.data.success || !response.data.data) {
+      // Transport client returns data directly
+      if (!response.success || !response.data) {
         return [];
       }
 
-      return response.data.data;
+      return response.data;
     } catch (error) {
       console.error('Error fetching template configuration:', error);
       return [];
@@ -474,14 +446,14 @@ class ConfigurationService {
     try {
       // Step 1: Test category API call
       console.log('🔍 Step 1: Testing category API call...');
-      const categoryResponse = await this.axiosInstance.get(`/risk-assessment-categories/${categoryId}`);
+      const categoryResponse = await transportClient.get('config.category-details', `/risk-assessment-categories/${categoryId}`);
       
-      console.log('🔍 Category API Response Status:', categoryResponse.status);
-      console.log('🔍 Category API Response Data:', JSON.stringify(categoryResponse.data, null, 2));
+      // Transport client returns data directly
+      console.log('🔍 Category API Response Data:', JSON.stringify(categoryResponse, null, 2));
       
       // Check if response has success/data wrapper or is direct data
-      const hasSuccessWrapper = categoryResponse.data?.success !== undefined;
-      const hasDataWrapper = categoryResponse.data?.data !== undefined;
+      const hasSuccessWrapper = categoryResponse?.success !== undefined;
+      const hasDataWrapper = categoryResponse?.data !== undefined;
       
       console.log('🔍 Has success wrapper:', hasSuccessWrapper);
       console.log('🔍 Has data wrapper:', hasDataWrapper);
@@ -489,18 +461,18 @@ class ConfigurationService {
       let categoryData;
       if (hasSuccessWrapper && hasDataWrapper) {
         // API returns { success: true, data: {...} }
-        if (!categoryResponse.data.success || !categoryResponse.data.data) {
+        if (!categoryResponse.success || !categoryResponse.data) {
           console.log('🔍 API returned success=false or no data');
           return;
         }
-        categoryData = categoryResponse.data.data;
+        categoryData = categoryResponse.data;
       } else {
         // API returns data directly
-        if (!categoryResponse.data) {
+        if (!categoryResponse) {
           console.log('🔍 API returned no data');
           return;
         }
-        categoryData = categoryResponse.data;
+        categoryData = categoryResponse;
       }
         console.log('🔍 Available fields in category data:', Object.keys(categoryData));
         
@@ -529,9 +501,9 @@ class ConfigurationService {
         if (riskTemplateCategoryId) {
           console.log('🔍 Step 2: Testing config API call with RiskTemplateCategoryID:', riskTemplateCategoryId);
           try {
-            const configResponse = await this.axiosInstance.get(`/mobile/config/category/${riskTemplateCategoryId}/fields`);
-            console.log('🔍 Config API Response Status:', configResponse.status);
-            console.log('🔍 Config API Response Data:', JSON.stringify(configResponse.data, null, 2));
+            const configResponse = await transportClient.get('config.category-fields', `/mobile/config/category/${riskTemplateCategoryId}/fields`);
+            // Transport client returns data directly
+            console.log('🔍 Config API Response Data:', JSON.stringify(configResponse, null, 2));
           } catch (configError: any) {
             console.error('🔍 Config API Error:', configError.message);
             if (configError.response) {

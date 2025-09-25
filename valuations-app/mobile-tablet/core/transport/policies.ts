@@ -142,6 +142,68 @@ export const policies = new Map<string, TransportPolicy>([
     interpretEmptyPolicyKey: 'mobile_empty'
   }],
 
+  ['config.categories-all', {
+    timeoutMs: 30000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 24 * 60 * 60 * 1000, // 24 hours - long cache for config data
+    interpretEmptyPolicyKey: 'config_empty'
+  }],
+
+  ['config.field-config', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours - medium cache for field config
+    interpretEmptyPolicyKey: 'config_empty'
+  }],
+
+  ['config.category-details', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours - short cache for category details
+    interpretEmptyPolicyKey: 'config_empty'
+  }],
+
+  ['config.category-complete', {
+    timeoutMs: 20000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours - medium cache for complete config
+    interpretEmptyPolicyKey: 'config_empty'
+  }],
+
+  ['config.field-options', {
+    timeoutMs: 10000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours - short cache for field options
+    interpretEmptyPolicyKey: 'config_empty'
+  }],
+
+  ['config.template-categories', {
+    timeoutMs: 20000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours - medium cache for template categories
+    interpretEmptyPolicyKey: 'config_empty'
+  }],
+
+  ['config.category-fields', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 12 * 60 * 60 * 1000, // 12 hours - short cache for category fields
+    interpretEmptyPolicyKey: 'config_empty'
+  }],
+
+  // Authentication endpoints
+  ['auth.token-exchange', {
+    timeoutMs: 45000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 0, // No caching for auth
+  }],
+
+  ['auth.refresh-token', {
+    timeoutMs: 30000,
+    retry: { attempts: 3, strategy: 'exponential' },
+    cacheTTL: 0, // No caching for auth
+  }],
+
   // Default policy for unknown endpoints
   ['default', {
     timeoutMs: 10000,
