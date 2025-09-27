@@ -65,11 +65,30 @@ export async function waitForDatabase(): Promise<SQLite.SQLiteDatabase> {
 // Initialize the database
 export async function initializeDatabase() {
   try {
+    // Check if database is already initialized and working
+    if (isDbReady && db) {
+      try {
+        // Test the connection to make sure it's still valid
+        await db.execAsync('SELECT 1');
+        console.log('✅ Database already initialized and working');
+        return db;
+      } catch (connectionError) {
+        console.log('⚠️ Database connection lost, reinitializing...');
+        // Connection is lost, need to reinitialize
+        isDbReady = false;
+        db = null;
+      }
+    }
+    
     console.log('🗄️ Initializing database...');
     
     // Close existing connection if any
     if (db) {
-      await db.closeAsync();
+      try {
+        await db.closeAsync();
+      } catch (closeError) {
+        console.log('⚠️ Error closing existing connection:', closeError);
+      }
       db = null;
       isDbReady = false;
     }
@@ -157,6 +176,15 @@ export async function createTables() {
     // Use the db variable that should be set by initializeDatabase
     if (!db) {
       throw new Error('Database not initialized');
+    }
+    
+    // Check if tables already exist to avoid redundant creation
+    const tablesExist = await checkTablesExist();
+    if (tablesExist) {
+      console.log('✅ Database tables already exist, skipping creation');
+      // Still run migrations in case schema has changed
+      await migrateDatabase();
+      return;
     }
     
     // Create tables using execAsync for DDL operations
@@ -306,6 +334,39 @@ export async function createTables() {
     console.error('❌ Error creating database tables:', error);
     // Don't throw the error, just log it and continue
     console.log('Continuing despite table creation error');
+  }
+}
+
+// Check if all required tables exist
+async function checkTablesExist(): Promise<boolean> {
+  try {
+    if (!db) return false;
+    
+    const requiredTables = [
+      'appointments',
+      'risk_assessment_master', 
+      'risk_assessment_items',
+      'media_files',
+      'category_configurations'
+    ];
+    
+    for (const tableName of requiredTables) {
+      const result = await db.getAllAsync(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [tableName]
+      );
+      
+      if (result.length === 0) {
+        console.log(`📋 Table ${tableName} does not exist`);
+        return false;
+      }
+    }
+    
+    console.log('✅ All required tables exist');
+    return true;
+  } catch (error) {
+    console.error('❌ Error checking tables:', error);
+    return false;
   }
 }
 

@@ -14,3 +14,5 @@ export function initializeTransportClient(): void {
 
 // Auto-initialize when this module is imported
 initializeTransportClient();
+
+

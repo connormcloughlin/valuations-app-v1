@@ -596,3 +596,5 @@ const riskTemplatesApi = {
 };
 
 export default riskTemplatesApi;
+
+

@@ -69,3 +69,5 @@ export function maskEmail(email: string): string {
   const maskedLocal = local.length > 2 ? `${local.substring(0, 2)}***` : local;
   return `${maskedLocal}@${domain}`;
 }
+
+
