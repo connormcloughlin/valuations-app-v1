@@ -1,6 +1,14 @@
 import transportClient from '../core/transport/transportClient';
 import offlineStorage from '../utils/offlineStorage';
 import connectionUtils from '../utils/connectionUtils';
+import { 
+  AppointmentListSchema, 
+  AppointmentSchema, 
+  DashboardStatsSchema,
+  validateOrReject,
+  validateArray,
+  ValidationError 
+} from '../core/schemas';
 
 /**
  * Appointment related API methods using unified transport
@@ -118,13 +126,25 @@ const appointmentsApi = {
       
       console.log(`Processed ${processedAppointments.length} appointments with unique IDs`);
       
+      // Validate the processed appointments against schema
+      const validationResult = validateArray(AppointmentSchema, processedAppointments, 'appointments.list');
+      
+      if (!validationResult.success) {
+        console.error('❌ Appointment data validation failed:', validationResult.errors);
+        // Log validation errors but don't fail the request - return data with warnings
+        console.warn('⚠️ Returning appointments with validation warnings');
+      } else {
+        console.log('✅ Appointment data validation passed');
+      }
+      
       // Cache the result for offline use
       await offlineStorage.storeDataForKey('appointments', processedAppointments);
       console.log(`Cached ${processedAppointments.length} appointments`);
       
       return {
         success: true,
-        data: processedAppointments
+        data: processedAppointments,
+        validationWarnings: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
       };
     } catch (error) {
       console.error('Error fetching appointments:', error);
@@ -187,6 +207,24 @@ const appointmentsApi = {
         if (response && response.data && typeof response.data === 'object') {
           appointmentData = response.data;
         }
+        
+        // Log the raw response for debugging
+        console.log('🔍 RAW API RESPONSE STRUCTURE:');
+        console.log('📊 Response type:', typeof response);
+        console.log('📊 Response keys:', Object.keys(response || {}));
+        console.log('📊 Response.data type:', typeof response?.data);
+        console.log('📊 Response.data keys:', response?.data ? Object.keys(response.data) : 'N/A');
+        console.log('📊 Final appointmentData type:', typeof appointmentData);
+        console.log('📊 Final appointmentData keys:', Object.keys(appointmentData || {}));
+        console.log('📊 Sample fields:');
+        console.log('  - appointmentID:', appointmentData?.appointmentID, '(type:', typeof appointmentData?.appointmentID, ')');
+        console.log('  - orderID:', appointmentData?.orderID, '(type:', typeof appointmentData?.orderID, ')');
+        console.log('  - startTime:', appointmentData?.startTime, '(type:', typeof appointmentData?.startTime, ')');
+        console.log('  - endTime:', appointmentData?.endTime, '(type:', typeof appointmentData?.endTime, ')');
+        console.log('  - inviteStatus:', appointmentData?.inviteStatus, '(type:', typeof appointmentData?.inviteStatus, ')');
+        console.log('  - location:', appointmentData?.location, '(type:', typeof appointmentData?.location, ')');
+        console.log('  - comments:', appointmentData?.comments, '(type:', typeof appointmentData?.comments, ')');
+        console.log('  - surveyorEmail:', appointmentData?.surveyorEmail, '(type:', typeof appointmentData?.surveyorEmail, ')');
         
         // Ensure consistent ID format
         if (appointmentData && typeof appointmentData === 'object') {
@@ -332,9 +370,65 @@ const appointmentsApi = {
           };
         }
         
+        // Log the final data structure before validation
+        console.log('🔍 FINAL APPOINTMENT DATA BEFORE VALIDATION:');
+        console.log('📊 Final data type:', typeof appointmentData);
+        console.log('📊 Final data keys:', Object.keys(appointmentData || {}));
+        console.log('📊 Key field values and types:');
+        console.log('  - appointmentID:', appointmentData?.appointmentID, '(type:', typeof appointmentData?.appointmentID, ')');
+        console.log('  - orderID:', appointmentData?.orderID, '(type:', typeof appointmentData?.orderID, ')');
+        console.log('  - startTime:', appointmentData?.startTime, '(type:', typeof appointmentData?.startTime, ')');
+        console.log('  - endTime:', appointmentData?.endTime, '(type:', typeof appointmentData?.endTime, ')');
+        console.log('  - inviteStatus:', appointmentData?.inviteStatus, '(type:', typeof appointmentData?.inviteStatus, ')');
+        console.log('  - location:', appointmentData?.location, '(type:', typeof appointmentData?.location, ')');
+        console.log('  - comments:', appointmentData?.comments, '(type:', typeof appointmentData?.comments, ')');
+        console.log('  - surveyorEmail:', appointmentData?.surveyorEmail, '(type:', typeof appointmentData?.surveyorEmail, ')');
+        console.log('  - address:', appointmentData?.address, '(type:', typeof appointmentData?.address, ')');
+        console.log('  - client:', appointmentData?.client, '(type:', typeof appointmentData?.client, ')');
+        console.log('  - date:', appointmentData?.date, '(type:', typeof appointmentData?.date, ')');
+        console.log('  - orderNumber:', appointmentData?.orderNumber, '(type:', typeof appointmentData?.orderNumber, ')');
+        
+        // Log fields that might be causing validation issues
+        console.log('📊 Potentially problematic fields:');
+        console.log('  - followUpDate:', appointmentData?.followUpDate, '(type:', typeof appointmentData?.followUpDate, ')');
+        console.log('  - arrivalTime:', appointmentData?.arrivalTime, '(type:', typeof appointmentData?.arrivalTime, ')');
+        console.log('  - departureTime:', appointmentData?.departureTime, '(type:', typeof appointmentData?.departureTime, ')');
+        console.log('  - meetingStatus:', appointmentData?.meetingStatus, '(type:', typeof appointmentData?.meetingStatus, ')');
+        console.log('  - category:', appointmentData?.category, '(type:', typeof appointmentData?.category, ')');
+        console.log('  - outoftown:', appointmentData?.outoftown, '(type:', typeof appointmentData?.outoftown, ')');
+        console.log('  - surveyorComments:', appointmentData?.surveyorComments, '(type:', typeof appointmentData?.surveyorComments, ')');
+        console.log('  - eventId:', appointmentData?.eventId, '(type:', typeof appointmentData?.eventId, ')');
+        console.log('  - dateModified:', appointmentData?.dateModified, '(type:', typeof appointmentData?.dateModified, ')');
+        console.log('  - surveyorID:', appointmentData?.surveyorID, '(type:', typeof appointmentData?.surveyorID, ')');
+        console.log('  - lastModifiedByID:', appointmentData?.lastModifiedByID, '(type:', typeof appointmentData?.lastModifiedByID, ')');
+        console.log('  - isSynced:', appointmentData?.isSynced, '(type:', typeof appointmentData?.isSynced, ')');
+        console.log('  - syncVersion:', appointmentData?.syncVersion, '(type:', typeof appointmentData?.syncVersion, ')');
+        console.log('  - deviceID:', appointmentData?.deviceID, '(type:', typeof appointmentData?.deviceID, ')');
+        console.log('  - syncStatus:', appointmentData?.syncStatus, '(type:', typeof appointmentData?.syncStatus, ')');
+        console.log('  - syncTimestamp:', appointmentData?.syncTimestamp, '(type:', typeof appointmentData?.syncTimestamp, ')');
+        console.log('  - latitude:', appointmentData?.latitude, '(type:', typeof appointmentData?.latitude, ')');
+        console.log('  - longitude:', appointmentData?.longitude, '(type:', typeof appointmentData?.longitude, ')');
+        
+        // Validate the appointment data against schema
+        const validationResult = validateOrReject(AppointmentSchema, appointmentData, 'appointments.detail');
+        
+        if (!validationResult.success) {
+          console.error('❌ Appointment detail validation failed:');
+          validationResult.errors?.forEach((error, index) => {
+            console.error(`  ${index + 1}. Field: ${error.field}`);
+            console.error(`     Expected: ${error.message}`);
+            console.error(`     Received: ${error.value} (type: ${typeof error.value})`);
+            console.error(`     Context: ${error.context}`);
+          });
+          console.warn('⚠️ Returning appointment with validation warnings');
+        } else {
+          console.log('✅ Appointment detail validation passed');
+        }
+        
         return {
           success: true,
-          data: appointmentData
+          data: appointmentData,
+          validationWarnings: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
         };
       } catch (withOrderError) {
         console.error(`Error with /with-order endpoint: ${withOrderError.message}`);
@@ -413,9 +507,20 @@ const appointmentsApi = {
             };
           }
           
+          // Validate the fallback appointment data
+          const validationResult = validateOrReject(AppointmentSchema, appointmentData, 'appointments.detail.fallback');
+          
+          if (!validationResult.success) {
+            console.error('❌ Fallback appointment validation failed:', validationResult.errors);
+            console.warn('⚠️ Returning fallback appointment with validation warnings');
+          } else {
+            console.log('✅ Fallback appointment validation passed');
+          }
+          
           return {
             success: true,
-            data: appointmentData
+            data: appointmentData,
+            validationWarnings: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
           };
         } catch (fallbackError) {
           console.error(`Error with fallback endpoint: ${fallbackError.message}`);
@@ -462,6 +567,20 @@ const appointmentsApi = {
   updateAppointment: async (appointmentId: string, updates: any) => {
     try {
       console.log(`Updating appointment ${appointmentId} with:`, updates);
+      
+      // Validate the update data before sending
+      const validationResult = validateOrReject(AppointmentSchema.partial(), updates, 'appointments.update');
+      
+      if (!validationResult.success) {
+        console.error('❌ Update data validation failed:', validationResult.errors);
+        return { 
+          success: false, 
+          message: 'Invalid update data', 
+          validationErrors: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
+        };
+      }
+      
+      console.log('✅ Update data validation passed');
       const response = await transportClient.put('appointments.update', `/appointments/${appointmentId}`, updates);
       return { success: true, data: response };
     } catch (error) {
@@ -874,10 +993,21 @@ const appointmentsApi = {
       console.log('Fetching appointment statistics');
       const response = await transportClient.get('appointments.list', '/appointments/stats');
       
+      // Validate the stats response against schema
+      const validationResult = validateOrReject(DashboardStatsSchema, response, 'appointments.stats');
+      
+      if (!validationResult.success) {
+        console.error('❌ Stats data validation failed:', validationResult.errors);
+        console.warn('⚠️ Returning stats with validation warnings');
+      } else {
+        console.log('✅ Stats data validation passed');
+      }
+      
       return {
         success: true,
         data: response,
-        status: 200
+        status: 200,
+        validationWarnings: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
       };
     } catch (error) {
       console.error('Error fetching appointment stats:', error);

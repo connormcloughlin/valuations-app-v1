@@ -1,6 +1,7 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { API_BASE_URL } from '../../constants/apiConfig';
 import { policies } from './policies';
+import { handleApiError, handleApiSuccess } from '../errors/errorHandler';
 
 // Transport client configuration
 interface TransportConfig {
@@ -150,10 +151,20 @@ class TransportClient {
           console.log(`✅ ${config.url} (${response.status})`);
         }
 
-        return response.data;
+        // Use centralized success handling
+        const successResult = handleApiSuccess(response, endpointId);
+        return successResult.data;
 
       } catch (error: any) {
         lastError = error;
+        
+        // Use centralized error handling
+        const errorResult = handleApiError(error, endpointId);
+        
+        // If error is treated as empty result, return it instead of throwing
+        if (errorResult.treatAsEmpty) {
+          return errorResult.data;
+        }
         
         // Don't retry on client errors (4xx)
         if (error.response?.status >= 400 && error.response?.status < 500) {

@@ -557,24 +557,7 @@ const riskTemplatesApi = {
         data: response
       };
     } catch (error) {
-      // Handle 404s gracefully for "no items found" scenarios
-      if (error.status === 404) {
-        const errorMessage = error.message || '';
-        const isNoContentScenario = errorMessage.toLowerCase().includes('no items found') || 
-                                    errorMessage.toLowerCase().includes('no data found') ||
-                                    errorMessage.toLowerCase().includes('not found for this category');
-        
-        if (isNoContentScenario) {
-          console.log(`📦 No items found for category ${riskAssessmentCategoryId} - this is normal`);
-          return {
-            success: true,
-            data: [],
-            status: 204,
-            message: errorMessage
-          };
-        }
-      }
-      
+      // Error handling is now centralized in transport client
       console.error(`Error fetching assessment items from server:`, error);
       if (cachedData && cachedData.data) {
         console.log(`Using ${cachedData.data.length} cached assessment items (server error)`);

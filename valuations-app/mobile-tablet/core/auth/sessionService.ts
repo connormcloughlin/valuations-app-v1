@@ -35,7 +35,32 @@ interface SessionMetrics {
   refreshCount: number;
   refreshFailureCount: number;
   softWindowCount: number;
+  queuedRequestsCount: number;
+  deduplicatedRequestsCount: number;
 }
+
+// Request queue item
+interface QueuedRequest {
+  id: string;
+  method: string;
+  url: string;
+  body?: any;
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+  timestamp: number;
+  signature: string; // For deduplication
+}
+
+// Continuity events
+type ContinuityEvent = 
+  | 'session:refresh-started'
+  | 'session:refresh-success'
+  | 'session:refresh-temporary-failure'
+  | 'session:refresh-hard-failure'
+  | 'session:queue-drained';
+
+// Event listener type
+type ContinuityEventListener = (event: ContinuityEvent, data?: any) => void;
 
 // Configuration
 interface SessionConfig {
@@ -55,11 +80,15 @@ const DEFAULT_CONFIG: SessionConfig = {
 class SessionService {
   private currentSession: SessionState | null = null;
   private refreshPromise: Promise<boolean> | null = null;
-  private refreshTimer: NodeJS.Timeout | null = null;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private requestQueue: QueuedRequest[] = [];
+  private eventListeners: ContinuityEventListener[] = [];
   private metrics: SessionMetrics = {
     refreshCount: 0,
     refreshFailureCount: 0,
-    softWindowCount: 0
+    softWindowCount: 0,
+    queuedRequestsCount: 0,
+    deduplicatedRequestsCount: 0
   };
   private config: SessionConfig = DEFAULT_CONFIG;
 
@@ -214,11 +243,23 @@ class SessionService {
       return await this.refreshPromise;
     }
 
+    // Emit refresh started event
+    this.emitEvent('session:refresh-started');
+    
     // Start new refresh operation
     this.refreshPromise = this.performRefresh();
     
     try {
       const result = await this.refreshPromise;
+      
+      if (result) {
+        this.emitEvent('session:refresh-success');
+        // Execute any queued requests
+        await this.executeQueuedRequests();
+      } else {
+        this.emitEvent('session:refresh-temporary-failure');
+      }
+      
       return result;
     } finally {
       this.refreshPromise = null;
@@ -270,6 +311,7 @@ class SessionService {
           // Check if this is a hard failure (token revoked) or transient
           if (this.isHardFailure(error)) {
             console.error('🔒 Hard refresh failure, invalidating session');
+            this.emitEvent('session:refresh-hard-failure', { error: error.message });
             await this.invalidate();
             return false;
           } else {
@@ -318,6 +360,160 @@ class SessionService {
    */
   getMetrics(): SessionMetrics {
     return { ...this.metrics };
+  }
+
+  /**
+   * Queue a request during refresh to ensure continuity
+   */
+  async queueRequest<T>(
+    method: string, 
+    url: string, 
+    executor: () => Promise<T>,
+    body?: any
+  ): Promise<T> {
+    // If no refresh in progress, execute immediately
+    if (!this.refreshPromise) {
+      return await executor();
+    }
+
+    // Generate request signature for deduplication
+    const signature = this.generateRequestSignature(method, url, body);
+    
+    // Check for duplicate requests
+    const existingRequest = this.requestQueue.find(req => req.signature === signature);
+    if (existingRequest) {
+      console.log('🔄 Deduplicating request:', signature);
+      this.metrics.deduplicatedRequestsCount++;
+      
+      // Return the existing promise
+      return new Promise((resolve, reject) => {
+        existingRequest.resolve = resolve;
+        existingRequest.reject = reject;
+      });
+    }
+
+    // Queue the request
+    return new Promise<T>((resolve, reject) => {
+      const queuedRequest: QueuedRequest = {
+        id: this.generateRequestId(),
+        method,
+        url,
+        body,
+        resolve: resolve as any,
+        reject,
+        timestamp: Date.now(),
+        signature
+      };
+
+      this.requestQueue.push(queuedRequest);
+      this.metrics.queuedRequestsCount++;
+      
+      console.log(`📋 Request queued (${this.requestQueue.length} total): ${method} ${url}`);
+    });
+  }
+
+  /**
+   * Execute all queued requests after successful refresh
+   */
+  private async executeQueuedRequests(): Promise<void> {
+    if (this.requestQueue.length === 0) {
+      return;
+    }
+
+    console.log(`🔄 Executing ${this.requestQueue.length} queued requests`);
+    
+    const requests = [...this.requestQueue];
+    this.requestQueue = [];
+
+    for (const request of requests) {
+      try {
+        // Re-execute the request with fresh token
+        const result = await this.executeRequest(request);
+        request.resolve(result);
+      } catch (error) {
+        request.reject(error);
+      }
+    }
+
+    this.emitEvent('session:queue-drained', { executedCount: requests.length });
+  }
+
+  /**
+   * Execute a single queued request
+   */
+  private async executeRequest(request: QueuedRequest): Promise<any> {
+    // This would integrate with the transport client
+    // For now, we'll simulate the execution
+    console.log(`🔄 Executing queued request: ${request.method} ${request.url}`);
+    
+    // TODO: Integrate with actual transport client
+    // This is a placeholder - in real implementation, this would call the transport client
+    throw new Error('Request execution not implemented - requires transport client integration');
+  }
+
+  /**
+   * Generate request signature for deduplication
+   */
+  private generateRequestSignature(method: string, url: string, body?: any): string {
+    const bodyHash = body ? this.hashObject(body) : '';
+    return `${method}:${url}:${bodyHash}`;
+  }
+
+  /**
+   * Generate unique request ID
+   */
+  private generateRequestId(): string {
+    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Hash object for signature generation
+   */
+  private hashObject(obj: any): string {
+    try {
+      const str = JSON.stringify(obj);
+      // Simple hash function - in production, use crypto.subtle.digest
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+      }
+      return Math.abs(hash).toString(36);
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Add event listener for continuity events
+   */
+  addEventListener(listener: ContinuityEventListener): void {
+    this.eventListeners.push(listener);
+  }
+
+  /**
+   * Remove event listener
+   */
+  removeEventListener(listener: ContinuityEventListener): void {
+    const index = this.eventListeners.indexOf(listener);
+    if (index > -1) {
+      this.eventListeners.splice(index, 1);
+    }
+  }
+
+  /**
+   * Emit continuity event
+   */
+  private emitEvent(event: ContinuityEvent, data?: any): void {
+    console.log(`📡 Continuity event: ${event}`, data);
+    this.eventListeners.forEach(listener => {
+      try {
+        listener(event, data);
+      } catch (error) {
+        console.error('❌ Error in continuity event listener:', error);
+      }
+    });
   }
 
   /**
