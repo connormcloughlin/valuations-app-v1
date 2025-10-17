@@ -14,5 +14,4 @@ if (!API_BASE_URL) {
 export const USER_CONTEXT_HEADER_NAME = Constants.expoConfig?.extra?.userContextHeaderName || 'X-User-Context';
 
 // Authentication mode detection (JWT only as per S2 requirements)
-export const isApiKeyMode = () => false; // Never use API key mode
 export const isJwtMode = () => true; // Always use JWT mode 

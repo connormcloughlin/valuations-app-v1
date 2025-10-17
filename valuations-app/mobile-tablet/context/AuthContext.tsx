@@ -7,6 +7,7 @@ import sessionService from '../core/auth/sessionService';
 // Note: Using transport client for API calls instead of deprecated apiClient
 import { initializeDatabase } from '../utils/db';
 import { AppState, AppStateStatus } from 'react-native';
+import { fullSecurePurge } from '../core/security';
 
 interface User {
   id: string;
@@ -21,7 +22,6 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
   loginWithAzure: () => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuthStatus: () => Promise<void>;
@@ -161,20 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      // Check if this is API key mode
-      if (token === 'api-key-mode') {
-        console.log('🔑 API key mode detected, checking user context');
-        
-        // For API key mode, check if user context exists
-        const userContext = await AsyncStorage.getItem('userContext');
-        if (userContext) {
-          console.log('🔑 User context found for API key mode');
-          return true;
-        } else {
-          console.log('🔑 No user context found for API key mode');
-          return false;
-        }
-      }
+      // API key mode removed - JWT authentication only
 
       // JWT mode validation
       // First, do client-side validation to check if token is expired
@@ -304,48 +291,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    try {
-      setIsLoading(true);
-      
-      // TODO: Replace with actual Azure AD authentication
-      // For now, simulate login
-      if (email && password) {
-        const mockUser: User = {
-          id: '1',
-          name: 'Connor McLoughlin',
-          email: email,
-          token: 'mock-token-' + Date.now()
-        };
-
-        await AsyncStorage.setItem('authToken', 'api-key-mode');
-        await AsyncStorage.setItem('userData', JSON.stringify({
-          id: mockUser.id,
-          name: mockUser.name,
-          email: mockUser.email
-        }));
-
-        // Store user context for API key authentication
-        const userContext = {
-          id: mockUser.id,
-          name: mockUser.name,
-          email: mockUser.email
-        };
-        await AsyncStorage.setItem('userContext', JSON.stringify(userContext));
-        authApi.setUserContext(userContext);
-
-        setUser(mockUser);
-        console.log('🔐 Mock user logged in with API key authentication:', email);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Login error:', error);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // DEPRECATED: Legacy username/password login removed
+  // Use loginWithAzure() for proper Azure AD authentication
 
   const loginWithAzure = async (): Promise<boolean> => {
     try {
@@ -467,8 +414,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Invalidate session using sessionService
       await sessionService.invalidate();
       
-      // Clear any remaining legacy storage
-      await AsyncStorage.multiRemove(['azureToken', 'userData']);
+      // Perform secure data purge (S6 implementation)
+      try {
+        console.log('🔐 Starting secure data purge...');
+        const purgeResult = await fullSecurePurge();
+        
+        if (purgeResult.success) {
+          console.log('✅ Secure data purge completed successfully', {
+            asyncStorageKeys: purgeResult.clearedItems.asyncStorage.length,
+            databaseTables: purgeResult.clearedItems.databaseTables.length,
+            cacheKeys: purgeResult.clearedItems.cacheKeys.length
+          });
+        } else {
+          console.warn('⚠️ Secure data purge completed with errors:', purgeResult.errors);
+        }
+      } catch (purgeError) {
+        console.error('❌ Secure data purge failed:', purgeError);
+        // Continue with logout even if purge fails
+      }
       
       // Clear user state
       setUser(null);
@@ -488,7 +451,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     isLoading,
     isAuthenticated,
-    login,
     loginWithAzure,
     logout,
     checkAuthStatus,

@@ -23,7 +23,7 @@ export async function getAuthHeaders(endpointId?: string): Promise<Record<string
       
       console.log('🔐 Headers provided by sessionService');
     } else {
-      console.warn('⚠️ API Key mode is deprecated as per S2 requirements');
+      throw new Error('JWT mode is required - API key mode is no longer supported');
     }
   } catch (error) {
     console.error('❌ Error getting auth headers from sessionService:', error);

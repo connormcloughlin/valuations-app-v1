@@ -43,23 +43,8 @@ const syncService = {
     }
   },
 
-  /**
-   * DEPRECATED: Legacy username/password login method
-   * @deprecated Use Azure AD authentication via AuthContext.loginWithAzure() instead
-   * @param {string} username - User's username or email
-   * @param {string} password - User's password
-   * @returns {Promise<Object>} Result with deprecation error
-   */
-  login: async (username, password) => {
-    console.warn('⚠️ DEPRECATED: syncService.login() is deprecated. Use Azure AD authentication via AuthContext.loginWithAzure() instead.');
-    
-    return {
-      success: false,
-      error: 'Legacy username/password login is deprecated. Please use Azure AD authentication.',
-      code: 'DEPRECATED_METHOD',
-      redirectTo: 'Use AuthContext.loginWithAzure() for proper Azure AD authentication'
-    };
-  },
+  // DEPRECATED: Legacy username/password login method removed
+  // Use AuthContext.loginWithAzure() for proper Azure AD authentication
 
   /**
    * Sync a single survey to the server

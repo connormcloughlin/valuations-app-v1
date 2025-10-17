@@ -551,7 +551,8 @@ export default function PredefinedItemsList({
       }
       autoSaveTimeoutRef.current = setTimeout(() => {
         console.log('🔄 handleEdit: calling autoSaveItem for', itemId, fieldName, value);
-        autoSaveItem(itemId);
+        // Pass the current value explicitly to avoid stale state
+        autoSaveItem(itemId, { [fieldName]: value });
       }, 2000); // 2 second delay to prevent immediate saves
     } else {
       // Immediate save for dropdowns with explicit override to avoid stale state
@@ -563,12 +564,15 @@ export default function PredefinedItemsList({
   const autoSaveItem = async (id: string, overrideChanges?: { [key: string]: any }) => {
     console.log('🔄 [autoSaveItem] Called for item:', id);
     const item = items.find(i => String(i.id) === String(id));
-      if (!item) {
+    if (!item) {
       console.error('❌ [autoSaveItem] No item found in local state for id:', id);
-        return;
-      }
+      return;
+    }
+    
+    // Use override changes if provided, otherwise get from editItems
     const changes = overrideChanges ?? (editItems[id] || {});
     console.log('🔄 [autoSaveItem] Changes to save:', changes);
+    console.log('🔄 [autoSaveItem] Override changes provided:', !!overrideChanges);
 
     // Import database functions
     const { getAllRiskAssessmentItems, updateRiskAssessmentItem, insertRiskAssessmentItem } = await import('../../../../utils/db');
@@ -1810,7 +1814,9 @@ export default function PredefinedItemsList({
                 // Avoid firing onBlur auto-save for dropdowns to prevent stale value saves
                 onBlur={() => {
                   if (fieldName !== 'selectedanswer') {
-                    autoSaveItem(itemId);
+                    // Get the current value from the field to avoid stale state
+                    const currentValue = getFieldValue(fieldName);
+                    autoSaveItem(itemId, { [fieldName]: currentValue });
                   }
                 }}
                 // Add data attributes for focus restoration
@@ -1836,7 +1842,9 @@ export default function PredefinedItemsList({
             hideLabel={true}
             onBlur={() => {
               if (fieldName !== 'selectedanswer') {
-                autoSaveItem(itemId);
+                // Get the current value from the field to avoid stale state
+                const currentValue = getFieldValue(fieldName);
+                autoSaveItem(itemId, { [fieldName]: currentValue });
               }
             }}
             // Add data attributes for focus restoration
@@ -1893,7 +1901,10 @@ export default function PredefinedItemsList({
               <PaperTextInput
                 value={editData.type ?? (item.type || '')}
                 onChangeText={(value) => handleEdit(itemId, 'type', value)}
-                onBlur={() => autoSaveItem(itemId)}
+                onBlur={() => {
+                  const currentValue = editData.type ?? (item.type || '');
+                  autoSaveItem(itemId, { type: currentValue });
+                }}
                 style={[predefinedItemsListStyles.editInput, { borderColor: editData.type ? '#e0e0e0' : '#f44336' }]}
                 dense
                 placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
@@ -2006,7 +2017,9 @@ export default function PredefinedItemsList({
               <PaperTextInput
                 value={type}
                 onChangeText={(value) => handleEdit(itemId, 'type', value)}
-                onBlur={() => autoSaveItem(itemId)}
+                onBlur={() => {
+                  autoSaveItem(itemId, { type: type });
+                }}
                 style={[predefinedItemsListStyles.editInput, { borderColor: type ? '#e0e0e0' : '#f44336' }]}
                 dense
                 placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
@@ -2023,7 +2036,9 @@ export default function PredefinedItemsList({
               <PaperTextInput
                 value={description}
                 onChangeText={(value) => handleEdit(itemId, 'description', value)}
-                onBlur={() => autoSaveItem(itemId)}
+                onBlur={() => {
+                  autoSaveItem(itemId, { description: description });
+                }}
                 style={predefinedItemsListStyles.editInput}
                 dense
                 placeholder="Enter description"
@@ -2036,7 +2051,9 @@ export default function PredefinedItemsList({
               <PaperTextInput
                 value={model}
                 onChangeText={(value) => handleEdit(itemId, 'model', value)}
-                onBlur={() => autoSaveItem(itemId)}
+                onBlur={() => {
+                  autoSaveItem(itemId, { model: model });
+                }}
                 style={predefinedItemsListStyles.editInput}
                 dense
                 placeholder="Enter model"
@@ -2052,7 +2069,9 @@ export default function PredefinedItemsList({
               <PaperTextInput
                 value={quantity}
                 onChangeText={(value) => handleEdit(itemId, 'quantity', value)}
-                onBlur={() => autoSaveItem(itemId)}
+                onBlur={() => {
+                  autoSaveItem(itemId, { quantity: quantity });
+                }}
                 keyboardType="numeric"
                 style={predefinedItemsListStyles.editInput}
                 dense
@@ -2066,7 +2085,9 @@ export default function PredefinedItemsList({
               <PaperTextInput
                 value={price}
                 onChangeText={(value) => handleEdit(itemId, 'price', value)}
-                onBlur={() => autoSaveItem(itemId)}
+                onBlur={() => {
+                  autoSaveItem(itemId, { price: price });
+                }}
                 keyboardType="numeric"
                 style={predefinedItemsListStyles.editInput}
                 dense
@@ -2084,7 +2105,9 @@ export default function PredefinedItemsList({
               <PaperTextInput
                 value={room}
                 onChangeText={(value) => handleEdit(itemId, 'room', value)}
-                onBlur={() => autoSaveItem(itemId)}
+                onBlur={() => {
+                  autoSaveItem(itemId, { room: room });
+                }}
                 style={predefinedItemsListStyles.editInput}
                 dense
                 placeholder="Enter room/location"
@@ -2122,7 +2145,9 @@ export default function PredefinedItemsList({
             <PaperTextInput
               value={notes}
               onChangeText={(value) => handleEdit(itemId, 'notes', value)}
-              onBlur={() => autoSaveItem(itemId)}
+              onBlur={() => {
+                autoSaveItem(itemId, { notes: notes });
+              }}
               style={predefinedItemsListStyles.editInputMultiline}
               multiline
               numberOfLines={2}

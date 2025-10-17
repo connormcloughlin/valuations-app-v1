@@ -127,6 +127,12 @@ export const policies = new Map<string, TransportPolicy>([
     interpretEmptyPolicyKey: 'sync_empty'
   }],
 
+  ['sync.media.upload', {
+    timeoutMs: 120000, // 2 minutes for media uploads
+    retry: { attempts: 1, strategy: 'fixed' }, // Don't retry uploads aggressively
+    interpretEmptyPolicyKey: 'media_empty'
+  }],
+
   // Mobile composite endpoints
   ['mobile.hierarchy', {
     timeoutMs: 30000,

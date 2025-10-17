@@ -111,3 +111,6 @@ export type CreateRiskAssessmentItem = z.infer<typeof CreateRiskAssessmentItemSc
 export type CreateRiskAssessmentMaster = z.infer<typeof CreateRiskAssessmentMasterSchema>;
 export type UpdateRiskAssessmentItem = z.infer<typeof UpdateRiskAssessmentItemSchema>;
 export type UpdateRiskAssessmentMaster = z.infer<typeof UpdateRiskAssessmentMasterSchema>;
+
+
+

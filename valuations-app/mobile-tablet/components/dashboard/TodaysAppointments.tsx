@@ -4,9 +4,10 @@ import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import appointmentsApi from '../../api/appointments';
-import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
+import { storeDataForKey, getDataForKey, removeDataForKey } from '../../utils/offlineStorage';
 import { todaysAppointmentsStyles } from '../../app/GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
+import connectionUtils from '../../utils/connectionUtils';
 
 interface Appointment {
   id: string;
@@ -21,9 +22,10 @@ interface Appointment {
 interface TodaysAppointmentsProps {
   onAppointmentPress: (id: string) => void;
   shouldFetchData?: boolean; // Add prop to control when to fetch data
+  forceReload?: boolean; // Add prop to force reload from API
 }
 
-export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppointmentPress, shouldFetchData = true }) => {
+export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppointmentPress, shouldFetchData = true, forceReload = false }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,15 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
     }
   }, [isAuthenticated, user, isLoading]);
 
+  // Handle force reload when forceReload prop changes
+  useEffect(() => {
+    if (forceReload && isAuthenticated && user && !isLoading && shouldFetchData) {
+      console.log('🔄 Force reload triggered for TodaysAppointments');
+      appointmentsFetchedRef.current = false; // Allow fetching again
+      fetchTodaysAppointments();
+    }
+  }, [forceReload, isAuthenticated, user, isLoading, shouldFetchData]);
+
   // Don't render anything if auth is still loading, not authenticated, or data fetching is disabled
   if (isLoading || !isAuthenticated || !user || !shouldFetchData) {
     return null;
@@ -80,14 +91,33 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
       // Create cache key for today's appointments
       const cacheKey = `todays_appointments_${today.toDateString()}`;
       
-      // Check cache first
-      console.log('📦 Checking cache for today\'s appointments...');
-      const cachedData = await getDataForKey(cacheKey);
-      if (cachedData && cachedData.data) {
-        console.log('✅ Using cached today\'s appointments data');
-        setAppointments(cachedData.data);
+      // Check if we're online and if force reload is requested
+      const isOnline = await connectionUtils.getStatus();
+      
+      // If force reload is requested and we're online, clear cache
+      if (forceReload && isOnline) {
+        console.log('🔄 Force reload requested and online - clearing cache for today\'s appointments');
+        await removeDataForKey(cacheKey);
+      }
+      
+      // Check cache first (only if not force reloading or offline)
+      if (!forceReload) {
+        console.log('📦 Checking cache for today\'s appointments...');
+        const cachedData = await getDataForKey(cacheKey);
+        if (cachedData && cachedData.data) {
+          console.log('✅ Using cached today\'s appointments data');
+          setAppointments(cachedData.data);
+          setLoading(false);
+          return; // Exit early if we have valid cached data
+        }
+      }
+      
+      // If offline and no cache, show error
+      if (!isOnline && !forceReload) {
+        console.log('📱 Offline - no cached data available for today\'s appointments');
+        setError('No internet connection. Please check your network and try again.');
         setLoading(false);
-        return; // Exit early if we have valid cached data
+        return;
       }
       
       const requestParams = {
@@ -119,9 +149,13 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
         console.log(`Found ${todaysAppointments.length} appointments for today`);
         setAppointments(todaysAppointments);
         
-        // Cache the fresh data only once
-        console.log('💾 Caching today\'s appointments data...');
-        await storeDataForKey(cacheKey, todaysAppointments);
+        // Cache the fresh data only when online
+        if (isOnline) {
+          console.log('💾 Caching today\'s appointments data...');
+          await storeDataForKey(cacheKey, todaysAppointments);
+        } else {
+          console.log('📱 Offline - not caching today\'s appointments data');
+        }
       } else {
         console.warn('No appointments found for today or API call failed:', response);
         // Don't clear appointments on API failure - keep existing data

@@ -282,11 +282,8 @@ const api = {
           
           const formData = convertToFormData(mediaFile);
           
-          const response = await transportClient.post('sync.media.upload', '/sync/media/upload', formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
-          });
+          // Remove Content-Type header to let FormData set it automatically with boundary
+          const response = await transportClient.post('sync.media.upload', '/sync/media/upload', formData);
           
           results.push({
             success: true,
@@ -328,17 +325,6 @@ console.log(`API Client initialized on ${Platform.OS} (${Platform.Version})`);
 const convertToFormData = (mediaData) => {
   const formData = new FormData();
   
-  // In React Native, we can append base64 data directly to FormData
-  // Create a file object that React Native FormData can handle
-  formData.append('file', {
-    uri: `data:${mediaData.fileType};base64,${mediaData.base64Data}`,
-    type: mediaData.fileType,
-    name: mediaData.fileName
-  });
-  
-  formData.append('entityName', mediaData.entityName);
-  formData.append('entityId', mediaData.entityID.toString());
-  
   // Map common MIME types to backend expected types
   let backendFileType = 'photo'; // default
   if (mediaData.fileType.includes('image')) {
@@ -349,12 +335,39 @@ const convertToFormData = (mediaData) => {
     backendFileType = 'signature';
   }
   
+  // Send the data as JSON fields that the backend expects
+  formData.append('entityName', mediaData.entityName);
+  formData.append('entityId', mediaData.entityID.toString());
   formData.append('fileType', backendFileType);
-  formData.append('deviceId', mediaData.deviceId || 'mobile-device');
-  formData.append('userId', mediaData.userId || 'mobile-user');
+  formData.append('fileName', mediaData.fileName);
+  formData.append('hasBase64Data', 'true');
+  formData.append('base64Length', mediaData.base64Data.length.toString());
+  formData.append('base64Data', mediaData.base64Data); // Send raw base64 data, not data URI
+  
+  formData.append('deviceId', mediaData.deviceId || 'mobile-tablet-device');
+  formData.append('userId', mediaData.userId || 'current-user-id');
   
   if (mediaData.metadata) {
     formData.append('metadata', mediaData.metadata);
+  }
+  
+  console.log('FormData created for media upload:', {
+    fileName: mediaData.fileName,
+    fileType: mediaData.fileType,
+    entityName: mediaData.entityName,
+    entityId: mediaData.entityID,
+    backendFileType: backendFileType,
+    hasBase64Data: true,
+    base64Length: mediaData.base64Data.length,
+    formDataKeys: Object.keys(formData._parts || {})
+  });
+  
+  // Debug: Log the actual FormData structure
+  if (formData._parts) {
+    console.log('FormData parts:', formData._parts.map(part => ({
+      fieldName: part[0],
+      value: part[0] === 'base64Data' ? `[Base64: ${part[1].length} chars]` : part[1]
+    })));
   }
   
   return formData;

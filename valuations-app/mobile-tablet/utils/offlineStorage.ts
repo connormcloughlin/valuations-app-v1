@@ -105,6 +105,16 @@ export const getDataForKey = async (key: string): Promise<any | null> => {
   return await getApiData(key);
 };
 
+// Remove data for any key
+export const removeDataForKey = async (key: string): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(key);
+    console.log(`Removed data for key: ${key}`);
+  } catch (e) {
+    console.error('Error removing offline data:', e);
+  }
+};
+
 // Store appointments data
 export const storeAppointments = async (data: any): Promise<void> => {
   await storeApiData(STORAGE_KEYS.APPOINTMENTS, data);
@@ -216,6 +226,7 @@ export default {
   getAppointments,
   storeDataForKey,
   getDataForKey,
+  removeDataForKey,
   clearAllOfflineData,
   isDataStale,
   updateLastSyncTimestamp,

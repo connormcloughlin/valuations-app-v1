@@ -1042,9 +1042,10 @@ const riskAssessmentSyncService = {
         // Try alternative import
         if (typeof apiModule.default?.uploadMediaBatch === 'function') {
           console.log('Using alternative import for uploadMediaBatch');
-          const uploadResult = await apiModule.default.uploadMediaBatch(mediaFilesWithData);
+          try {
+            const uploadResult = await apiModule.default.uploadMediaBatch(mediaFilesWithData);
 
-          if (uploadResult.success && uploadResult.data) {
+            if (uploadResult.success && uploadResult.data) {
             console.log('Media batch upload successful:', uploadResult.data);
             
             // Update local media files with server URLs
@@ -1086,6 +1087,15 @@ const riskAssessmentSyncService = {
               error: uploadResult.message || 'Media upload failed'
             };
           }
+          } catch (mediaError) {
+            console.error('Error during media upload:', mediaError);
+            // Don't fail the entire sync for media upload errors
+            return {
+              success: false,
+              error: `Media upload failed: ${(mediaError as Error).message || 'Unknown error'}`,
+              nonCritical: true // Mark as non-critical so it doesn't break main sync
+            };
+          }
         } else {
           return {
             success: false,
@@ -1094,7 +1104,8 @@ const riskAssessmentSyncService = {
         }
       } else {
         // Use batch upload API
-        const uploadResult = await api.uploadMediaBatch(mediaFilesWithData);
+        try {
+          const uploadResult = await api.uploadMediaBatch(mediaFilesWithData);
 
         if (uploadResult.success && uploadResult.data) {
           console.log('Media batch upload successful:', uploadResult.data);
@@ -1136,6 +1147,15 @@ const riskAssessmentSyncService = {
           return {
             success: false,
             error: uploadResult.message || 'Media upload failed'
+          };
+        }
+        } catch (mediaError) {
+          console.error('Error during media upload (main API):', mediaError);
+          // Don't fail the entire sync for media upload errors
+          return {
+            success: false,
+            error: `Media upload failed: ${(mediaError as Error).message || 'Unknown error'}`,
+            nonCritical: true // Mark as non-critical so it doesn't break main sync
           };
         }
       }

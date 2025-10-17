@@ -4,9 +4,10 @@ import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../../api';
-import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
+import { storeDataForKey, getDataForKey, removeDataForKey } from '../../utils/offlineStorage';
 import { surveysInProgressStyles } from '../../app/GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
+import connectionUtils from '../../utils/connectionUtils';
 
 interface Survey {
   id: string;
@@ -20,9 +21,10 @@ interface Survey {
 interface SurveysInProgressProps {
   onSurveyPress: (id: string) => void;
   shouldFetchData?: boolean; // Add prop to control when to fetch data
+  forceReload?: boolean; // Add prop to force reload from API
 }
 
-export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPress, shouldFetchData = true }) => {
+export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPress, shouldFetchData = true, forceReload = false }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +56,15 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
     }
   }, [isAuthenticated, user, isLoading]);
 
+  // Handle force reload when forceReload prop changes
+  useEffect(() => {
+    if (forceReload && isAuthenticated && user && !isLoading && shouldFetchData) {
+      console.log('🔄 Force reload triggered for SurveysInProgress');
+      surveysFetchedRef.current = false; // Allow fetching again
+      fetchInProgressSurveys();
+    }
+  }, [forceReload, isAuthenticated, user, isLoading, shouldFetchData]);
+
   // Don't render anything if auth is still loading, not authenticated, or data fetching is disabled
   if (isLoading || !isAuthenticated || !user || !shouldFetchData) {
     return null;
@@ -66,14 +77,33 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
       
       const cacheKey = 'surveys_in_progress';
       
-      // Check cache first
-      console.log('📦 Checking cache for in-progress surveys...');
-      const cachedData = await getDataForKey(cacheKey);
-      if (cachedData && cachedData.data) {
-        console.log('✅ Using cached in-progress surveys data');
-        setSurveys(cachedData.data);
+      // Check if we're online and if force reload is requested
+      const isOnline = await connectionUtils.getStatus();
+      
+      // If force reload is requested and we're online, clear cache
+      if (forceReload && isOnline) {
+        console.log('🔄 Force reload requested and online - clearing cache for in-progress surveys');
+        await removeDataForKey(cacheKey);
+      }
+      
+      // Check cache first (only if not force reloading or offline)
+      if (!forceReload) {
+        console.log('📦 Checking cache for in-progress surveys...');
+        const cachedData = await getDataForKey(cacheKey);
+        if (cachedData && cachedData.data) {
+          console.log('✅ Using cached in-progress surveys data');
+          setSurveys(cachedData.data);
+          setLoading(false);
+          return; // Exit early if we have valid cached data
+        }
+      }
+      
+      // If offline and no cache, show error
+      if (!isOnline && !forceReload) {
+        console.log('📱 Offline - no cached data available for in-progress surveys');
+        setError('No internet connection. Please check your network and try again.');
         setLoading(false);
-        return; // Exit early if we have valid cached data
+        return;
       }
       
       const requestParams = {
@@ -103,9 +133,13 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
         
         setSurveys(surveysData);
         
-        // Cache the fresh data
-        console.log('💾 Caching in-progress surveys data...');
-        await storeDataForKey(cacheKey, surveysData);
+        // Cache the fresh data only when online
+        if (isOnline) {
+          console.log('💾 Caching in-progress surveys data...');
+          await storeDataForKey(cacheKey, surveysData);
+        } else {
+          console.log('📱 Offline - not caching in-progress surveys data');
+        }
       } else {
         console.warn('Invalid API response:', response);
         // Don't clear surveys on API failure - keep existing data

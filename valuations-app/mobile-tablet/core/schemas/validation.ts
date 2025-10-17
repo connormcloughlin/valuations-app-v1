@@ -277,3 +277,6 @@ export function getValidationSummary(result: ValidationResult<any>): string {
     return `Validation failed: ${errorCount} errors in fields [${errorFields}]`;
   }
 }
+
+
+

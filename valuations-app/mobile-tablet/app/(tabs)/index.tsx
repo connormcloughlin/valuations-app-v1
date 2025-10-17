@@ -29,6 +29,9 @@ export default function Dashboard() {
   // Add a state to track if we should wait for refresh function
   const [waitingForRefreshFunction, setWaitingForRefreshFunction] = React.useState(false);
   const [prefetchTriggered, setPrefetchTriggered] = React.useState(false);
+  
+  // Add state to track force reload
+  const [forceReload, setForceReload] = React.useState(false);
 
   // Background prefetch function
   const startBackgroundPrefetch = React.useCallback(async () => {
@@ -58,6 +61,9 @@ export default function Dashboard() {
   useFocusEffect(
     React.useCallback(() => {
       console.log('🔄 Dashboard screen focused, refreshing stats...');
+      
+      // Trigger force reload for all dashboard components
+      setForceReload(true);
       
       // Start background prefetch after a delay
       setTimeout(() => {
@@ -97,9 +103,19 @@ export default function Dashboard() {
         console.log('✅ Refresh function available after delay, executing refresh');
         currentRefreshStats();
       }
-      }, 100); // Small delay to allow context updates
+    }, 100); // Small delay to allow context updates
     }, [startBackgroundPrefetch])
   );
+
+  // Reset force reload after components have processed it
+  React.useEffect(() => {
+    if (forceReload) {
+      const timer = setTimeout(() => {
+        setForceReload(false);
+      }, 1000); // Reset after 1 second
+      return () => clearTimeout(timer);
+    }
+  }, [forceReload]);
 
   const navigateToAppointment = (id: string, status: 'scheduled' | 'inProgress' | 'completed') => {
     // Route to different screens based on appointment status
@@ -188,9 +204,9 @@ export default function Dashboard() {
      <>
        <ScrollView style={dashboardStyles.container}>
          <DashboardHeader />
-         <StatsCards onCardPress={handleCardPress} />
-         <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} shouldFetchData={true} />
-         <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} shouldFetchData={true} />
+         <StatsCards onCardPress={handleCardPress} forceReload={forceReload} />
+         <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} shouldFetchData={true} forceReload={forceReload} />
+         <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} shouldFetchData={true} forceReload={forceReload} />
          
          {/* Debug info */}
          {__DEV__ && (

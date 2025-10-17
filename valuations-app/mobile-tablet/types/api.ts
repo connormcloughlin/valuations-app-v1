@@ -142,8 +142,6 @@ export interface AppointmentData {
 export interface ApiClient {
   // Auth methods
   setAuthToken: (token: string) => void;
-  /** @deprecated Use Azure AD authentication via AuthContext.loginWithAzure() instead */
-  login: (username: string, password: string) => Promise<ApiResponse<any>>;
   
   // Survey methods
   getSurveys: () => Promise<ApiResponse<any>>;

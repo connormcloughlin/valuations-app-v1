@@ -12,6 +12,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hashEmail, maskSensitiveData, maskEmail } from './cryptoUtils';
+import { logger } from '../logging';
 
 // Session state interface
 interface SessionState {
@@ -99,7 +100,7 @@ class SessionService {
     try {
       const sessionData = await AsyncStorage.getItem('secureSession');
       if (!sessionData) {
-        console.log('📋 No stored session found');
+        logger.debug('No stored session found', { operation: 'session_load' });
         return null;
       }
 
@@ -107,14 +108,14 @@ class SessionService {
       
       // Validate session integrity
       if (!this.isValidSession(session)) {
-        console.warn('⚠️ Invalid session data found, clearing storage');
+        logger.warn('Invalid session data found, clearing storage', { operation: 'session_validation' });
         await this.invalidate();
         return null;
       }
 
       // Check if session is still valid
       if (this.isHardExpired(session)) {
-        console.log('🔒 Session hard expired, clearing storage');
+        logger.info('Session hard expired, clearing storage', { operation: 'session_expiry' });
         await this.invalidate();
         return null;
       }
@@ -122,10 +123,14 @@ class SessionService {
       this.currentSession = session;
       this.schedulePreemptiveRefresh();
       
-      console.log(`✅ Session loaded for user: ${maskSensitiveData(session.token)}`);
+      logger.info('Session loaded successfully', { 
+        operation: 'session_load',
+        userId: session.userId,
+        emailHash: session.emailHash
+      });
       return session;
     } catch (error) {
-      console.error('❌ Error loading session:', error);
+      logger.error('Error loading session', { operation: 'session_load' }, undefined, error as Error);
       return null;
     }
   }
@@ -170,9 +175,13 @@ class SessionService {
       this.currentSession = session;
       this.schedulePreemptiveRefresh();
       
-      console.log(`✅ Session persisted for user: ${maskEmail(userEmail)}`);
+      logger.info('Session persisted successfully', { 
+        operation: 'session_persist',
+        userId,
+        emailHash: session.emailHash
+      });
     } catch (error) {
-      console.error('❌ Error persisting session:', error);
+      logger.error('Error persisting session', { operation: 'session_persist' }, undefined, error as Error);
       throw error;
     }
   }
@@ -183,7 +192,7 @@ class SessionService {
   async getAuthHeaders(): Promise<Record<string, string>> {
     const session = await this.getCurrentSession();
     if (!session) {
-      console.log('🔐 No session available for auth headers');
+      logger.debug('No session available for auth headers', { operation: 'auth_headers' });
       return {};
     }
 
@@ -192,14 +201,14 @@ class SessionService {
       'X-User-Context': JSON.stringify(session.userContext)
     };
 
-    console.log('🔐 Auth headers generated:', {
+    logger.debug('Auth headers generated', { 
+      operation: 'auth_headers',
+      userId: session.userId,
+      emailHash: session.emailHash
+    }, {
       hasToken: !!session.token,
-      tokenPreview: session.token ? session.token.substring(0, 20) + '...' : 'null',
-      userContext: session.userContext,
-      headersPreview: {
-        authorization: headers.Authorization ? 'Bearer ***' : 'missing',
-        userContext: headers['X-User-Context'] ? 'present' : 'missing'
-      }
+      hasUserContext: !!session.userContext,
+      headerCount: Object.keys(headers).length
     });
 
     return headers;

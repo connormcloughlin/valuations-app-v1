@@ -98,3 +98,6 @@ export type UpdateSurveyItem = z.infer<typeof UpdateSurveyItemSchema>;
 export type SurveyCategory = z.infer<typeof SurveyCategorySchema>;
 export type SurveyCategoryList = z.infer<typeof SurveyCategoryListSchema>;
 export type SurveyResponse = z.infer<typeof SurveyResponseSchema>;
+
+
+

@@ -1,6 +1,5 @@
 import transportClient from '../core/transport/transportClient';
 import { 
-  isApiKeyMode, 
   isJwtMode, 
   USER_CONTEXT_HEADER_NAME
 } from '../constants/apiConfig';
@@ -15,35 +14,18 @@ const authApi = {
    */
   setAuthToken: (token) => {
     if (isJwtMode()) {
-      // Note: JWT mode not supported in API key mode
-      console.log('⚠️ setAuthToken called but not in JWT mode');
+      console.log('🔐 JWT token set for authentication');
     } else {
       console.log('⚠️ setAuthToken called but not in JWT mode');
     }
   },
 
-  /**
-   * Set user context for API key mode
-   * @param {Object|null} userContext - User context object or null to clear
-   */
-  setUserContext: (userContext) => {
-    if (isApiKeyMode()) {
-      if (userContext) {
-        console.log('👤 User context set for API key mode');
-      } else {
-        console.log('👤 User context cleared');
-      }
-    } else {
-      console.log('⚠️ setUserContext called but not in API key mode');
-    }
-  },
 
   /**
    * Get current authentication mode
-   * @returns {string} 'jwt' or 'api_key'
+   * @returns {string} 'jwt' (JWT mode only)
    */
   getAuthMode: () => {
-    if (isApiKeyMode()) return 'api_key';
     if (isJwtMode()) return 'jwt';
     return 'unknown';
   },
@@ -62,19 +44,13 @@ const authApi = {
    */
   verifyAuth: async () => {
     try {
-      if (isApiKeyMode()) {
-        console.log('🔑 Verifying API key authentication...');
-        // For API key mode, we can verify by making a simple request
-        const response = await transportClient.get('auth.verify', '/auth/verify');
-        console.log('🔑 API key authentication verification successful');
-        return response;
-      } else if (isJwtMode()) {
+      if (isJwtMode()) {
         console.log('🔐 Verifying JWT token...');
         const response = await transportClient.get('auth.verify', '/auth/verify');
         console.log('🔐 JWT token verification successful');
         return response;
       } else {
-        throw new Error('Unknown authentication mode');
+        throw new Error('JWT mode is required');
       }
     } catch (error) {
       console.error('❌ Authentication verification error:', error.message);
@@ -113,8 +89,8 @@ const authApi = {
         success: false,
         data: {
           valid: false,
-          message: 'verifyToken is deprecated for API key mode, use verifyAuth instead',
-          code: 'DEPRECATED_METHOD'
+          message: 'Token verification failed',
+          code: 'TOKEN_VERIFICATION_FAILED'
         }
       };
     }
@@ -133,8 +109,8 @@ const authApi = {
       return {
         success: false,
         data: {
-          message: 'Token exchange is not available in API key mode',
-          code: 'DEPRECATED_METHOD'
+          message: 'Token exchange is not available in non-JWT mode',
+          code: 'INVALID_MODE'
         }
       };
     }
@@ -252,8 +228,8 @@ const authApi = {
       return {
         success: false,
         data: {
-          message: 'Token refresh is not available in API key mode',
-          code: 'DEPRECATED_METHOD'
+          message: 'Token refresh is not available in non-JWT mode',
+          code: 'INVALID_MODE'
         }
       };
     }
@@ -319,25 +295,8 @@ const authApi = {
     }
   },
 
-  /**
-   * DEPRECATED: Legacy username/password login method
-   * @deprecated Use Azure AD authentication via AuthContext.loginWithAzure() instead
-   * @param {Object} credentials - User credentials
-   * @returns {Promise<Object>} Response with error message
-   */
-  login: async (credentials) => {
-    console.warn('⚠️ DEPRECATED: authApi.login() is deprecated. Use Azure AD authentication via AuthContext.loginWithAzure() instead.');
-    
-    return {
-      success: false,
-      data: {
-        message: 'Legacy username/password login is deprecated. Please use Azure AD authentication.',
-        code: 'DEPRECATED_METHOD',
-        redirectTo: 'Use AuthContext.loginWithAzure() for proper Azure AD authentication'
-      },
-      message: 'This authentication method is no longer supported. Please use Azure AD login.'
-    };
-  }
+  // DEPRECATED: Legacy username/password login method removed
+  // Use AuthContext.loginWithAzure() for proper Azure AD authentication
 };
 
 export default authApi; 

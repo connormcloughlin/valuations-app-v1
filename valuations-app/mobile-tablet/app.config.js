@@ -74,9 +74,9 @@ module.exports = {
       apiTimeout: process.env.API_TIMEOUT,
       debugMode: process.env.DEBUG_MODE,
       logLevel: process.env.LOG_LEVEL,
-      // API Key Authentication Configuration
-      apiKey: process.env.API_KEY,
-      apiKeyHeaderName: process.env.API_KEY_HEADER_NAME || 'X-API-Key',
+      // API Key Authentication Configuration (DEPRECATED - JWT only)
+      // apiKey: process.env.API_KEY,
+      // apiKeyHeaderName: process.env.API_KEY_HEADER_NAME || 'X-API-Key',
       userContextHeaderName: process.env.USER_CONTEXT_HEADER_NAME || 'X-User-Context',
     },
     "splash": {

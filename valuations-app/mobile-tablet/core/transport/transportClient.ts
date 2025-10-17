@@ -2,6 +2,7 @@ import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { API_BASE_URL } from '../../constants/apiConfig';
 import { policies } from './policies';
 import { handleApiError, handleApiSuccess } from '../errors/errorHandler';
+import { logger } from '../logging';
 
 // Transport client configuration
 interface TransportConfig {
@@ -86,7 +87,13 @@ class TransportClient {
     this.axiosInstance.interceptors.response.use(
       (response: AxiosResponse) => response,
       (error) => {
-        console.error('Transport error:', error.message);
+        logger.error('Transport error occurred', {
+          operation: 'transport_error'
+        }, {
+          message: error.message,
+          status: error.response?.status,
+          url: error.config?.url
+        }, error);
         return Promise.reject(error);
       }
     );
@@ -126,30 +133,51 @@ class TransportClient {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        if (__DEV__) {
-          console.log(`🚀 ${config.method?.toUpperCase() || 'GET'} ${config.url} (attempt ${attempt + 1})`);
-          console.log(`📤 Request config:`, {
-            url: requestConfig.url,
-            method: requestConfig.method,
+        // Log API request with structured logging
+        logger.apiRequest(
+          config.method?.toUpperCase() || 'GET',
+          config.url || '',
+          {
+            endpointId,
+            attempt: attempt + 1,
+            timeout: requestConfig.timeout,
+            priority: options.priority
+          },
+          {
             params: requestConfig.params,
             headers: Object.keys(requestConfig.headers || {}),
-            timeout: requestConfig.timeout
-          });
-          
-          // For auth endpoints, add extra logging
-          if (config.url?.includes('auth')) {
-            console.log(`🔐 AUTH REQUEST - EndpointId: ${endpointId}`);
-            console.log(`🔐 AUTH REQUEST - Full URL: ${requestConfig.url}`);
-            console.log(`🔐 AUTH REQUEST - Headers:`, requestConfig.headers);
-            console.log(`🔐 AUTH REQUEST - Data:`, typeof requestConfig.data === 'object' ? JSON.stringify(requestConfig.data, null, 2) : requestConfig.data);
+            hasData: !!requestConfig.data
           }
+        );
+        
+        // For auth endpoints, add extra logging
+        if (config.url?.includes('auth')) {
+          logger.debug('Auth request details', {
+            endpointId,
+            operation: 'auth_request'
+          }, {
+            fullUrl: requestConfig.url,
+            headers: requestConfig.headers,
+            data: requestConfig.data
+          });
         }
 
         const response = await this.axiosInstance(requestConfig);
         
-        if (__DEV__) {
-          console.log(`✅ ${config.url} (${response.status})`);
-        }
+        // Log successful API response
+        logger.apiResponse(
+          response.status,
+          config.url || '',
+          {
+            endpointId,
+            attempt: attempt + 1
+          },
+          {
+            responseTime: Date.now(),
+            statusText: response.statusText,
+            dataSize: JSON.stringify(response.data).length
+          }
+        );
 
         // Use centralized success handling
         const successResult = handleApiSuccess(response, endpointId);
@@ -174,9 +202,12 @@ class TransportClient {
         // Wait before retry (exponential backoff)
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * this.config.retryDelay;
-          if (__DEV__) {
-            console.log(`⏳ Retrying in ${delay}ms...`);
-          }
+          logger.debug(`Retrying request in ${delay}ms`, {
+            endpointId,
+            attempt: attempt + 1,
+            maxRetries,
+            operation: 'retry'
+          });
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
