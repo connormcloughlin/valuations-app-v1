@@ -14,12 +14,8 @@ import { predefinedItemsListStyles } from '../../../GlobalStyles';
 // Import required services and utilities
 import riskAssessmentSyncService from '../../../../services/riskAssessmentSyncService';
 import mediaService from '../../../../services/mediaService';
-import {
-  updateRiskAssessmentItem,
-  RiskAssessmentItem,
-  MediaFile,
-  getAllRiskAssessmentItems
-} from '../../../../utils/db';
+// Dynamic import to prevent bundling at startup
+const getDbUtils = () => import('../../../../utils/db');
 // Use require for ImagePicker to avoid type issues
 const ImagePicker = require('expo-image-picker');
 import { debugLog, verboseLog, infoLog } from '../../../../utils/debugUtils';
@@ -121,7 +117,7 @@ export default function PredefinedItemsList({
   const [syncMessage, setSyncMessage] = useState('');
   
   // Photo state management
-  const [itemPhotos, setItemPhotos] = useState<{ [key: string]: MediaFile[] }>({});
+  const [itemPhotos, setItemPhotos] = useState<{ [key: string]: any[] }>({});
   const [showCamera, setShowCamera] = useState(false);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [currentPhotoItemId, setCurrentPhotoItemId] = useState<string | null>(null);
@@ -585,7 +581,7 @@ export default function PredefinedItemsList({
 
     if (existingItem) {
       // Update existing item
-      const updated: RiskAssessmentItem = {
+      const updated: any = {
         ...existingItem,
         itemprompt: changes.type ?? existingItem.itemprompt ?? '',
         selectedanswer: changes.selectedanswer ?? existingItem.selectedanswer ?? '',
@@ -619,7 +615,7 @@ export default function PredefinedItemsList({
         ? -Math.abs(Number(id.replace('custom-new-', '').replace('duplicate-', ''))) 
         : Number(id);
       
-      const newSqliteItem: RiskAssessmentItem = {
+      const newSqliteItem: any = {
         riskassessmentitemid: tempId,
         riskassessmentcategoryid: Number(categoryId),
         itemprompt: changes.type ?? item.type ?? '',
@@ -751,7 +747,7 @@ export default function PredefinedItemsList({
       const newDbId = Date.now(); // Use timestamp as unique ID
       
       // Update the record with a new positive ID
-      const updatedItem: RiskAssessmentItem = {
+      const updatedItem: any = {
         ...existingItem,
         riskassessmentitemid: newDbId, // Change to positive ID
         pending_sync: 1,
@@ -880,7 +876,7 @@ export default function PredefinedItemsList({
           }
 
           if (existingItem) {
-            const updated: RiskAssessmentItem = {
+            const updated: any = {
               ...existingItem,  // Preserve all existing database fields
               hasphoto: 1,
               pending_sync: 1,
@@ -965,7 +961,7 @@ export default function PredefinedItemsList({
           }
 
           if (existingItem) {
-            const updated: RiskAssessmentItem = {
+            const updated: any = {
               ...existingItem,  // Preserve all existing database fields
               hasphoto: 1,
               pending_sync: 1,
@@ -1617,6 +1613,15 @@ export default function PredefinedItemsList({
         return []; // No exclusions when no grouping strategy is configured
       }
       
+      // Check if this is a new item (custom-new- or duplicate-)
+      const isNewItem = item.id.toString().startsWith('custom-new-') || item.id.toString().startsWith('duplicate-');
+      
+      // For new items, allow editing of grouping fields so users can set Room Name and Item Name
+      if (isNewItem) {
+        console.log('🔧 New item detected - allowing grouping fields to be editable for proper categorization');
+        return []; // No exclusions for new items
+      }
+      
       const effectiveStrategy = groupingStrategy.strategy_type;
       
       const fields: string[] = [];
@@ -1631,7 +1636,7 @@ export default function PredefinedItemsList({
       }
       
       if (parsedConfig && parsedConfig.primary_group && parsedConfig.secondary_group) {
-        // 2-tier grouping: exclude both primary and secondary fields
+        // 2-tier grouping: exclude both primary and secondary fields for existing items
         const primaryFieldMap: { [key: string]: string } = {
           'ItemPrompt': 'type',
           'Location': 'room',

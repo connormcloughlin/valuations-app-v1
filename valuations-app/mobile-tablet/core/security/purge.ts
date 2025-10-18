@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { clearAllCachedTables, clearTableData } from '../../utils/db';
+// Dynamic import to prevent bundling at startup
+const getDbUtils = () => import('../../utils/db');
 import { logger } from '../logging';
 
 /**
@@ -176,6 +177,7 @@ async function purgeDatabaseData(result: PurgeResult): Promise<void> {
     logger.debug('Purging database sensitive data', { operation: 'purge_database' });
 
     // Clear all cached tables that may contain user data
+    const { clearAllCachedTables } = await getDbUtils();
     await clearAllCachedTables();
     
     result.clearedItems.databaseTables = [

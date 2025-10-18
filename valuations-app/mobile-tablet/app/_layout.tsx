@@ -12,9 +12,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import ConnectionStatus from '../components/ConnectionStatus';
 import connectionUtils from '../utils/connectionUtils';
-import { initializeDatabase } from '../utils/db';
+// Dynamic import to prevent bundling at startup
+const getInitializeDatabase = () => import('../utils/db');
 import { AuthProvider } from '../context/AuthContext';
 import { DashboardProvider } from '../context/DashboardContext';
+import { bundleOptimization } from '../core/bundleOptimization';
 
 import { useColorScheme } from '../hooks/useColorScheme';
 import { useOrientation } from '../hooks/useOrientation';
@@ -75,6 +77,16 @@ export default function RootLayout() {
     return () => {
       clearInterval(intervalId);
     };
+  }, []);
+
+  // Initialize bundle optimization
+  useEffect(() => {
+    console.log('🚀 Initializing performance optimizations...');
+    
+    // Initialize bundle optimization
+    bundleOptimization.processPreloadQueue();
+    
+    console.log('✅ Performance optimizations initialized');
   }, []);
 
   // Automatic update checking

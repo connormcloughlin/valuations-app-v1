@@ -1168,6 +1168,28 @@ export const loginStyles = StyleSheet.create({
   loginButtonDisabled: {
     opacity: 0.5,
   },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  statusContainer: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 }); 
 
 export const appHeaderStyles = StyleSheet.create({

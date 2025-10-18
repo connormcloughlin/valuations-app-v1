@@ -1,6 +1,7 @@
 import { purgeSensitiveData, quickPurge, fullSecurePurge } from '../core/security/purge';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { clearAllCachedTables } from '../utils/db';
+// Dynamic import to prevent bundling at startup
+const getDbUtils = () => import('../utils/db');
 
 // Mock dependencies
 jest.mock('@react-native-async-storage/async-storage');

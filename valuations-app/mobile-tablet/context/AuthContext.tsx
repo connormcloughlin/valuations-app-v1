@@ -5,7 +5,8 @@ import azureAdService from '../services/azureAdService';
 import authApi from '../api/auth';
 import sessionService from '../core/auth/sessionService';
 // Note: Using transport client for API calls instead of deprecated apiClient
-import { initializeDatabase } from '../utils/db';
+// Dynamic import to prevent bundling at startup
+const getInitializeDatabase = () => import('../utils/db');
 import { AppState, AppStateStatus } from 'react-native';
 import { fullSecurePurge } from '../core/security';
 
@@ -99,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Check if database is already initialized to prevent duplicate initialization
       if (!dbInitialized) {
+        const { initializeDatabase } = await getInitializeDatabase();
         await initializeDatabase();
         setDbInitialized(true);
         console.log('✅ Database initialized');

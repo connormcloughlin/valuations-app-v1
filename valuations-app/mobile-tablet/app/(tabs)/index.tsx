@@ -5,8 +5,8 @@ import { Button } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { DashboardHeader } from '../../components/dashboard/DashboardHeader';
-import { StatsCards } from '../../components/dashboard/StatsCards';
-import { TodaysAppointments } from '../../components/dashboard/TodaysAppointments';
+import { OptimizedStatsCards } from '../../components/dashboard/OptimizedStatsCards';
+import { OptimizedTodaysAppointments } from '../../components/dashboard/OptimizedTodaysAppointments';
 import { SurveysInProgress } from '../../components/dashboard/SurveysInProgress';
 import { DevelopmentTools } from '../../components/dashboard/DevelopmentTools';
 import { dashboardStyles } from '../GlobalStyles';
@@ -15,11 +15,27 @@ import { useDashboard } from '../../context/DashboardContext';
 import { getGlobalRefreshFunction } from '../../utils/dashboardRefresh';
 import { prefetchService } from '../../services/prefetchService';
 import { PrefetchProgressIndicator } from '../../components/PrefetchProgressIndicator';
+import { useOptimizedDashboard } from '../../hooks/useOptimizedDashboard';
+import { bundleOptimization } from '../../core/bundleOptimization';
+import { LoadingState, ProgressiveLoading } from '../../components/LoadingStates';
 
 export default function Dashboard() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const dashboardContext = useDashboard();
   
+  // Use optimized dashboard hook
+  const {
+    stats,
+    todaysAppointments,
+    inProgressSurveys,
+    loading: dashboardLoading,
+    error: dashboardError,
+    loadingSteps,
+    refresh: refreshDashboard,
+    isRefreshing,
+    isAnyLoading
+  } = useOptimizedDashboard();
+
   // Get the global refresh function
   const globalRefreshFunction = getGlobalRefreshFunction();
   
@@ -57,6 +73,12 @@ export default function Dashboard() {
     }
   }, [isAuthenticated, user, prefetchTriggered]);
 
+  // Initialize bundle optimization on mount
+  React.useEffect(() => {
+    console.log('🚀 Initializing bundle optimization...');
+    bundleOptimization.processPreloadQueue();
+  }, []);
+
   // Refresh dashboard stats when the screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
@@ -69,42 +91,7 @@ export default function Dashboard() {
       setTimeout(() => {
         startBackgroundPrefetch();
       }, 3000); // Start prefetch 3 seconds after dashboard loads
-      
-      // Add a small delay to allow context updates to propagate
-      setTimeout(() => {
-              // Get the current refresh function from global
-      const currentRefreshStats = getGlobalRefreshFunction();
-      
-      // If refresh function is not available, set waiting state and retry
-      if (!currentRefreshStats || typeof currentRefreshStats !== 'function') {
-        console.log('⏳ Refresh function not available after delay, setting up retry mechanism...');
-        setWaitingForRefreshFunction(true);
-        
-        // Retry every 200ms for up to 2 seconds
-        let retryCount = 0;
-        const maxRetries = 10;
-        const retryInterval = setInterval(() => {
-          retryCount++;
-          console.log(`🔄 Retry ${retryCount}/${maxRetries} for refresh function...`);
-          
-          const retryRefreshStats = getGlobalRefreshFunction();
-          if (retryRefreshStats && typeof retryRefreshStats === 'function') {
-            console.log('✅ Refresh function now available, executing refresh');
-            clearInterval(retryInterval);
-            setWaitingForRefreshFunction(false);
-            retryRefreshStats();
-          } else if (retryCount >= maxRetries) {
-            console.log('⚠️ Refresh function still not available after all retries');
-            clearInterval(retryInterval);
-            setWaitingForRefreshFunction(false);
-          }
-        }, 200);
-      } else {
-        console.log('✅ Refresh function available after delay, executing refresh');
-        currentRefreshStats();
-      }
-    }, 100); // Small delay to allow context updates
-    }, [startBackgroundPrefetch])
+    }, [startBackgroundPrefetch]) // Removed refreshDashboard to prevent loop
   );
 
   // Reset force reload after components have processed it
@@ -138,9 +125,9 @@ export default function Dashboard() {
   };
 
   const navigateToAppointmentDetails = (id: string) => {
-    // Navigate to survey view for appointment details
+    // Navigate to appointment details page
     router.push({
-      pathname: '/survey/[id]',
+      pathname: '/(tabs)/appointments/[id]',
       params: { id }
     });
   };
@@ -199,13 +186,43 @@ export default function Dashboard() {
 
   console.log('📊 Dashboard: About to render StatsCards component');
   console.log('🔧 Dashboard: __DEV__ =', __DEV__);
+
+  // Show loading state while dashboard data is loading
+  if (dashboardLoading && !stats) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ProgressiveLoading
+          steps={['Loading dashboard...', 'Fetching stats...', 'Loading appointments...', 'Preparing data...']}
+          currentStep={1}
+          totalSteps={4}
+        />
+      </View>
+    );
+  }
+
+  // Show error state if dashboard failed to load
+  if (dashboardError) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ fontSize: 18, color: '#e74c3c', marginBottom: 20, textAlign: 'center' }}>
+          Failed to load dashboard
+        </Text>
+        <Text style={{ fontSize: 14, color: '#666', marginBottom: 20, textAlign: 'center' }}>
+          {dashboardError}
+        </Text>
+        <Button mode="contained" onPress={refreshDashboard}>
+          Retry
+        </Button>
+      </View>
+    );
+  }
   
      return (
      <>
        <ScrollView style={dashboardStyles.container}>
          <DashboardHeader />
-         <StatsCards onCardPress={handleCardPress} forceReload={forceReload} />
-         <TodaysAppointments onAppointmentPress={navigateToAppointmentDetails} shouldFetchData={true} forceReload={forceReload} />
+         <OptimizedStatsCards onCardPress={handleCardPress} forceReload={forceReload} />
+         <OptimizedTodaysAppointments onAppointmentPress={navigateToAppointmentDetails} shouldFetchData={true} forceReload={forceReload} />
          <SurveysInProgress onSurveyPress={(id) => navigateToAppointment(id, 'inProgress')} shouldFetchData={true} forceReload={forceReload} />
          
          {/* Debug info */}
