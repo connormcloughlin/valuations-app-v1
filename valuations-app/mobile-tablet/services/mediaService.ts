@@ -115,14 +115,54 @@ class MediaService {
   }
 
   /**
-   * Delete a photo (soft delete)
+   * Delete a photo (soft delete locally, hard delete from backend)
    */
   async deletePhoto(mediaID: number): Promise<void> {
     try {
+      console.log('🗑️ MediaService: Starting delete process for media ID:', mediaID);
+      
+      // Get the media file to check if it has a BackendMediaID
+      const mediaFiles = await getMediaFilesByEntity('riskAssessmentItem', 0, true); // Get all to find the specific one
+      const mediaFile = mediaFiles.find(f => f.MediaID === mediaID);
+      
+      if (mediaFile) {
+        const backendMediaID = (mediaFile as any).BackendMediaID;
+        
+        // If it has a backend ID, delete from backend first
+        if (backendMediaID) {
+          try {
+            console.log('🗑️ MediaService: Deleting from backend with ID:', backendMediaID);
+            const deleteResult = await api.deleteMedia(backendMediaID);
+            if (deleteResult.success) {
+              console.log('✅ MediaService: Successfully deleted from backend');
+            } else {
+              console.warn('⚠️ MediaService: Backend delete failed, but continuing with local delete:', deleteResult.message);
+            }
+          } catch (backendError) {
+            console.warn('⚠️ MediaService: Backend delete failed, but continuing with local delete:', backendError);
+          }
+        }
+        
+        // Clear from image cache if it exists
+        try {
+          const hybridImageService = await import('./hybridImageService');
+          await hybridImageService.default.clearImageCache();
+          console.log('🗑️ MediaService: Cleared hybrid image cache');
+        } catch (cacheError) {
+          console.warn('⚠️ MediaService: Failed to clear hybrid image cache:', cacheError);
+        }
+        
+        // Also clear any processed images from the PhotoGalleryModal state
+        // This will be handled by the UI refresh, but we can log it
+        console.log('🗑️ MediaService: Image should be removed from UI on next refresh');
+      }
+      
+      // Soft delete from local database
       await deleteMediaFile(mediaID);
-      console.log('Deleted photo:', mediaID);
+      console.log('✅ MediaService: Successfully deleted photo locally:', mediaID);
+      
     } catch (error) {
-      console.error('Error deleting photo:', error);
+      console.error('❌ MediaService: Error deleting photo:', error);
       throw error;
     }
   }

@@ -859,6 +859,7 @@ export default function PredefinedItemsList({
         const itemToUpdate = items.find(i => String(i.id) === currentPhotoItemId);
         if (itemToUpdate) {
           // Get existing SQLite record to preserve all fields
+          const { getAllRiskAssessmentItems } = await getDbUtils();
           const existingItems = await getAllRiskAssessmentItems();
           
           // Handle both temp IDs (negative) and real IDs (positive)
@@ -884,6 +885,7 @@ export default function PredefinedItemsList({
               dateupdated: new Date().toISOString()
             };
             
+            const { updateRiskAssessmentItem } = await getDbUtils();
             await updateRiskAssessmentItem(updated);
             
             // Only update pending changes count for real IDs (not temporary ones)
@@ -944,6 +946,7 @@ export default function PredefinedItemsList({
         const itemToUpdate = items.find(i => String(i.id) === currentPhotoItemId);
         if (itemToUpdate) {
           // Get existing SQLite record to preserve all fields
+          const { getAllRiskAssessmentItems } = await getDbUtils();
           const existingItems = await getAllRiskAssessmentItems();
           
           // Handle both temp IDs (negative) and real IDs (positive)
@@ -969,6 +972,7 @@ export default function PredefinedItemsList({
               dateupdated: new Date().toISOString()
             };
             
+            const { updateRiskAssessmentItem } = await getDbUtils();
             await updateRiskAssessmentItem(updated);
             
             // Only update pending changes count for real IDs (not temporary ones)
@@ -1008,12 +1012,24 @@ export default function PredefinedItemsList({
 
   const handleViewPhotos = (itemId: string) => {
     const photos = itemPhotos[itemId] || [];
+    console.log(`📸 handleViewPhotos for item ${itemId}:`, { 
+      photosCount: photos.length, 
+      photos: photos.map(p => ({ 
+        id: p.MediaID, 
+        backendId: (p as any).BackendMediaID, 
+        fileName: p.FileName 
+      })),
+      allItemPhotos: Object.keys(itemPhotos).map(key => ({ itemId: key, count: itemPhotos[key].length }))
+    });
+    
     if (photos.length === 0) {
       // If no photos, directly open camera
+      console.log(`📸 No photos found for item ${itemId}, opening camera`);
       handleTakePhoto(itemId);
       return;
     }
     
+    console.log(`📸 Opening photo gallery for item ${itemId} with ${photos.length} photos`);
     setCurrentPhotoItemId(itemId);
     setShowPhotoGallery(true);
   };
@@ -1571,23 +1587,37 @@ export default function PredefinedItemsList({
   useEffect(() => {
     if (items.length > 0) {
       const loadPhotos = async () => {
+        console.log('📸 Loading photos for items:', items.map(item => ({ id: item.id, type: item.type })));
+        
         const photoPromises = items.map(async (item) => {
           try {
             const { getMediaFilesByEntity } = await import('../../../../utils/db');
-            const mediaFiles = await getMediaFilesByEntity('riskAssessmentItem', Number(item.id), false);
+            const itemId = Number(item.id);
+            console.log(`📸 Loading photos for item ${item.id} (numeric: ${itemId})`);
+            
+            const mediaFiles = await getMediaFilesByEntity('riskAssessmentItem', itemId, false);
+            console.log(`📸 Found ${mediaFiles.length} photos for item ${item.id}:`, mediaFiles.map(m => ({ 
+              id: m.MediaID, 
+              backendId: (m as any).BackendMediaID, 
+              fileName: m.FileName 
+            })));
+            
             return { itemId: item.id, photos: mediaFiles };
           } catch (error) {
+            console.error(`📸 Error loading photos for item ${item.id}:`, error);
             return { itemId: item.id, photos: [] };
           }
         });
 
         const results = await Promise.all(photoPromises);
-        const newItemPhotos: { [key: string]: MediaFile[] } = {};
+        const newItemPhotos: { [key: string]: any[] } = {};
 
         results.forEach(({ itemId, photos }) => {
           newItemPhotos[itemId] = photos;
+          console.log(`📸 Set photos for item ${itemId}: ${photos.length} photos`);
         });
 
+        console.log('📸 Final itemPhotos state:', Object.keys(newItemPhotos).map(key => ({ itemId: key, photoCount: newItemPhotos[key].length })));
         setItemPhotos(newItemPhotos);
       };
 
@@ -2125,7 +2155,10 @@ export default function PredefinedItemsList({
               <View style={predefinedItemsListStyles.photoSection}>
                 <TouchableOpacity
                   style={predefinedItemsListStyles.photoButton}
-                  onPress={() => handleViewPhotos(itemId)}
+                  onPress={() => {
+                    console.log(`📸 Photo button pressed for item ${itemId}, current photos:`, itemPhotos[itemId]?.length || 0);
+                    handleViewPhotos(itemId);
+                  }}
                 >
                   <MaterialCommunityIcons 
                     name={(itemPhotos[itemId]?.length || 0) > 0 ? "image-multiple" : "camera"} 

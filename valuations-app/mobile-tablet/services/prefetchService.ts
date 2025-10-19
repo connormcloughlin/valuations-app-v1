@@ -9,8 +9,11 @@ import {
   getAllRiskAssessmentItems,
   RiskAssessmentItem,
   waitForDatabase,
-  isDatabaseReady
+  isDatabaseReady,
+  insertMediaFile,
+  MediaFile
 } from '../utils/db';
+import imagePrefetchService from './imagePrefetchService';
 import offlineStorage from '../utils/offlineStorage';
 
 // Types
@@ -515,6 +518,9 @@ class PrefetchService {
     // Batch insert all items at once
     await batchInsertRiskAssessmentItems(sqliteItems);
     console.log(`✅ PREFETCH - Successfully processed ${items.length} items for category ${categoryId} from composite API`);
+    
+    // Process media files for items in this category
+    await this.processMediaFilesForItems(items);
     
   }
 
@@ -1071,6 +1077,69 @@ class PrefetchService {
 
   getStats(): PrefetchStats | null {
     return this.currentStats;
+  }
+
+  // Process media files for items in a category
+  private async processMediaFilesForItems(items: any[]): Promise<void> {
+    console.log(`📸 PREFETCH - Processing media files for ${items.length} items`);
+    
+    let totalMediaFiles = 0;
+    const entitiesToPrefetch: Array<{ entityName: string; entityID: number }> = [];
+    
+    for (const item of items) {
+      const mediaFiles = item.mediaFiles || [];
+      if (mediaFiles.length > 0) {
+        console.log(`📸 PREFETCH - Found ${mediaFiles.length} media files for item ${item.riskAssessmentItemId}`);
+        
+        // Track entities that have media files for image prefetching
+        entitiesToPrefetch.push({
+          entityName: 'riskAssessmentItem',
+          entityID: Number(item.riskAssessmentItemId)
+        });
+        
+        for (const mediaFile of mediaFiles) {
+          try {
+            const sqliteMediaFile: MediaFile = {
+              // Persist the backend media ID so the app fetches via proxy with correct ID
+              BackendMediaID: Number(mediaFile.mediaId),
+              FileName: mediaFile.fileName,
+              FileType: mediaFile.fileType,
+              BlobURL: mediaFile.blobUrl, // Note: payload uses 'blobUrl' (camelCase)
+              EntityName: 'riskAssessmentItem',
+              EntityID: Number(item.riskAssessmentItemId),
+              UploadedAt: mediaFile.uploadedAt,
+              UploadedBy: mediaFile.uploadedBy,
+              IsDeleted: 0,
+              Metadata: mediaFile.metadata,
+              pending_sync: 0 // Already synced from server
+            };
+            
+            await insertMediaFile(sqliteMediaFile);
+            totalMediaFiles++;
+            console.log(`📸 PREFETCH - Inserted media file ${mediaFile.mediaId} for item ${item.riskAssessmentItemId}`);
+          } catch (error) {
+            console.error(`📸 PREFETCH - Error inserting media file ${mediaFile.mediaId}:`, error);
+          }
+        }
+      }
+    }
+    
+    if (totalMediaFiles > 0) {
+      console.log(`✅ PREFETCH - Successfully processed ${totalMediaFiles} media files`);
+      
+      // Now prefetch the actual images for offline capability
+      if (entitiesToPrefetch.length > 0) {
+        console.log(`📸 PREFETCH - Starting image prefetch for ${entitiesToPrefetch.length} entities`);
+        try {
+          const prefetchResult = await imagePrefetchService.prefetchImagesForEntities(entitiesToPrefetch);
+          console.log(`📸 PREFETCH - Image prefetch completed: ${prefetchResult.downloaded} downloaded, ${prefetchResult.failed} failed, ${(prefetchResult.totalSize / 1024 / 1024).toFixed(2)}MB total`);
+        } catch (error) {
+          console.error(`📸 PREFETCH - Error during image prefetch:`, error);
+        }
+      }
+    } else {
+      console.log(`ℹ️ PREFETCH - No media files found for any items in this category`);
+    }
   }
 }
 

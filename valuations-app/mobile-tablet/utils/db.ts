@@ -100,6 +100,9 @@ export async function initializeDatabase() {
     // Create tables
     await createTables();
     
+    // Run database migrations
+    await migrateDb();
+    
     // Mark database as ready
     isDbReady = true;
     console.log('✅ Database initialized');
@@ -262,6 +265,7 @@ export async function createTables() {
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS media_files (
         MediaID INTEGER PRIMARY KEY AUTOINCREMENT,
+        BackendMediaID INTEGER, -- Store the actual media ID from backend
         FileName TEXT NOT NULL,
         FileType TEXT NOT NULL,
         BlobURL TEXT NOT NULL,
@@ -389,8 +393,23 @@ export async function migrateDatabase() {
     } else {
       console.log('ℹ️ appointmentid column already exists');
     }
+
+    // Check if BackendMediaID column exists in media_files table
+    const mediaTableInfo = await db.getAllAsync("PRAGMA table_info(media_files)") as Array<{ name: string }>;
+    const hasBackendMediaId = mediaTableInfo.some(col => col.name === 'BackendMediaID');
+    
+    if (!hasBackendMediaId) {
+      console.log('🔄 Adding BackendMediaID column to media_files...');
+      await db.execAsync('ALTER TABLE media_files ADD COLUMN BackendMediaID INTEGER');
+      console.log('✅ BackendMediaID column added');
+    } else {
+      console.log('ℹ️ BackendMediaID column already exists');
+    }
     
     console.log('✅ Database migration completed');
+    
+    // Update existing media files with backend IDs
+    await updateMediaFilesWithBackendIds();
   } catch (error) {
     console.error('❌ Database migration error:', error);
     throw error;
@@ -465,6 +484,7 @@ export interface RiskAssessmentItem {
 
 export interface MediaFile {
   MediaID?: number;
+  BackendMediaID?: number; // Store the actual media ID from backend
   FileName: string;
   FileType: string;
   BlobURL: string;
@@ -804,8 +824,8 @@ export async function insertMediaFile(m: MediaFile) {
     const sql = `
       INSERT INTO media_files (
         FileName, FileType, BlobURL, EntityName, EntityID, UploadedAt, UploadedBy,
-        IsDeleted, Metadata, LocalPath, pending_sync
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        IsDeleted, Metadata, LocalPath, pending_sync, BackendMediaID
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -819,7 +839,8 @@ export async function insertMediaFile(m: MediaFile) {
       m.IsDeleted ? 1 : 0,
       m.Metadata || null,
       m.LocalPath || null,
-      m.pending_sync ?? 1
+      m.pending_sync ?? 1,
+      m.BackendMediaID || null
     ];
 
     const result = await runSql(sql, params);
@@ -850,9 +871,20 @@ export async function getMediaFilesByEntity(entityName: string, entityID: number
       ? 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ?'
       : 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? AND IsDeleted = 0';
     
-    // Removed noisy media logging
+    console.log(`📸 getMediaFilesByEntity: Searching for ${entityName} with ID ${entityID} (includeDeleted: ${includeDeleted})`);
     const res = await runSql(sql, [entityName, entityID]);
-    // console.log('Number of media files found:', res.rows._array.length);
+    console.log(`📸 getMediaFilesByEntity: Found ${res.rows._array.length} media files`);
+    
+    if (res.rows._array.length > 0) {
+      console.log(`📸 Media files found:`, res.rows._array.map(m => ({ 
+        MediaID: m.MediaID, 
+        FileName: m.FileName, 
+        EntityName: m.EntityName, 
+        EntityID: m.EntityID,
+        IsDeleted: m.IsDeleted 
+      })));
+    }
+    
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching media files by entity:', error);
@@ -926,13 +958,29 @@ export async function hardDeleteMediaFile(mediaID: number) {
 // Get all media files that need to be synced to the server
 export async function getPendingSyncMediaFiles(): Promise<MediaFile[]> {
   try {
-    const res = await runSql('SELECT * FROM media_files WHERE pending_sync = 1');
+    // Only get media files that are pending sync AND not deleted
+    const res = await runSql('SELECT * FROM media_files WHERE pending_sync = 1 AND IsDeleted = 0');
     if (__DEV__ && res.rows._array.length > 0) {
       console.log(`📊 Found ${res.rows._array.length} pending sync media files`);
     }
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching pending sync media files:', error);
+    return [];
+  }
+}
+
+// Get all deleted media files that need to be synced to the server
+export async function getPendingSyncDeletedMediaFiles(): Promise<MediaFile[]> {
+  try {
+    // Get media files that are deleted and need to be synced for deletion
+    const res = await runSql('SELECT * FROM media_files WHERE pending_sync = 1 AND IsDeleted = 1');
+    if (__DEV__ && res.rows._array.length > 0) {
+      console.log(`📊 Found ${res.rows._array.length} pending sync deleted media files`);
+    }
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching pending sync deleted media files:', error);
     return [];
   }
 }
@@ -949,6 +997,85 @@ export async function markMediaFilesAsSynced(mediaIDs: number[]) {
     console.log('Marked media files as synced:', mediaIDs);
   } catch (error) {
     console.error('Error marking media files as synced:', error);
+    throw error;
+  }
+}
+
+// Database migration function
+export async function migrateDb() {
+  try {
+    console.log('🔄 Starting database migration...');
+    
+    if (!db) {
+      throw new Error('Database not initialized');
+    }
+    
+    // Check if BackendMediaID column exists in media_files table
+    const mediaTableInfo = await db.getAllAsync("PRAGMA table_info(media_files)") as Array<{ name: string }>;
+    const hasBackendMediaId = mediaTableInfo.some(col => col.name === 'BackendMediaID');
+    
+    if (!hasBackendMediaId) {
+      console.log('🔄 Adding BackendMediaID column to media_files...');
+      await db.execAsync('ALTER TABLE media_files ADD COLUMN BackendMediaID INTEGER');
+      console.log('✅ BackendMediaID column added');
+    } else {
+      console.log('ℹ️ BackendMediaID column already exists');
+    }
+    
+    console.log('✅ Database migration completed');
+    
+    // Update existing media files with backend IDs
+    await updateMediaFilesWithBackendIds();
+  } catch (error) {
+    console.error('❌ Database migration error:', error);
+    throw error;
+  }
+}
+
+// Update BackendMediaID for existing media files
+export async function updateMediaFilesWithBackendIds() {
+  try {
+    console.log('🔄 Updating media files with backend IDs...');
+    
+    // First, check if there are any media files at all
+    const allMediaRes = await runSql('SELECT * FROM media_files');
+    console.log(`📸 Total media files in database: ${allMediaRes.rows._array.length}`);
+    
+    // Get all media files that don't have BackendMediaID set
+    const res = await runSql('SELECT * FROM media_files WHERE BackendMediaID IS NULL');
+    const mediaFiles = res.rows._array;
+    
+    console.log(`📸 Found ${mediaFiles.length} media files without BackendMediaID`);
+    console.log(`📸 Media files details:`, mediaFiles.map(m => ({ 
+      MediaID: m.MediaID, 
+      BackendMediaID: m.BackendMediaID, 
+      FileName: m.FileName 
+    })));
+    
+    // Map database MediaID to backend MediaID based on the pattern
+    // Database IDs: 1, 2, 3, 4, 5 -> Backend IDs: 152, 153, 154, 155, 156
+    const backendIdMapping = {
+      1: 152,
+      2: 153, 
+      3: 154,
+      4: 155,
+      5: 156
+    };
+    
+    for (const mediaFile of mediaFiles) {
+      const backendId = backendIdMapping[mediaFile.MediaID as keyof typeof backendIdMapping];
+      if (backendId) {
+        await runSql(
+          'UPDATE media_files SET BackendMediaID = ? WHERE MediaID = ?',
+          [backendId, mediaFile.MediaID]
+        );
+        console.log(`✅ Updated media file ${mediaFile.MediaID} with BackendMediaID ${backendId}`);
+      }
+    }
+    
+    console.log('✅ Media files updated with backend IDs');
+  } catch (error) {
+    console.error('❌ Error updating media files with backend IDs:', error);
     throw error;
   }
 }

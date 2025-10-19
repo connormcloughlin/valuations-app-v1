@@ -795,6 +795,47 @@ export default {
     }
   },
 
+  // Fetch image through API proxy (to handle private Azure Storage)
+  fetchImage: async (mediaID: number): Promise<ApiResponse> => {
+    try {
+      console.log('Fetching image through API proxy for media ID:', mediaID);
+      
+      // Expect backend to return JSON: { imageUrl: "data:<mime>;base64,<...>" } or base64 string
+      const response = await axiosInstance.get(`/media/${mediaID}/image`, { timeout: 30000 });
+
+      let imageUrl: string;
+      const payload = response?.data as any;
+      if (payload && typeof payload === 'object' && payload.imageUrl) {
+        imageUrl = payload.imageUrl.startsWith('data:')
+          ? payload.imageUrl
+          : `data:image/jpeg;base64,${payload.imageUrl}`;
+      } else if (typeof payload === 'string') {
+        imageUrl = payload.startsWith('data:')
+          ? payload
+          : `data:image/jpeg;base64,${payload}`;
+      } else {
+        console.error('Unexpected image payload format:', typeof payload);
+        return {
+          success: false,
+          message: 'Unexpected image payload format',
+          status: response?.status || 500
+        };
+      }
+      
+      return {
+        success: true,
+        data: {
+          imageUrl,
+          mediaID: mediaID
+        },
+        status: response.status
+      };
+    } catch (error) {
+      console.error('Error fetching image through API proxy:', error);
+      return handleApiError(error);
+    }
+  },
+
   // Batch upload media files (used by sync service)
   uploadMediaBatch: async (mediaFiles: Array<{
     mediaID?: number;

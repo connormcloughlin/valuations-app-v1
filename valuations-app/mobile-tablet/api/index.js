@@ -65,14 +65,15 @@ const api = {
       
       if (__DEV__) {
         console.log('=== SYNC RESPONSE ===');
-        console.log('Status:', response.status);
-        console.log('Response data:', JSON.stringify(response.data, null, 2));
+        // transportClient returns the response data directly
+        console.log('Status:', 200);
+        console.log('Response data size:', JSON.stringify(response).length, 'bytes');
       }
       
       return {
         success: true,
-        data: response.data,
-        status: response.status,
+        data: response,
+        status: 200,
       };
     } catch (error) {
       console.error('=== SYNC ERROR ===');
@@ -371,6 +372,53 @@ const convertToFormData = (mediaData) => {
   }
   
   return formData;
+};
+
+// Fetch image through API proxy (to handle private Azure Storage)
+api.fetchImage = async (mediaID) => {
+  try {
+    console.log('Fetching image through API proxy for media ID:', mediaID);
+    
+    // Expect backend to return JSON: { imageUrl: "data:<mime>;base64,<...>" } or base64 string
+    const response = await transportClient.get('media.image', `/media/${mediaID}/image`, {
+      timeout: 30000
+    });
+
+    let imageUrl;
+    const payload = response; // response is already the extracted data from transportClient
+    if (payload && typeof payload === 'object' && payload.imageUrl) {
+      imageUrl = payload.imageUrl.startsWith('data:')
+        ? payload.imageUrl
+        : `data:image/jpeg;base64,${payload.imageUrl}`;
+    } else if (typeof payload === 'string') {
+      imageUrl = payload.startsWith('data:')
+        ? payload
+        : `data:image/jpeg;base64,${payload}`;
+    } else {
+      console.error('Unexpected image payload format:', typeof payload);
+      return {
+        success: false,
+        message: 'Unexpected image payload format',
+        status: 500
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        imageUrl,
+        mediaID
+      },
+      status: 200
+    };
+  } catch (error) {
+    console.error('Error fetching image through API proxy:', error);
+    return {
+      success: false,
+      message: error.message || 'Error fetching image',
+      status: error.response?.status || 500
+    };
+  }
 };
 
 export default api; 

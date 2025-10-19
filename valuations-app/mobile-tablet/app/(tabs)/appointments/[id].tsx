@@ -82,7 +82,7 @@ export default function AppointmentDetails() {
       const response = await typedApi.getAppointmentById(id.toString());
       if (response.success && response.data) {
         // Debug: Log the raw API response to see available fields
-        console.log('🔍 Raw appointment API response:', JSON.stringify(response.data, null, 2));
+        console.log('🔍 Raw appointment API response size:', JSON.stringify(response.data).length, 'bytes');
         
         // Map API response to our Appointment interface
         const appointmentData: Appointment = {

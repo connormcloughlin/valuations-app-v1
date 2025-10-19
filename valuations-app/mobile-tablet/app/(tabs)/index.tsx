@@ -13,28 +13,14 @@ import { dashboardStyles } from '../GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
 import { useDashboard } from '../../context/DashboardContext';
 import { getGlobalRefreshFunction } from '../../utils/dashboardRefresh';
-import { prefetchService } from '../../services/prefetchService';
 import { PrefetchProgressIndicator } from '../../components/PrefetchProgressIndicator';
-import { useOptimizedDashboard } from '../../hooks/useOptimizedDashboard';
 import { bundleOptimization } from '../../core/bundleOptimization';
-import { LoadingState, ProgressiveLoading } from '../../components/LoadingStates';
 
 export default function Dashboard() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const dashboardContext = useDashboard();
   
-  // Use optimized dashboard hook
-  const {
-    stats,
-    todaysAppointments,
-    inProgressSurveys,
-    loading: dashboardLoading,
-    error: dashboardError,
-    loadingSteps,
-    refresh: refreshDashboard,
-    isRefreshing,
-    isAnyLoading
-  } = useOptimizedDashboard();
+  // Removed useOptimizedDashboard to avoid duplicate loads; child components handle fetching
 
   // Get the global refresh function
   const globalRefreshFunction = getGlobalRefreshFunction();
@@ -48,6 +34,8 @@ export default function Dashboard() {
   
   // Add state to track force reload
   const [forceReload, setForceReload] = React.useState(false);
+  const firstFocusHandledRef = React.useRef(false);
+  const lastFocusAtRef = React.useRef<number>(0);
 
   // Background prefetch function
   const startBackgroundPrefetch = React.useCallback(async () => {
@@ -84,8 +72,21 @@ export default function Dashboard() {
     React.useCallback(() => {
       console.log('🔄 Dashboard screen focused, refreshing stats...');
       
-      // Trigger force reload for all dashboard components
-      setForceReload(true);
+      // On first focus after login/mount, let child components do their initial fetch
+      // Trigger force reload only on subsequent focuses to avoid double loading
+      if (!firstFocusHandledRef.current) {
+        firstFocusHandledRef.current = true;
+        console.log('🔄 First focus detected - skipping force reload to avoid duplicate fetch');
+      } else {
+        const now = Date.now();
+        // Throttle force reloads to avoid back-to-back refreshes within 3s
+        if (now - lastFocusAtRef.current > 3000) {
+          setForceReload(true);
+          lastFocusAtRef.current = now;
+        } else {
+          console.log('⏱️ Skipping force reload (within 3s throttle window)');
+        }
+      }
       
       // Start background prefetch after a delay
       setTimeout(() => {
@@ -187,35 +188,7 @@ export default function Dashboard() {
   console.log('📊 Dashboard: About to render StatsCards component');
   console.log('🔧 Dashboard: __DEV__ =', __DEV__);
 
-  // Show loading state while dashboard data is loading
-  if (dashboardLoading && !stats) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ProgressiveLoading
-          steps={['Loading dashboard...', 'Fetching stats...', 'Loading appointments...', 'Preparing data...']}
-          currentStep={1}
-          totalSteps={4}
-        />
-      </View>
-    );
-  }
-
-  // Show error state if dashboard failed to load
-  if (dashboardError) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-        <Text style={{ fontSize: 18, color: '#e74c3c', marginBottom: 20, textAlign: 'center' }}>
-          Failed to load dashboard
-        </Text>
-        <Text style={{ fontSize: 14, color: '#666', marginBottom: 20, textAlign: 'center' }}>
-          {dashboardError}
-        </Text>
-        <Button mode="contained" onPress={refreshDashboard}>
-          Retry
-        </Button>
-      </View>
-    );
-  }
+  // Let child components handle their own loading and error states
   
      return (
      <>

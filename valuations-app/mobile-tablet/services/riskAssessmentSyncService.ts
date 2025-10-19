@@ -8,6 +8,7 @@ import {
   getPendingSyncAppointments,
   getPendingSyncRiskAssessmentMasters,
   getPendingSyncMediaFiles,
+  getPendingSyncDeletedMediaFiles,
   markRiskAssessmentItemsAsSynced,
   markAppointmentsAsSynced,
   markRiskAssessmentMastersAsSynced,
@@ -56,11 +57,12 @@ const riskAssessmentSyncService = {
       console.log('Starting sync of pending changes...');
       
       // Get all pending changes from SQLite
-      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
+      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles, pendingDeletedMediaFiles] = await Promise.all([
         getPendingSyncRiskAssessmentItems(),
         getPendingSyncAppointments(),
         getPendingSyncRiskAssessmentMasters(),
-        getPendingSyncMediaFiles()
+        getPendingSyncMediaFiles(),
+        getPendingSyncDeletedMediaFiles()
       ]);
 
       console.log('Pending changes found:', {
@@ -72,7 +74,7 @@ const riskAssessmentSyncService = {
 
       // Return early if no changes to sync
       if (pendingRiskAssessmentItems.length === 0 && pendingAppointments.length === 0 && 
-          pendingRiskAssessmentMasters.length === 0 && pendingMediaFiles.length === 0) {
+          pendingRiskAssessmentMasters.length === 0 && pendingMediaFiles.length === 0 && pendingDeletedMediaFiles.length === 0) {
         return {
           success: true,
           message: 'No pending changes to sync.',
@@ -80,7 +82,8 @@ const riskAssessmentSyncService = {
             riskAssessmentItems: 0,
             appointments: 0,
             riskAssessmentMasters: 0,
-            mediaFiles: 0
+            mediaFiles: 0,
+            deletedMediaFiles: 0
           }
         };
       }
@@ -90,7 +93,8 @@ const riskAssessmentSyncService = {
         pendingRiskAssessmentItems,
         pendingAppointments,
         pendingRiskAssessmentMasters,
-        pendingMediaFiles
+        pendingMediaFiles,
+        pendingDeletedMediaFiles
       );
     } catch (error) {
       console.error('=== SYNC ERROR ===');
@@ -112,18 +116,41 @@ const riskAssessmentSyncService = {
    * @param {Appointment[]} pendingAppointments
    * @param {RiskAssessmentMaster[]} pendingRiskAssessmentMasters
    * @param {MediaFile[]} pendingMediaFiles
+   * @param {MediaFile[]} pendingDeletedMediaFiles
    * @returns {Promise<Object>} Sync result
    */
   syncPendingChangesInBatches: async (
     pendingRiskAssessmentItems: RiskAssessmentItem[],
     pendingAppointments: Appointment[],
     pendingRiskAssessmentMasters: RiskAssessmentMaster[],
-    pendingMediaFiles: MediaFile[]
+    pendingMediaFiles: MediaFile[],
+    pendingDeletedMediaFiles: MediaFile[]
   ) => {
          try {
        // Get sync configuration (use production config by default)
        const syncConfig = getEnvironmentConfig('production');
        const { batchSizes, delays } = syncConfig;
+       
+       // Defensive check for configuration
+       if (!batchSizes || !delays) {
+         console.error('❌ Sync configuration is missing batchSizes or delays');
+         return {
+           success: false,
+           error: 'Sync configuration is incomplete'
+         };
+       }
+       
+       // Validate batch sizes are numbers
+       if (typeof batchSizes.riskAssessmentItems !== 'number' || 
+           typeof batchSizes.appointments !== 'number' || 
+           typeof batchSizes.riskAssessmentMasters !== 'number' || 
+           typeof batchSizes.mediaFiles !== 'number') {
+         console.error('❌ Batch sizes are not valid numbers:', batchSizes);
+         return {
+           success: false,
+           error: 'Invalid batch sizes configuration'
+         };
+       }
 
        console.log('🔧 Using sync configuration:', { batchSizes, delays });
 
@@ -131,10 +158,25 @@ const riskAssessmentSyncService = {
          riskAssessmentItems: 0,
          appointments: 0,
          riskAssessmentMasters: 0,
-         mediaFiles: 0
+         mediaFiles: 0,
+         deletedMediaFiles: 0
        };
 
-       // Sync media files first (since they might be referenced by other entities)
+       // Sync deleted media files first (to clean up before uploading new ones)
+       if (pendingDeletedMediaFiles.length > 0) {
+         console.log(`Syncing ${pendingDeletedMediaFiles.length} deleted media files...`);
+         
+         const deletedMediaResult = await riskAssessmentSyncService.syncDeletedMediaFiles(pendingDeletedMediaFiles);
+         
+         if (deletedMediaResult.success) {
+           totalSynced.deletedMediaFiles += deletedMediaResult.deleted || 0;
+           console.log(`✅ Deleted media files synced successfully: ${deletedMediaResult.deleted} files`);
+         } else {
+           console.error('❌ Deleted media files sync failed:', deletedMediaResult.error);
+         }
+       }
+
+       // Sync media files (since they might be referenced by other entities)
        if (pendingMediaFiles.length > 0) {
          console.log(`Syncing ${pendingMediaFiles.length} media files in batches of ${batchSizes.mediaFiles}...`);
          
@@ -228,7 +270,7 @@ const riskAssessmentSyncService = {
       return {
         success: true,
         synced: totalSynced,
-        message: `Successfully synced ${totalSynced.riskAssessmentItems} items, ${totalSynced.appointments} appointments, ${totalSynced.riskAssessmentMasters} masters, and ${totalSynced.mediaFiles} media files in batches.`
+        message: `Successfully synced ${totalSynced.riskAssessmentItems} items, ${totalSynced.appointments} appointments, ${totalSynced.riskAssessmentMasters} masters, ${totalSynced.mediaFiles} media files, and ${totalSynced.deletedMediaFiles} deleted media files in batches.`
       };
     } catch (error) {
       console.error('=== BATCH SYNC ERROR ===');
@@ -330,7 +372,7 @@ const riskAssessmentSyncService = {
         }
         
         // Process updated items from backend response (new approach)
-        if (response.data?.results?.riskAssessmentItems?.updatedItems) {
+        if (response.data?.results?.riskAssessmentItems?.updatedItems && Array.isArray(response.data.results.riskAssessmentItems.updatedItems)) {
           console.log('🔄 Processing updated items from backend response...');
           
           const updatedItems = response.data.results.riskAssessmentItems.updatedItems;
@@ -418,7 +460,7 @@ const riskAssessmentSyncService = {
           console.log(`✅ Successfully processed ${updatedItems.length} items from backend response`);
           
           // Handle any errors reported by the backend
-          if (response.data?.results?.riskAssessmentItems?.errors && response.data.results.riskAssessmentItems.errors.length > 0) {
+          if (response.data?.results?.riskAssessmentItems?.errors && Array.isArray(response.data.results.riskAssessmentItems.errors) && response.data.results.riskAssessmentItems.errors.length > 0) {
             console.warn('⚠️ Backend reported errors for some items:');
             response.data.results.riskAssessmentItems.errors.forEach((error: any) => {
               console.warn(`❌ Error for item ${error._localId}: ${error.error} (${error.code})`);
@@ -566,11 +608,12 @@ const riskAssessmentSyncService = {
       console.log('Starting sync of pending changes...');
       
       // Get all pending changes from SQLite
-      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
+      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles, pendingDeletedMediaFiles] = await Promise.all([
         getPendingSyncRiskAssessmentItems(),
         getPendingSyncAppointments(),
         getPendingSyncRiskAssessmentMasters(),
-        getPendingSyncMediaFiles()
+        getPendingSyncMediaFiles(),
+        getPendingSyncDeletedMediaFiles()
       ]);
 
       console.log('Pending changes found:', {
@@ -756,7 +799,7 @@ const riskAssessmentSyncService = {
       // Debug: Log the full response structure
       if (response.data) {
         console.log('=== FULL RESPONSE DATA ===');
-        console.log(JSON.stringify(response.data, null, 2));
+        console.log('Response data size:', JSON.stringify(response.data).length, 'bytes');
         
         if (response.data.results) {
           console.log('=== RESULTS STRUCTURE ===');
@@ -813,7 +856,7 @@ const riskAssessmentSyncService = {
         }
 
         // Process updated items from backend response (new approach)
-        if (response.data?.results?.riskAssessmentItems?.updatedItems && response.data.results.riskAssessmentItems.updatedItems.length > 0) {
+        if (response.data?.results?.riskAssessmentItems?.updatedItems && Array.isArray(response.data.results.riskAssessmentItems.updatedItems) && response.data.results.riskAssessmentItems.updatedItems.length > 0) {
           console.log('🔄 Processing updated items from backend response...');
           
           const updatedItems = response.data.results.riskAssessmentItems.updatedItems;
@@ -900,7 +943,7 @@ const riskAssessmentSyncService = {
           console.log(`✅ Successfully processed ${updatedItems.length} items from backend response`);
           
           // Handle any errors reported by the backend
-          if (response.data?.results?.riskAssessmentItems?.errors && response.data.results.riskAssessmentItems.errors.length > 0) {
+          if (response.data?.results?.riskAssessmentItems?.errors && Array.isArray(response.data.results.riskAssessmentItems.errors) && response.data.results.riskAssessmentItems.errors.length > 0) {
             console.warn('⚠️ Backend reported errors for some items:');
             response.data.results.riskAssessmentItems.errors.forEach((error: any) => {
               console.warn(`❌ Error for item ${error._localId}: ${error.error} (${error.code})`);
@@ -967,6 +1010,72 @@ const riskAssessmentSyncService = {
       return {
         success: false,
         error: (error as Error).message || 'Sync failed'
+      };
+    }
+  },
+
+  /**
+   * Sync deleted media files to the server
+   * @param {MediaFile[]} deletedMediaFiles - Array of deleted media files to sync
+   * @returns {Promise<Object>} Sync result
+   */
+  syncDeletedMediaFiles: async (deletedMediaFiles: MediaFile[]) => {
+    try {
+      console.log(`Processing ${deletedMediaFiles.length} deleted media files for deletion`);
+      
+      if (deletedMediaFiles.length === 0) {
+        return { success: true, deleted: 0 };
+      }
+
+      // Send deletion requests to backend
+      const deletionPromises = deletedMediaFiles.map(async (mediaFile) => {
+        try {
+          const backendMediaID = (mediaFile as any).BackendMediaID;
+          if (backendMediaID) {
+            console.log(`🗑️ Deleting media file ${backendMediaID} from backend`);
+            const deleteResult = await api.deleteMedia(backendMediaID);
+            if (deleteResult.success) {
+              console.log(`✅ Successfully deleted media file ${backendMediaID} from backend`);
+              return { success: true, mediaID: mediaFile.MediaID };
+            } else {
+              console.error(`❌ Failed to delete media file ${backendMediaID}:`, deleteResult.message);
+              return { success: false, mediaID: mediaFile.MediaID, error: deleteResult.message };
+            }
+          } else {
+            console.log(`⚠️ No BackendMediaID for media file ${mediaFile.MediaID}, skipping backend deletion`);
+            return { success: true, mediaID: mediaFile.MediaID };
+          }
+        } catch (error) {
+          console.error(`❌ Error deleting media file ${mediaFile.MediaID}:`, error);
+          return { success: false, mediaID: mediaFile.MediaID, error: (error as Error).toString() };
+        }
+      });
+
+      const results = await Promise.all(deletionPromises);
+      const successfulDeletions = results.filter(r => r.success);
+      const failedDeletions = results.filter(r => !r.success);
+
+      console.log(`🗑️ Deleted ${successfulDeletions.length} media files, ${failedDeletions.length} failed`);
+
+      // Mark successfully deleted files as synced
+      if (successfulDeletions.length > 0) {
+        const deletedMediaIds = successfulDeletions.map(r => r.mediaID).filter((id): id is number => id !== undefined);
+        if (deletedMediaIds.length > 0) {
+          await markMediaFilesAsSynced(deletedMediaIds);
+          console.log(`✅ Marked ${deletedMediaIds.length} deleted media files as synced`);
+        }
+      }
+
+      return {
+        success: true,
+        deleted: successfulDeletions.length,
+        failed: failedDeletions.length
+      };
+    } catch (error) {
+      console.error('Error syncing deleted media files:', error);
+      return {
+        success: false,
+        error: (error as Error).message || 'Deleted media sync failed'
       };
     }
   },
@@ -1175,11 +1284,12 @@ const riskAssessmentSyncService = {
    */
   getPendingChangesCount: async () => {
     try {
-      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
+      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles, pendingDeletedMediaFiles] = await Promise.all([
         getPendingSyncRiskAssessmentItems(),
         getPendingSyncAppointments(),
         getPendingSyncRiskAssessmentMasters(),
-        getPendingSyncMediaFiles()
+        getPendingSyncMediaFiles(),
+        getPendingSyncDeletedMediaFiles()
       ]);
 
       return {
@@ -1187,7 +1297,8 @@ const riskAssessmentSyncService = {
         appointments: pendingAppointments.length,
         riskAssessmentMasters: pendingRiskAssessmentMasters.length,
         mediaFiles: pendingMediaFiles.length,
-        total: pendingRiskAssessmentItems.length + pendingAppointments.length + pendingRiskAssessmentMasters.length + pendingMediaFiles.length
+        deletedMediaFiles: pendingDeletedMediaFiles.length,
+        total: pendingRiskAssessmentItems.length + pendingAppointments.length + pendingRiskAssessmentMasters.length + pendingMediaFiles.length + pendingDeletedMediaFiles.length
       };
     } catch (error) {
       console.error('Error getting pending changes count:', error);
@@ -1196,6 +1307,7 @@ const riskAssessmentSyncService = {
         appointments: 0,
         riskAssessmentMasters: 0,
         mediaFiles: 0,
+        deletedMediaFiles: 0,
         total: 0
       };
     }
@@ -1205,11 +1317,12 @@ const riskAssessmentSyncService = {
   debugPendingChanges: async () => {
     console.log('=== DEBUG: INSPECTING PENDING CHANGES ===');
     
-    const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles] = await Promise.all([
+    const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles, pendingDeletedMediaFiles] = await Promise.all([
       getPendingSyncRiskAssessmentItems(),
       getPendingSyncAppointments(),
       getPendingSyncRiskAssessmentMasters(),
-      getPendingSyncMediaFiles()
+      getPendingSyncMediaFiles(),
+      getPendingSyncDeletedMediaFiles()
     ]);
 
     console.log('=== PENDING COUNTS ===');
@@ -1217,6 +1330,7 @@ const riskAssessmentSyncService = {
     console.log('Appointments:', pendingAppointments.length);
     console.log('Risk Assessment Masters:', pendingRiskAssessmentMasters.length);
     console.log('Media Files:', pendingMediaFiles.length);
+    console.log('Deleted Media Files:', pendingDeletedMediaFiles.length);
 
     if (pendingRiskAssessmentItems.length > 0) {
       console.log('=== PENDING RISK ASSESSMENT ITEMS ===');
@@ -1238,7 +1352,8 @@ const riskAssessmentSyncService = {
       riskAssessmentItems: pendingRiskAssessmentItems.length,
       appointments: pendingAppointments.length,
       riskAssessmentMasters: pendingRiskAssessmentMasters.length,
-      mediaFiles: pendingMediaFiles.length
+      mediaFiles: pendingMediaFiles.length,
+      deletedMediaFiles: pendingDeletedMediaFiles.length
     };
   }
 };

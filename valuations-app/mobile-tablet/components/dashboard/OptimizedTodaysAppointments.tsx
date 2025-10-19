@@ -40,6 +40,7 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
   
   // Add a ref to track if appointments have been fetched to prevent duplicate calls
   const appointmentsFetchedRef = useRef(false);
+  const lastFetchAtRef = useRef<number>(0);
 
   useEffect(() => {
     // Don't do anything while auth is still loading
@@ -79,6 +80,14 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
   }
 
   const fetchTodaysAppointments = async () => {
+    // Throttle frequent fetches (e.g., double focus) within 5 seconds
+    const now = Date.now();
+    if (now - lastFetchAtRef.current < 5000) {
+      console.log('⏱️ Skipping todays appointments fetch (within 5s throttle window)');
+      return;
+    }
+    lastFetchAtRef.current = now;
+    
     const cacheKey = 'todays-appointments';
     
     try {
@@ -117,9 +126,18 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
           if (!forceReload) {
             const cachedData = await getDataForKey(cacheKey);
             if (cachedData) {
-              console.log(`✅ Cache hit for todays_appointments_${today.toDateString()}: ${(cachedData.length / 1024).toFixed(1)}KB`);
-              console.log('✅ Using cached today\'s appointments data');
-              return cachedData;
+              // Support both raw array and wrapped object shapes
+              if (Array.isArray(cachedData)) {
+                console.log(`✅ Cache hit for todays_appointments_${today.toDateString()}: ${(JSON.stringify(cachedData).length / 1024).toFixed(1)}KB`);
+                console.log('✅ Using cached today\'s appointments data');
+                return cachedData;
+              }
+              if (cachedData && Array.isArray((cachedData as any).data)) {
+                const arr = (cachedData as any).data;
+                console.log(`✅ Cache hit for todays_appointments_${today.toDateString()}: ${(JSON.stringify(arr).length / 1024).toFixed(1)}KB`);
+                console.log('✅ Using cached today\'s appointments data (wrapped)');
+                return arr;
+              }
             }
           }
           
@@ -165,7 +183,8 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
         }
       );
 
-      console.log(`Found ${appointmentsData.length} appointments for today`);
+      const foundCount = Array.isArray(appointmentsData) ? appointmentsData.length : 0;
+      console.log(`Found ${foundCount} appointments for today`);
       
       // Cache the data for display
       const today = new Date();
@@ -174,7 +193,8 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
       console.log('💾 Caching today\'s appointments data...');
       console.log(`📦 Stored ${displayCacheKey}: ${(JSON.stringify(appointmentsData).length / 1024).toFixed(1)}KB, TTL: 1440min`);
       
-      setAppointments(appointmentsData);
+      const safeAppointments = Array.isArray(appointmentsData) ? appointmentsData : [];
+      setAppointments(safeAppointments);
     } catch (error) {
       console.error('❌ Error fetching today\'s appointments:', error);
       setError('Failed to load today\'s appointments');
@@ -231,7 +251,7 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
   }
 
   // Show empty state
-  if (appointments.length === 0) {
+  if (!Array.isArray(appointments) || appointments.length === 0) {
     return (
       <View style={todaysAppointmentsStyles.section}>
         <Text style={todaysAppointmentsStyles.sectionTitle}>Today's Appointments</Text>
@@ -245,7 +265,7 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
   return (
     <View style={todaysAppointmentsStyles.section}>
       <Text style={todaysAppointmentsStyles.sectionTitle}>Today's Appointments</Text>
-      {appointments.map((appointment) => (
+      {Array.isArray(appointments) && appointments.map((appointment) => (
         <Card 
           key={appointment.id} 
           style={todaysAppointmentsStyles.appointmentCard}

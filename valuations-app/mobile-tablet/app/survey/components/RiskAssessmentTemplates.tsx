@@ -267,7 +267,7 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
       
       // Log the first template to see its structure
       if (response.data.length > 0) {
-        console.log('First template structure:', JSON.stringify(response.data[0], null, 2));
+        console.log('First template structure size:', JSON.stringify(response.data[0]).length, 'bytes');
       }
       
       const templatesArray = Array.isArray(response.data) ? response.data : [];
