@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Configuration constants
-const MAX_STORAGE_SIZE = 50 * 1024 * 1024; // 50MB limit
-const DEFAULT_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const MAX_STORAGE_SIZE = 500 * 1024 * 1024; // 500MB limit (increased from 50MB)
+const DEFAULT_TTL = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
 const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour cleanup interval
 const STORAGE_KEY_PREFIX = 'valuations_';
 

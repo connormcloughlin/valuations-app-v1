@@ -135,7 +135,9 @@ export const clearAllOfflineData = async (): Promise<void> => {
       key.startsWith(STORAGE_KEYS.TEMPLATE_CATEGORIES) ||
       key.startsWith(STORAGE_KEYS.TEMPLATE_ITEMS) ||
       key.startsWith(STORAGE_KEYS.APPOINTMENTS) ||
-      key.startsWith(STORAGE_KEYS.FIELD_CONFIG)
+      key.startsWith(STORAGE_KEYS.FIELD_CONFIG) ||
+      key.startsWith('risk_assessment_hierarchy_') ||
+      key.startsWith('order_field_configurations_')
     );
     
     if (apiKeys.length > 0) {
@@ -144,6 +146,33 @@ export const clearAllOfflineData = async (): Promise<void> => {
     }
   } catch (e) {
     console.error('Error clearing offline data:', e);
+  }
+};
+
+// Emergency cleanup for database full issues
+export const emergencyCleanup = async (): Promise<void> => {
+  try {
+    console.log('🚨 Emergency cleanup: Clearing all storage to resolve database full error');
+    
+    // Get all keys
+    const allKeys = await AsyncStorage.getAllKeys();
+    console.log(`Found ${allKeys.length} total storage keys`);
+    
+    // Remove all keys (nuclear option)
+    await AsyncStorage.multiRemove(allKeys);
+    console.log('✅ Emergency cleanup completed - all storage cleared');
+    
+    // Also clear managed storage if available
+    try {
+      await asyncStorageManager.clearAll();
+      console.log('✅ Managed storage also cleared');
+    } catch (managerError) {
+      console.warn('⚠️ Could not clear managed storage:', managerError);
+    }
+    
+  } catch (e) {
+    console.error('❌ Emergency cleanup failed:', e);
+    throw e;
   }
 };
 

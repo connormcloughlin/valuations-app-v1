@@ -130,14 +130,16 @@ interface ApiResponse<T = any> {
   fromCache?: boolean;
 }
 
-// Helper function to store data in AsyncStorage
-const storeData = async (key: string, data: any): Promise<void> => {
+// Helper function to store data in AsyncStorage with TTL support
+const storeData = async (key: string, data: any, ttl?: number): Promise<void> => {
   try {
     const jsonValue = JSON.stringify({
       data,
       timestamp: Date.now(),
+      ttl: ttl || 24 * 60 * 60 * 1000, // Default 24 hours if no TTL provided
     });
     await AsyncStorage.setItem(key, jsonValue);
+    console.log(`Stored data for key: ${key} (TTL: ${ttl ? (ttl / 1000 / 60 / 60).toFixed(1) + 'h' : '24h'})`);
   } catch (e) {
     console.error('Error storing data:', e);
   }
@@ -568,10 +570,10 @@ export default {
       });
       
       if (response.data?.success) {
-        // Cache the fresh data for offline use
+        // Cache the fresh data for offline use with 4 hour TTL
         try {
-          await storeData(cacheKey, response.data);
-          console.log(`💾 Cached fresh hierarchy data for order ${orderId}`);
+          await storeData(cacheKey, response.data, 4 * 60 * 60 * 1000);
+          console.log(`💾 Cached fresh hierarchy data for order ${orderId} (TTL: 4 hours)`);
         } catch (storageError) {
           console.error('Error caching hierarchy data:', storageError);
         }
@@ -659,10 +661,10 @@ export default {
       });
       
       if (response.data?.success) {
-        // Cache the fresh data for offline use
+        // Cache the fresh data for offline use with 4 hour TTL
         try {
-          await storeData(cacheKey, response.data);
-          console.log(`💾 Cached fresh field config data for order ${orderId}`);
+          await storeData(cacheKey, response.data, 4 * 60 * 60 * 1000);
+          console.log(`💾 Cached fresh field config data for order ${orderId} (TTL: 4 hours)`);
         } catch (storageError) {
           console.error('Error caching field config data:', storageError);
         }

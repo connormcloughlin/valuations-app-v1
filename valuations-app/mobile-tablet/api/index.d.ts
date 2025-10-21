@@ -87,6 +87,7 @@ export interface ApiClient {
   getAppointmentsWithOrdersByStatus: (status: string, options?: { page?: number; pageSize?: number }) => Promise<ApiResponse<Appointment[]>>;
   getAppointmentsByListView: (options?: { status?: string; page?: number; pageSize?: number; surveyor?: string | null }) => Promise<ApiResponse<Appointment[]>>;
   updateAppointment: (appointmentId: string, updates: { inviteStatus?: string }) => Promise<ApiResponse<Appointment>>;
+  updateRiskAssessmentMasterStatus: (orderId: number, status: string) => Promise<ApiResponse<any>>;
   syncChanges: (syncData: any) => Promise<ApiResponse<any>>;
   uploadMedia: (mediaData: any) => Promise<ApiResponse<any>>;
   getMediaForEntity: (entityName: string, entityID: string) => Promise<ApiResponse<any>>;

@@ -486,7 +486,7 @@ class PrefetchService {
         itemprompt: item.itemPrompt || '',
         itemtype: Number(item.itemType) || 0,
         rank: Number(item.rank) || 0,
-        commaseparatedlist: item.commaSeperatedList || '',
+        commaseparatedlist: item.commaSeparatedList || '',
         selectedanswer: item.selectedAnswer || '',
         qty: Number(item.qty) || 0,
         price: Number(item.price) || 0,

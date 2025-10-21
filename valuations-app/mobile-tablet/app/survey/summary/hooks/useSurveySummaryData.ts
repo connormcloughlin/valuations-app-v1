@@ -39,6 +39,7 @@ interface CompletedSurvey {
   assessmentTypes: AssessmentTypeSummary[];
   totalValue: number;
   notes?: string;
+  inviteStatus?: string;
 }
 
 export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: string) {
@@ -253,6 +254,7 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
           assessmentTypes: assessmentTypeSummaries,
           totalValue: totalValue,
           notes: appointmentData.notes || '',
+          inviteStatus: appointmentData.inviteStatus || 'Unknown',
         };
 
         setSurvey(completedSurvey);

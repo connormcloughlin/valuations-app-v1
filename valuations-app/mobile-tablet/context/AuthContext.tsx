@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import azureAdService from '../services/azureAdService';
@@ -67,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dbInitialized, setDbInitialized] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const isAuthenticated = !!user;
 
@@ -150,6 +152,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Ensure loading is stopped even if everything fails
         setIsLoading(false);
       }
+    } finally {
+      // Mark initialization as complete
+      setIsInitialized(true);
+      console.log('✅ App initialization completed');
     }
   };
 
@@ -459,6 +465,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     validateToken
   };
 
+  // Don't render children until initialization is complete
+  if (!isInitialized) {
+    return (
+      <AuthContext.Provider value={value}>
+        <View style={{ 
+          flex: 1, 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          backgroundColor: '#f5f5f5'
+        }}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>
+            Initializing app...
+          </Text>
+        </View>
+      </AuthContext.Provider>
+    );
+  }
+
   return (
     <AuthContext.Provider value={value}>
       {children}
@@ -469,7 +494,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    console.error('❌ useAuth called outside of AuthProvider context');
+    // Return a default context to prevent crashes
+    return {
+      user: null,
+      isLoading: true,
+      isAuthenticated: false,
+      loginWithAzure: async () => false,
+      logout: async () => {},
+      checkAuthStatus: async () => {},
+      validateToken: async () => false
+    };
   }
   return context;
 } 

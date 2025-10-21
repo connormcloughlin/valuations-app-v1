@@ -51,6 +51,26 @@ const offlineApi = {
         message: error.message || 'Failed to clear cached data'
       };
     }
+  },
+
+  /**
+   * Emergency cleanup for database full issues
+   * @returns {Promise<Object>} Response indicating success/failure
+   */
+  emergencyCleanup: async () => {
+    try {
+      await offlineStorage.emergencyCleanup();
+      return {
+        success: true,
+        message: 'Emergency cleanup completed - all storage cleared'
+      };
+    } catch (error) {
+      console.error('Error during emergency cleanup:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to perform emergency cleanup'
+      };
+    }
   }
 };
 

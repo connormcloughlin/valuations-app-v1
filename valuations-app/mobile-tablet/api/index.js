@@ -42,9 +42,11 @@ const api = {
   getAppointmentsWithOrdersByStatus: appointmentsApi.getAppointmentsWithOrdersByStatus,
   getAppointmentsByListView: appointmentsApi.getAppointmentsByListView,
   updateAppointment: appointmentsApi.updateAppointment,
+  updateRiskAssessmentMasterStatus: appointmentsApi.updateRiskAssessmentMasterStatus,
   
   // Offline storage methods
   clearAllCachedData: offlineApi.clearAllCachedData,
+  emergencyCleanup: offlineApi.emergencyCleanup,
   
   // Sync method for uploading local changes to server
   syncChanges: async (syncData) => {
@@ -197,8 +199,8 @@ const api = {
       });
       
       if (response?.success) {
-        // Cache for offline use
-        await offlineApi.storeData(`risk_assessment_hierarchy_${orderId}`, response);
+        // Cache for offline use with 4 hour TTL
+        await offlineApi.storeData(`risk_assessment_hierarchy_${orderId}`, response, 4 * 60 * 60 * 1000);
         return response;
       }
       
@@ -380,8 +382,9 @@ api.fetchImage = async (mediaID) => {
     console.log('Fetching image through API proxy for media ID:', mediaID);
     
     // Expect backend to return JSON: { imageUrl: "data:<mime>;base64,<...>" } or base64 string
-    const response = await transportClient.get('media.image', `/media/${mediaID}/image`, {
-      timeout: 30000
+    const response = await transportClient.get('media.image', `/media/${mediaID}/image`, {}, {
+      timeout: 30000,
+      retries: 0 // No retries for missing images
     });
 
     let imageUrl;

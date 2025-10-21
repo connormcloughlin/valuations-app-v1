@@ -590,6 +590,45 @@ const appointmentsApi = {
   },
 
   /**
+   * Update risk assessment master status
+   * @param {number} orderId - The order ID
+   * @param {string} status - The status to set
+   * @returns {Promise<Object>} Response with update result
+   */
+  updateRiskAssessmentMasterStatus: async (orderId: number, status: string) => {
+    try {
+      console.log(`Updating risk assessment master status - Order ID: ${orderId}, Status: ${status}`);
+      
+      const response = await transportClient.put(
+        'risk-assessment.update-status',
+        '/api/risk-assessment-master/update-status',
+        { orderId, status }
+      );
+      
+      if (response) {
+        console.log('✅ Risk assessment master status updated successfully');
+        return {
+          success: true,
+          data: response,
+          message: 'Risk assessment master status updated successfully'
+        };
+      } else {
+        console.error('❌ Failed to update risk assessment master status:', response);
+        return {
+          success: false,
+          message: 'Failed to update risk assessment master status'
+        };
+      }
+    } catch (error: any) {
+      console.error('Error updating risk assessment master status:', error);
+      return { 
+        success: false, 
+        message: error.message || 'An error occurred while updating risk assessment master status' 
+      };
+    }
+  },
+
+  /**
    * Get appointments using list-view endpoint with filtering options
    * @param {Object} options - Filtering options (page, pageSize, status, surveyor, dates)
    * @returns {Promise<Object>} Response with filtered appointments
@@ -1012,6 +1051,45 @@ const appointmentsApi = {
     } catch (error) {
       console.error('Error fetching appointment stats:', error);
       return { success: false, message: error.message };
+    }
+  },
+
+  /**
+   * Submit risk assessment for QA review
+   * @param {number} orderId - The order ID to submit for QA review
+   * @returns {Promise<Object>} Response with updated assessments
+   */
+  submitRiskAssessmentForQA: async (orderId: number) => {
+    try {
+      console.log(`Submitting risk assessment for QA review - Order ID: ${orderId}`);
+      
+      const response = await transportClient.put(
+        'risk-assessment.qa-submit',
+        '/risk-assessment-master/submit-for-qa',
+        { orderId }
+      );
+      
+      // Transport client returns data directly, not wrapped in success object
+      if (response) {
+        console.log('✅ Risk assessment submitted for QA successfully');
+        return {
+          success: true,
+          data: response,
+          message: response.message || 'Risk assessment submitted for QA review successfully'
+        };
+      } else {
+        console.error('❌ Failed to submit risk assessment for QA:', response);
+        return {
+          success: false,
+          message: 'Failed to submit risk assessment for QA review'
+        };
+      }
+    } catch (error: any) {
+      console.error('Error submitting risk assessment for QA:', error);
+      return { 
+        success: false, 
+        message: error.message || 'An error occurred while submitting for QA review' 
+      };
     }
   }
 };

@@ -65,7 +65,7 @@ export function handleApiError(
     return {
       success: false,
       status: status,
-      message: `Server error: ${status}`,
+      message: errorMessage || `Server error: ${status}`,
       data: null
     };
   } else if (error.request) {

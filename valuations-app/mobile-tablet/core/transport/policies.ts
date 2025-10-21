@@ -110,8 +110,22 @@ export const policies = new Map<string, TransportPolicy>([
   ['media.download', {
     timeoutMs: 30000,
     retry: { attempts: 2, strategy: 'exponential' },
-    cacheTTL: 60 * 60 * 1000, // 1 hour
+    cacheTTL: 4 * 60 * 60 * 1000, // 4 hours
     interpretEmptyPolicyKey: 'media_empty'
+  }],
+
+  ['media.image', {
+    timeoutMs: 30000,
+    retry: { attempts: 0, strategy: 'fixed' }, // No retries for missing images
+    cacheTTL: 4 * 60 * 60 * 1000, // 4 hours
+    interpretEmptyPolicyKey: 'media_empty'
+  }],
+
+  // Risk assessment endpoints
+  ['risk-assessment.update-status', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    interpretEmptyPolicyKey: 'risk_assessment_empty'
   }],
 
   // Sync endpoints
@@ -208,6 +222,14 @@ export const policies = new Map<string, TransportPolicy>([
     timeoutMs: 30000,
     retry: { attempts: 3, strategy: 'exponential' },
     cacheTTL: 0, // No caching for auth
+  }],
+
+  // Risk Assessment QA submission
+  ['risk-assessment.qa-submit', {
+    timeoutMs: 30000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 0, // No caching for submissions
+    interpretEmptyPolicyKey: 'risk_assessment_empty'
   }],
 
   // Default policy for unknown endpoints
