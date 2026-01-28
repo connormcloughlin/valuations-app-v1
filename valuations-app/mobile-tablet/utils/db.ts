@@ -97,11 +97,46 @@ export async function initializeDatabase() {
     db = await SQLite.openDatabaseAsync('valuations.db');
     console.log('✅ Database opened successfully');
     
+    // Optimize SQLite settings to prevent "database or disk is full" errors
+    try {
+      // Set WAL mode for better concurrency (but we'll checkpoint regularly)
+      await db.execAsync('PRAGMA journal_mode = WAL');
+      
+      // Set page size for better performance (default is usually 4096)
+      await db.execAsync('PRAGMA page_size = 4096');
+      
+      // Limit WAL file size to prevent it from growing too large (10MB max)
+      await db.execAsync('PRAGMA wal_autocheckpoint = 1000'); // Checkpoint every 1000 pages (~4MB)
+      
+      // Set cache size (negative value = KB, so -2000 = 2MB cache)
+      await db.execAsync('PRAGMA cache_size = -2000');
+      
+      // Enable foreign keys
+      await db.execAsync('PRAGMA foreign_keys = ON');
+      
+      // Set synchronous mode to NORMAL (faster than FULL, safer than OFF)
+      await db.execAsync('PRAGMA synchronous = NORMAL');
+      
+      // Set temp store to memory for better performance
+      await db.execAsync('PRAGMA temp_store = MEMORY');
+      
+      console.log('✅ SQLite optimizations applied');
+    } catch (pragmaError) {
+      console.warn('⚠️ Could not apply all SQLite optimizations:', pragmaError);
+    }
+    
     // Create tables
     await createTables();
     
     // Run database migrations
     await migrateDb();
+    
+    // Perform initial WAL checkpoint to clean up any existing WAL file
+    try {
+      await checkpointWal();
+    } catch (checkpointError) {
+      console.warn('⚠️ Initial WAL checkpoint failed (non-critical):', checkpointError);
+    }
     
     // Mark database as ready
     isDbReady = true;
@@ -136,12 +171,48 @@ async function ensureDatabaseConnection() {
   }
 }
 
+/**
+ * Checkpoint WAL file to prevent it from growing too large
+ * This helps prevent "database or disk is full" errors
+ */
+async function checkpointWal(): Promise<void> {
+  try {
+    if (!db) {
+      await ensureDbReady();
+    }
+    if (db) {
+      // Checkpoint the WAL file (merges WAL into main database)
+      await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE)');
+      console.log('✅ WAL checkpoint completed');
+    }
+  } catch (error) {
+    console.error('❌ Error during WAL checkpoint:', error);
+    throw error;
+  }
+}
+
+// Track last checkpoint time to avoid excessive checkpointing
+let lastCheckpointTime = 0;
+const CHECKPOINT_INTERVAL = 5 * 60 * 1000; // Checkpoint every 5 minutes
+
 // Helper to run SQL with promise
 export async function runSql(sql: string, params: any[] = []): Promise<SQLiteResult> {
   await ensureDatabaseConnection();
   
   if (!db) {
     throw new Error('Database not initialized');
+  }
+  
+  // Periodically checkpoint WAL to prevent it from growing too large
+  const now = Date.now();
+  if (now - lastCheckpointTime > CHECKPOINT_INTERVAL) {
+    try {
+      await checkpointWal();
+      lastCheckpointTime = now;
+    } catch (checkpointError) {
+      // Don't fail the operation if checkpoint fails
+      console.warn('⚠️ Background WAL checkpoint failed (non-critical):', checkpointError);
+    }
   }
   
   try {
@@ -295,6 +366,47 @@ export async function createTables() {
         lastUpdated TEXT
       );
     `);
+    
+    // Create performance indexes for efficient queries
+    console.log('Creating database indexes for performance...');
+    
+    // Index for risk assessment items by category (most common query)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_risk_items_category 
+      ON risk_assessment_items(riskassessmentcategoryid);
+    `);
+    
+    // Index for risk assessment items by appointment
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_risk_items_appointment 
+      ON risk_assessment_items(appointmentid);
+    `);
+    
+    // Index for media files by entity (already exists but ensure it's created)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_media_entity 
+      ON media_files(EntityName, EntityID);
+    `);
+    
+    // Index for media files by sync status (for efficient sync queries)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_media_pending_sync 
+      ON media_files(pending_sync, IsDeleted);
+    `);
+    
+    // Index for media files by deletion status (for cleanup queries)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_media_deleted 
+      ON media_files(IsDeleted, EntityName, EntityID);
+    `);
+    
+    // Index for appointments by sync status
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_appointments_sync 
+      ON appointments(pending_sync);
+    `);
+    
+    console.log('✅ Database indexes created');
     
     // Create performance indexes
     await db.execAsync(`
@@ -517,6 +629,7 @@ export async function getAllAppointments(): Promise<Appointment[]> {
   const res = await runSql('SELECT * FROM appointments');
   return res.rows._array;
 }
+
 export async function getAppointmentById(id: number): Promise<Appointment | undefined> {
   const res = await runSql('SELECT * FROM appointments WHERE appointmentID = ?', [id]);
   return res.rows.length > 0 ? res.rows._array[0] : undefined;
@@ -524,8 +637,54 @@ export async function getAppointmentById(id: number): Promise<Appointment | unde
 export async function updateAppointment(a: Appointment) {
   await insertAppointment(a);
 }
-export async function deleteAppointment(id: number) {
-  await runSql('DELETE FROM appointments WHERE appointmentID = ?', [id]);
+
+// Delete appointment from SQLite by appointmentID (supports both string and number IDs)
+export async function deleteAppointment(appointmentID: number | string): Promise<void> {
+  try {
+    const id = typeof appointmentID === 'string' ? parseInt(appointmentID, 10) : appointmentID;
+    if (isNaN(id)) {
+      throw new Error(`Invalid appointment ID: ${appointmentID}`);
+    }
+    
+    const database = await ensureDbReady();
+    
+    // Use transaction to delete appointment and associated media files
+    await database.withTransactionAsync(async () => {
+      // Delete associated media files for this appointment
+      // Media files are linked via EntityID (which is the appointmentID for appointment-level photos)
+      // or via risk assessment items that belong to this appointment
+      const mediaResult = await database.runAsync(
+        'DELETE FROM media_files WHERE EntityName = ? AND EntityID = ?',
+        ['appointment', id]
+      );
+      console.log(`🗑️ Deleted ${mediaResult.changes} media files associated with appointment ${id}`);
+      
+      // Also delete media files linked via risk assessment items
+      // First get all risk assessment items for this appointment
+      const itemsResult = await database.getAllAsync(
+        'SELECT riskassessmentitemid FROM risk_assessment_items WHERE appointmentid = ?',
+        [id.toString()]
+      );
+      
+      if (itemsResult && itemsResult.length > 0) {
+        const itemIds = itemsResult.map((item: any) => item.riskassessmentitemid);
+        const placeholders = itemIds.map(() => '?').join(',');
+        const mediaItemsResult = await database.runAsync(
+          `DELETE FROM media_files WHERE EntityName = ? AND EntityID IN (${placeholders})`,
+          ['risk_assessment_item', ...itemIds]
+        );
+        console.log(`🗑️ Deleted ${mediaItemsResult.changes} media files associated with risk assessment items for appointment ${id}`);
+      }
+      
+      // Delete the appointment itself
+      const result = await database.runAsync('DELETE FROM appointments WHERE appointmentID = ?', [id]);
+      console.log(`🗑️ Deleted appointment ${id} from SQLite (${result.changes} row(s) affected)`);
+    });
+    
+  } catch (error) {
+    console.error(`Error deleting appointment ${appointmentID} from SQLite:`, error);
+    throw error;
+  }
 }
 
 // --- CRUD for Risk Assessment Master ---
@@ -853,6 +1012,61 @@ export async function insertMediaFile(m: MediaFile) {
   }
 }
 
+/**
+ * Insert multiple media files in a batch transaction (optimized for hundreds of photos)
+ * @param mediaFiles - Array of media files to insert
+ * @returns Array of inserted media IDs
+ */
+export async function insertMediaFilesBatch(mediaFiles: MediaFile[]): Promise<number[]> {
+  if (mediaFiles.length === 0) {
+    return [];
+  }
+  
+  try {
+    const database = await ensureDbReady();
+    const insertedIds: number[] = [];
+    
+    // Use a transaction for better performance with many inserts
+    await database.withTransactionAsync(async () => {
+      for (const m of mediaFiles) {
+        const sql = `
+          INSERT INTO media_files (
+            FileName, FileType, BlobURL, EntityName, EntityID, UploadedAt, UploadedBy,
+            IsDeleted, Metadata, LocalPath, pending_sync, BackendMediaID
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const params = [
+          m.FileName,
+          m.FileType,
+          m.BlobURL,
+          m.EntityName,
+          m.EntityID,
+          m.UploadedAt,
+          m.UploadedBy || null,
+          m.IsDeleted ? 1 : 0,
+          m.Metadata || null,
+          m.LocalPath || null,
+          m.pending_sync ?? 1,
+          m.BackendMediaID || null
+        ];
+
+        const result = await database.runAsync(sql, params);
+        if (result.lastInsertRowId) {
+          insertedIds.push(result.lastInsertRowId as number);
+        }
+      }
+    });
+    
+    console.log(`✅ Successfully inserted ${insertedIds.length} media files in batch`);
+    return insertedIds;
+    
+  } catch (error) {
+    console.error('Error inserting media files in batch:', error);
+    throw error;
+  }
+}
+
 export async function getAllMediaFiles(): Promise<MediaFile[]> {
   try {
     console.log('Fetching all media files from SQLite');
@@ -868,8 +1082,8 @@ export async function getAllMediaFiles(): Promise<MediaFile[]> {
 export async function getMediaFilesByEntity(entityName: string, entityID: number, includeDeleted: boolean = false): Promise<MediaFile[]> {
   try {
     const sql = includeDeleted 
-      ? 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ?'
-      : 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? AND IsDeleted = 0';
+      ? 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? ORDER BY UploadedAt DESC'
+      : 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? AND IsDeleted = 0 ORDER BY UploadedAt DESC';
     
     console.log(`📸 getMediaFilesByEntity: Searching for ${entityName} with ID ${entityID} (includeDeleted: ${includeDeleted})`);
     const res = await runSql(sql, [entityName, entityID]);

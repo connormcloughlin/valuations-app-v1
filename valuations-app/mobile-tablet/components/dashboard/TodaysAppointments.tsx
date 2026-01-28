@@ -8,6 +8,7 @@ import { storeDataForKey, getDataForKey, removeDataForKey } from '../../utils/of
 import { todaysAppointmentsStyles } from '../../app/GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
 import connectionUtils from '../../utils/connectionUtils';
+import { getStartOfTodayISO, getEndOfTodayISO, formatTimeForSA, getTodayInSA } from '../../utils/dateUtils';
 
 interface Appointment {
   id: string;
@@ -76,20 +77,13 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
       setLoading(true);
       setError(null);
       
-      // Create today's date range
-      const today = new Date();
-      const startOfDay = new Date(today);
-      startOfDay.setHours(0, 0, 0, 0);
+      // Create today's date range in South Africa timezone
+      const startDateFrom = getStartOfTodayISO();
+      const startDateTo = getEndOfTodayISO();
       
-      const endOfDay = new Date(today);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      // Format dates to ISO string format
-      const startDateFrom = startOfDay.toISOString();
-      const startDateTo = endOfDay.toISOString();
-      
-      // Create cache key for today's appointments
-      const cacheKey = `todays_appointments_${today.toDateString()}`;
+      // Create cache key for today's appointments using SA date
+      const todaySA = getTodayInSA();
+      const cacheKey = `todays_appointments_${todaySA.toISOString().split('T')[0]}`;
       
       // Check if we're online and if force reload is requested
       const isOnline = await connectionUtils.getStatus();
@@ -179,18 +173,7 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
     fetchTodaysAppointments();
   };
 
-  const formatTime = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-      });
-    } catch {
-      return 'Time TBD';
-    }
-  };
+  // formatTime is now handled by formatTimeForSA utility
 
   if (loading) {
     return (
@@ -231,7 +214,7 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
                 <View style={todaysAppointmentsStyles.appointmentContent}>
                   <Text style={todaysAppointmentsStyles.appointmentAddress}>{appointment.address}</Text>
                   <Text style={todaysAppointmentsStyles.appointmentDetails}>
-                    {appointment.client} • {formatTime(appointment.date)}
+                    {appointment.client} • {formatTimeForSA(appointment.date)}
                   </Text>
                   <Text style={todaysAppointmentsStyles.policyText}>Policy: {appointment.policyNo}</Text>
                 </View>

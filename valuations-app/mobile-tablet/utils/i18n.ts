@@ -178,19 +178,30 @@ export const t = (key: string, params?: { [key: string]: string }): string => {
 
 /**
  * Format a date according to the current locale
- * @param date - The date to format
+ * Handles both Date objects and UTC date strings from the backend
+ * @param date - The date to format (Date object or UTC ISO string)
  * @param options - Format options
  */
-export const formatDate = (date: Date, options?: Intl.DateTimeFormatOptions): string => {
+export const formatDate = (date: Date | string, options?: Intl.DateTimeFormatOptions): string => {
+  // Import date utilities dynamically to avoid circular dependencies
+  const { formatDateForSA, parseUTCDate } = require('./dateUtils');
+  
+  // If it's a string, parse it as UTC and format for SA
+  if (typeof date === 'string') {
+    return formatDateForSA(date, options);
+  }
+  
+  // If it's a Date object, format it with SA timezone
   const defaultOptions: Intl.DateTimeFormatOptions = {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    timeZone: 'Africa/Johannesburg',
   };
   
   return new Intl.DateTimeFormat(
     currentLanguage,
-    options || defaultOptions
+    { ...defaultOptions, ...options }
   ).format(date);
 };
 

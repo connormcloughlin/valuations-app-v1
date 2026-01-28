@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import api from '../api';
 import { getMediaFilesByEntity } from '../utils/db';
 
@@ -18,7 +18,7 @@ interface PrefetchResult {
 }
 
 class ImagePrefetchService {
-  private mediaDirectory = `${FileSystem.documentDirectory}prefetched_images/`;
+  private mediaDirectory: string | null = null;
   private isPrefetching = false;
   private currentProgress: PrefetchProgress | null = null;
 
@@ -27,14 +27,30 @@ class ImagePrefetchService {
   }
 
   /**
+   * Get the media directory path
+   */
+  private async getMediaDirectory(): Promise<string> {
+    if (!this.mediaDirectory) {
+      // In SDK 54, documentDirectory is available in the legacy module
+      const docDir = FileSystem.documentDirectory;
+      if (!docDir) {
+        throw new Error('documentDirectory is not available');
+      }
+      this.mediaDirectory = `${docDir}prefetched_images/`;
+    }
+    return this.mediaDirectory;
+  }
+
+  /**
    * Initialize the prefetched images directory
    */
   private async initializeMediaDirectory(): Promise<void> {
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.mediaDirectory);
+      const mediaDir = await this.getMediaDirectory();
+      const dirInfo = await FileSystem.getInfoAsync(mediaDir);
       if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(this.mediaDirectory, { intermediates: true });
-        console.log('📸 ImagePrefetchService: Created prefetched images directory:', this.mediaDirectory);
+        await FileSystem.makeDirectoryAsync(mediaDir, { intermediates: true });
+        console.log('📸 ImagePrefetchService: Created prefetched images directory:', mediaDir);
       }
     } catch (error) {
       console.error('📸 ImagePrefetchService: Error creating media directory:', error);
@@ -148,7 +164,8 @@ class ImagePrefetchService {
 
       // Create local file path
       const fileName = `prefetched_${backendMediaID}_${mediaFile.FileName}`;
-      const localPath = `${this.mediaDirectory}${fileName}`;
+      const mediaDir = await this.getMediaDirectory();
+      const localPath = `${mediaDir}${fileName}`;
 
       // Write base64 data to file
       await FileSystem.writeAsStringAsync(localPath, base64Data, {
@@ -249,12 +266,13 @@ class ImagePrefetchService {
    */
   async getStorageStats(): Promise<{ totalFiles: number; totalSize: number; files: Array<{ name: string; size: number }> }> {
     try {
-      const files = await FileSystem.readDirectoryAsync(this.mediaDirectory);
+      const mediaDir = await this.getMediaDirectory();
+      const files = await FileSystem.readDirectoryAsync(mediaDir);
       let totalSize = 0;
       const fileStats: Array<{ name: string; size: number }> = [];
-
+      
       for (const fileName of files) {
-        const filePath = `${this.mediaDirectory}${fileName}`;
+        const filePath = `${mediaDir}${fileName}`;
         const fileInfo = await FileSystem.getInfoAsync(filePath);
         if (fileInfo.exists && (fileInfo as any).size) {
           const size = (fileInfo as any).size;
@@ -282,10 +300,11 @@ class ImagePrefetchService {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-      const files = await FileSystem.readDirectoryAsync(this.mediaDirectory);
+      const mediaDir = await this.getMediaDirectory();
+      const files = await FileSystem.readDirectoryAsync(mediaDir);
       
       for (const fileName of files) {
-        const filePath = `${this.mediaDirectory}${fileName}`;
+        const filePath = `${mediaDir}${fileName}`;
         const fileInfo = await FileSystem.getInfoAsync(filePath);
         
         if (fileInfo.exists && fileInfo.modificationTime && fileInfo.modificationTime < cutoffDate.getTime()) {
@@ -303,10 +322,11 @@ class ImagePrefetchService {
    */
   async clearAllPrefetchedImages(): Promise<void> {
     try {
-      const files = await FileSystem.readDirectoryAsync(this.mediaDirectory);
+      const mediaDir = await this.getMediaDirectory();
+      const files = await FileSystem.readDirectoryAsync(mediaDir);
       
       for (const fileName of files) {
-        const filePath = `${this.mediaDirectory}${fileName}`;
+        const filePath = `${mediaDir}${fileName}`;
         await FileSystem.deleteAsync(filePath);
       }
       

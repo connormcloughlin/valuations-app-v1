@@ -1,7 +1,7 @@
 import api from '../api';
 import * as apiModule from '../api';
 import NetInfo from '@react-native-community/netinfo';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { SYNC_CONFIG, getEnvironmentConfig } from '../config/syncConfig';
 import {
   getPendingSyncRiskAssessmentItems,

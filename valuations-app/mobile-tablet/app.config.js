@@ -53,9 +53,49 @@ console.log('🔧 process.env.API_TIMEOUT:', process.env.API_TIMEOUT);
 console.log('🔧 process.env.AZURE_MOBILE_CLIENT_ID:', process.env.AZURE_MOBILE_CLIENT_ID);
 console.log('🔧 === END APP.CONFIG.JS DEBUG ===');
 
+// Determine environment
+const appEnv = process.env.APP_ENV || 'development';
+
+// Configure package name and app name based on environment
+const getPackageName = () => {
+  switch (appEnv) {
+    case 'staging':
+      return 'com.anonymous.valuationsmobiletablet.staging';
+    case 'production':
+      return 'com.anonymous.valuationsmobiletablet';
+    case 'development':
+    default:
+      return 'com.anonymous.valuationsmobiletablet.dev';
+  }
+};
+
+const getAppName = () => {
+  switch (appEnv) {
+    case 'staging':
+      return 'Qantam App (Staging)';
+    case 'production':
+      return 'Qantam App';
+    case 'development':
+    default:
+      return 'Qantam App (Dev)';
+  }
+};
+
+const getBundleIdentifier = () => {
+  switch (appEnv) {
+    case 'staging':
+      return 'com.anonymous.qantamvaluationsmobiletablet.staging';
+    case 'production':
+      return 'com.anonymous.qantamvaluationsmobiletablet';
+    case 'development':
+    default:
+      return 'com.anonymous.qantamvaluationsmobiletablet.dev';
+  }
+};
+
 module.exports = {
   "expo": {
-    "name": "Valuations App",
+    "name": getAppName(),
     "slug": "valuations-mobile-tablet",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -92,13 +132,13 @@ module.exports = {
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.valuationsmobiletablet",
+      "bundleIdentifier": getBundleIdentifier(),
       "runtimeVersion": {
         "policy": "appVersion"
       }
     },
     "android": {
-      "package": "com.anonymous.valuationsmobiletablet",
+      "package": getPackageName(),
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -110,7 +150,9 @@ module.exports = {
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_EXTERNAL_STORAGE"
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
       ]
     },
     "web": {
@@ -128,6 +170,14 @@ module.exports = {
       "expo-web-browser",
       "expo-system-ui",
       "expo-updates",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Valuations App to save photos to your gallery.",
+          "savePhotosPermission": "Allow Valuations App to save photos to your gallery.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
       [
         "react-native-msal",
         {

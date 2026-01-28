@@ -49,14 +49,26 @@ export function validateOrReject<T>(
         data: result.data
       };
     } else {
-      const errors = result.error.errors.map(error => 
+      // Zod uses 'issues' property, not 'errors'
+      const zodIssues = result.error.issues || [];
+      const errors = zodIssues.map((issue: z.ZodIssue) => 
         new ValidationError(
-          error.message,
-          error.path.join('.'),
-          error.input,
+          issue.message,
+          issue.path.length > 0 ? issue.path.join('.') : 'root',
+          issue.input !== undefined ? issue.input : data,
           context
         )
       );
+      
+      // If no errors were mapped, create a default error
+      if (errors.length === 0) {
+        errors.push(new ValidationError(
+          `Validation failed: ${result.error.message || 'Unknown validation error'}`,
+          'root',
+          data,
+          context
+        ));
+      }
       
       return {
         success: false,

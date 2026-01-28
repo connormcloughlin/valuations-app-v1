@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,6 +10,7 @@ import sessionService from '../core/auth/sessionService';
 const getInitializeDatabase = () => import('../utils/db');
 import { AppState, AppStateStatus } from 'react-native';
 import { fullSecurePurge } from '../core/security';
+import { useRenderCount } from '../hooks/useRenderCount';
 
 interface User {
   id: string;
@@ -71,9 +72,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
 
   const isAuthenticated = !!user;
+  
+  // Monitor re-renders for performance debugging
+  const { renderCount } = useRenderCount('AuthProvider', __DEV__);
 
   useEffect(() => {
-    initializeApp();
+    const startTime = Date.now();
+    console.log('🚀 AuthProvider: Starting initialization...');
+    
+    initializeApp().then(() => {
+      const endTime = Date.now();
+      console.log(`✅ AuthProvider: Initialization completed in ${endTime - startTime}ms`);
+    }).catch((error) => {
+      console.error('❌ AuthProvider: Initialization failed:', error);
+    });
   }, []);
 
   // Handle app state changes (background/foreground)
@@ -455,7 +467,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: AuthContextType = {
+  // Memoize the context value to prevent unnecessary re-renders
+  const value: AuthContextType = useMemo(() => ({
     user,
     isLoading,
     isAuthenticated,
@@ -463,7 +476,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     checkAuthStatus,
     validateToken
-  };
+  }), [user, isLoading, isAuthenticated]);
 
   // Don't render children until initialization is complete
   if (!isInitialized) {

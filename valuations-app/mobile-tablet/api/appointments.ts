@@ -1,6 +1,7 @@
 import transportClient from '../core/transport/transportClient';
-import offlineStorage from '../utils/offlineStorage';
+import offlineStorage, { filterIncompleteAppointments, isAppointmentCompleted } from '../utils/offlineStorage';
 import connectionUtils from '../utils/connectionUtils';
+import { deleteAppointment } from '../utils/db';
 import { 
   AppointmentListSchema, 
   AppointmentSchema, 
@@ -24,13 +25,13 @@ const appointmentsApi = {
       const isOnline = connectionUtils.isConnected();
       console.log(`Connection status before fetching appointments: ${isOnline ? 'Online' : 'Offline'}`);
       
-      // If offline, get from storage
+      // If offline, get from storage (only incomplete appointments are cached)
       if (!isOnline) {
         const cachedResponse = await offlineStorage.getDataForKey('appointments');
         if (cachedResponse && cachedResponse.data) {
-          // Extract the actual data array
+          // Extract the actual data array (already filtered to incomplete only)
           const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
-          console.log(`Using ${cachedData.length} cached appointments (offline)`);
+          console.log(`Using ${cachedData.length} cached incomplete appointments (offline)`);
           return {
             success: true,
             data: cachedData,
@@ -137,14 +138,19 @@ const appointmentsApi = {
         console.log('✅ Appointment data validation passed');
       }
       
-      // Cache the result for offline use
-      await offlineStorage.storeDataForKey('appointments', processedAppointments);
-      console.log(`Cached ${processedAppointments.length} appointments`);
+      // Cache only incomplete appointments for offline use (completed appointments fetched from API only)
+      const incompleteAppointments = filterIncompleteAppointments(processedAppointments);
+      if (incompleteAppointments.length > 0) {
+        await offlineStorage.storeDataForKey('appointments', incompleteAppointments);
+        console.log(`Cached ${incompleteAppointments.length} incomplete appointments (excluded ${processedAppointments.length - incompleteAppointments.length} completed)`);
+      } else {
+        console.log(`No incomplete appointments to cache (all ${processedAppointments.length} are completed)`);
+      }
       
       return {
         success: true,
-        data: processedAppointments,
-        validationWarnings: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
+        data: processedAppointments, // Return all appointments (including completed) when online
+        validationWarnings: (validationResult.errors || []).map(e => `${e.field}: ${e.message}`)
       };
     } catch (error) {
       console.error('Error fetching appointments:', error);
@@ -409,18 +415,47 @@ const appointmentsApi = {
         console.log('  - latitude:', appointmentData?.latitude, '(type:', typeof appointmentData?.latitude, ')');
         console.log('  - longitude:', appointmentData?.longitude, '(type:', typeof appointmentData?.longitude, ')');
         
+        // Normalize date fields to ISO datetime format before validation
+        if (appointmentData && typeof appointmentData === 'object') {
+          // Normalize datetime fields to ensure they're valid ISO strings
+          const dateFields = ['startTime', 'endTime', 'followUpDate', 'arrivalTime', 'departureTime', 'dateModified', 'syncTimestamp'];
+          dateFields.forEach(field => {
+            if (appointmentData[field] !== null && appointmentData[field] !== undefined) {
+              try {
+                // If it's already a string, try to parse and reformat
+                if (typeof appointmentData[field] === 'string') {
+                  const date = new Date(appointmentData[field]);
+                  if (!isNaN(date.getTime())) {
+                    appointmentData[field] = date.toISOString();
+                  } else {
+                    // Invalid date string, set to null
+                    appointmentData[field] = null;
+                  }
+                } else if (appointmentData[field] instanceof Date) {
+                  appointmentData[field] = appointmentData[field].toISOString();
+                }
+              } catch (e) {
+                // If parsing fails, set to null
+                appointmentData[field] = null;
+              }
+            }
+          });
+        }
+        
         // Validate the appointment data against schema
         const validationResult = validateOrReject(AppointmentSchema, appointmentData, 'appointments.detail');
         
         if (!validationResult.success) {
-          console.error('❌ Appointment detail validation failed:');
-          validationResult.errors?.forEach((error, index) => {
-            console.error(`  ${index + 1}. Field: ${error.field}`);
-            console.error(`     Expected: ${error.message}`);
-            console.error(`     Received: ${error.value} (type: ${typeof error.value})`);
-            console.error(`     Context: ${error.context}`);
+          // Use console.warn instead of console.error for validation warnings (non-critical)
+          console.warn('⚠️ Appointment detail validation warnings:');
+          const errors = validationResult.errors || [];
+          errors.forEach((error, index) => {
+            console.warn(`  ${index + 1}. Field: ${error.field}`);
+            console.warn(`     Expected: ${error.message}`);
+            console.warn(`     Received: ${error.value} (type: ${typeof error.value})`);
+            console.warn(`     Context: ${error.context}`);
           });
-          console.warn('⚠️ Returning appointment with validation warnings');
+          console.warn('⚠️ Returning appointment with validation warnings (app will continue to function)');
         } else {
           console.log('✅ Appointment detail validation passed');
         }
@@ -428,7 +463,7 @@ const appointmentsApi = {
         return {
           success: true,
           data: appointmentData,
-          validationWarnings: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
+          validationWarnings: (validationResult.errors || []).map(e => `${e.field}: ${e.message}`)
         };
       } catch (withOrderError) {
         console.error(`Error with /with-order endpoint: ${withOrderError.message}`);
@@ -507,12 +542,36 @@ const appointmentsApi = {
             };
           }
           
+          // Normalize date fields for fallback data
+          if (appointmentData && typeof appointmentData === 'object') {
+            const dateFields = ['startTime', 'endTime', 'followUpDate', 'arrivalTime', 'departureTime', 'dateModified', 'syncTimestamp'];
+            dateFields.forEach(field => {
+              if (appointmentData[field] !== null && appointmentData[field] !== undefined) {
+                try {
+                  if (typeof appointmentData[field] === 'string') {
+                    const date = new Date(appointmentData[field]);
+                    if (!isNaN(date.getTime())) {
+                      appointmentData[field] = date.toISOString();
+                    } else {
+                      appointmentData[field] = null;
+                    }
+                  } else if (appointmentData[field] instanceof Date) {
+                    appointmentData[field] = appointmentData[field].toISOString();
+                  }
+                } catch (e) {
+                  appointmentData[field] = null;
+                }
+              }
+            });
+          }
+          
           // Validate the fallback appointment data
           const validationResult = validateOrReject(AppointmentSchema, appointmentData, 'appointments.detail.fallback');
           
           if (!validationResult.success) {
-            console.error('❌ Fallback appointment validation failed:', validationResult.errors);
-            console.warn('⚠️ Returning fallback appointment with validation warnings');
+            // Use console.warn instead of console.error for validation warnings
+            console.warn('⚠️ Fallback appointment validation warnings:', validationResult.errors);
+            console.warn('⚠️ Returning fallback appointment with validation warnings (app will continue to function)');
           } else {
             console.log('✅ Fallback appointment validation passed');
           }
@@ -520,7 +579,7 @@ const appointmentsApi = {
           return {
             success: true,
             data: appointmentData,
-            validationWarnings: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
+            validationWarnings: (validationResult.errors || []).map(e => `${e.field}: ${e.message}`)
           };
         } catch (fallbackError) {
           console.error(`Error with fallback endpoint: ${fallbackError.message}`);
@@ -576,12 +635,32 @@ const appointmentsApi = {
         return { 
           success: false, 
           message: 'Invalid update data', 
-          validationErrors: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
+          validationErrors: (validationResult.errors || []).map(e => `${e.field}: ${e.message}`)
         };
       }
       
       console.log('✅ Update data validation passed');
       const response = await transportClient.put('appointments.update', `/appointments/${appointmentId}`, updates);
+      
+      // Check if appointment is being marked as completed
+      const status = updates.inviteStatus || updates.Invite_Status || updates.status;
+      if (status && isAppointmentCompleted({ Invite_Status: status, inviteStatus: status, status })) {
+        // Delete from SQLite when marked as complete
+        try {
+          await deleteAppointment(appointmentId);
+          console.log(`🗑️ Deleted completed appointment ${appointmentId} from SQLite`);
+          
+          // Also remove from AsyncStorage cache
+          await offlineStorage.removeDataForKey('appointments');
+          await offlineStorage.removeDataForKey('appointmentsByListView');
+          await offlineStorage.removeDataForKey('appointmentsWithOrders');
+          console.log(`🗑️ Cleared appointment caches after completion`);
+        } catch (deleteError) {
+          // Log but don't fail the update if deletion fails
+          console.error(`⚠️ Failed to delete completed appointment from SQLite:`, deleteError);
+        }
+      }
+      
       return { success: true, data: response };
     } catch (error) {
       console.error(`Error updating appointment ${appointmentId}:`, error);
@@ -648,12 +727,14 @@ const appointmentsApi = {
       console.log(`Connection status before fetching appointments by list-view: ${isOnline ? 'Online' : 'Offline'}`);
       
       // If offline, get from storage and filter
+      // Note: Only incomplete appointments are cached, so requests for "Completed" status will return empty
       if (!isOnline) {
         const cachedResponse = await offlineStorage.getDataForKey('appointmentsByListView');
         if (cachedResponse && cachedResponse.data) {
-          console.log(`Using cached list-view appointments (offline)`);
+          console.log(`Using cached list-view appointments (offline - incomplete only)`);
           
           // Extract data and filter by status, surveyor, and date range
+          // Cached data only contains incomplete appointments
           const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
           const filteredData = cachedData.filter((appointment: any) => {
             // Filter by status
@@ -663,17 +744,21 @@ const appointmentsApi = {
             if (surveyor && appointment.surveyorID !== surveyor) return false;
             
             // Filter by date range if provided
+            // Use parseUTCDate to ensure proper UTC date parsing
             if (startDateFrom || startDateTo) {
-              const appointmentDate = new Date(appointment.date || appointment.Start_Time || appointment.appointment_Date);
+              const { parseUTCDate } = require('../utils/dateUtils');
+              const appointmentDate = parseUTCDate(appointment.date || appointment.Start_Time || appointment.appointment_Date);
+              
+              if (!appointmentDate) return false; // Skip if date is invalid
               
               if (startDateFrom) {
-                const fromDate = new Date(startDateFrom);
-                if (appointmentDate < fromDate) return false;
+                const fromDate = parseUTCDate(startDateFrom);
+                if (!fromDate || appointmentDate < fromDate) return false;
               }
               
               if (startDateTo) {
-                const toDate = new Date(startDateTo);
-                if (appointmentDate > toDate) return false;
+                const toDate = parseUTCDate(startDateTo);
+                if (!toDate || appointmentDate > toDate) return false;
               }
             }
             
@@ -802,8 +887,35 @@ const appointmentsApi = {
       
       console.log(`📋 Successfully processed ${processedAppointments.length} appointments for list-view`);
       
-      // Store successful response for offline use
+      // Store successful response for offline use (only incomplete appointments)
+      const incompleteAppointments = filterIncompleteAppointments(processedAppointments);
+      const incompleteTotalItems = incompleteAppointments.length;
+      
       const responseToStore = {
+        success: true,
+        data: incompleteAppointments, // Only cache incomplete appointments
+        totalItems: incompleteTotalItems,
+        pagination: {
+          page,
+          pageSize,
+          totalItems: incompleteTotalItems,
+          totalPages: Math.ceil(incompleteTotalItems / pageSize),
+          hasMore: (page * pageSize) < incompleteTotalItems
+        },
+        filteredBy: status,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Only cache if there are incomplete appointments
+      if (incompleteAppointments.length > 0) {
+        await offlineStorage.storeDataForKey('appointmentsByListView', responseToStore);
+        console.log(`Cached ${incompleteAppointments.length} incomplete list-view appointments (excluded ${processedAppointments.length - incompleteAppointments.length} completed)`);
+      } else {
+        console.log(`No incomplete appointments to cache for list-view (all ${processedAppointments.length} are completed)`);
+      }
+      
+      // Return all appointments (including completed) when online
+      return {
         success: true,
         data: processedAppointments,
         totalItems,
@@ -817,10 +929,6 @@ const appointmentsApi = {
         filteredBy: status,
         timestamp: new Date().toISOString()
       };
-      
-      await offlineStorage.storeDataForKey('appointmentsByListView', responseToStore);
-      
-      return responseToStore;
     } catch (error: any) {
       console.error('Error fetching appointments by list-view:', error);
       return { success: false, message: error.message };
@@ -932,12 +1040,13 @@ const appointmentsApi = {
       console.log(`Connection status before fetching appointments with orders: ${isOnline ? 'Online' : 'Offline'}`);
       
       // If offline, get from storage and paginate locally
+      // Note: Only incomplete appointments are cached, so completed appointments won't be available offline
       if (!isOnline) {
         const cachedResponse = await offlineStorage.getDataForKey('appointmentsWithOrders');
         if (cachedResponse && cachedResponse.data) {
-          console.log(`Using cached appointments with orders (offline)`);
+          console.log(`Using cached appointments with orders (offline - incomplete only)`);
           
-          // Extract the data array from response
+          // Extract the data array from response (only incomplete appointments are cached)
           const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
           
           // Calculate pagination
@@ -969,14 +1078,26 @@ const appointmentsApi = {
       console.log(`Fetching appointments with orders from server (page ${page}, pageSize ${pageSize})`);
       const response = await transportClient.get('appointments.with-orders', '/appointments/with-orders', { page, pageSize });
       
-      // Store successful response for offline use
+      // Store successful response for offline use (only incomplete appointments)
       if (response && response.data) {
-        await offlineStorage.storeDataForKey('appointmentsWithOrders', response);
+        const appointmentsData = Array.isArray(response.data) ? response.data : [];
+        const incompleteAppointments = filterIncompleteAppointments(appointmentsData);
+        
+        if (incompleteAppointments.length > 0) {
+          const incompleteResponse = {
+            ...response,
+            data: incompleteAppointments
+          };
+          await offlineStorage.storeDataForKey('appointmentsWithOrders', incompleteResponse);
+          console.log(`Cached ${incompleteAppointments.length} incomplete appointments with orders (excluded ${appointmentsData.length - incompleteAppointments.length} completed)`);
+        } else {
+          console.log(`No incomplete appointments to cache with orders (all ${appointmentsData.length} are completed)`);
+        }
       }
       
       return {
         success: true,
-        data: response.data || response,
+        data: response.data || response, // Return all appointments (including completed) when online
         status: 200
       };
     } catch (error: any) {
@@ -1046,7 +1167,7 @@ const appointmentsApi = {
         success: true,
         data: response,
         status: 200,
-        validationWarnings: validationResult.errors?.map(e => `${e.field}: ${e.message}`) || []
+        validationWarnings: (validationResult.errors || []).map(e => `${e.field}: ${e.message}`)
       };
     } catch (error) {
       console.error('Error fetching appointment stats:', error);

@@ -9,6 +9,7 @@ import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { completedAppointmentsStyles, colors } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { SurveyorFilterIndicator } from '../../../components/SurveyorFilterIndicator';
+import { formatDateForSA } from '../../../utils/dateUtils';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -160,7 +161,7 @@ export default function CompletedAppointmentsScreen() {
           
           <View style={completedAppointmentsStyles.detailRow}>
             <MaterialCommunityIcons name="calendar-check" size={16} color={colors.gray[500]} style={completedAppointmentsStyles.detailIcon} />
-            <Text style={completedAppointmentsStyles.detailText}>Submitted: {item.submitted || 'Unknown'}</Text>
+            <Text style={completedAppointmentsStyles.detailText}>Submitted: {formatDateForSA(item.submitted) || 'Unknown'}</Text>
           </View>
           
           <View style={completedAppointmentsStyles.detailRow}>

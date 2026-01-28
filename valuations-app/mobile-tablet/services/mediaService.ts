@@ -1,4 +1,5 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import {
   insertMediaFile,
   getMediaFilesByEntity,
@@ -20,18 +21,34 @@ export interface PhotoResult {
 }
 
 class MediaService {
-  private mediaDirectory = `${FileSystem.documentDirectory}media/`;
+  private mediaDirectory: string | null = null;
 
   constructor() {
     this.initializeMediaDirectory();
   }
 
+  /**
+   * Get the media directory path
+   */
+  private async getMediaDirectory(): Promise<string> {
+    if (!this.mediaDirectory) {
+      // In SDK 54, documentDirectory is available in the legacy module
+      const docDir = FileSystem.documentDirectory;
+      if (!docDir) {
+        throw new Error('documentDirectory is not available');
+      }
+      this.mediaDirectory = `${docDir}media/`;
+    }
+    return this.mediaDirectory;
+  }
+
   private async initializeMediaDirectory() {
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.mediaDirectory);
+      const mediaDir = await this.getMediaDirectory();
+      const dirInfo = await FileSystem.getInfoAsync(mediaDir);
       if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(this.mediaDirectory, { intermediates: true });
-        console.log('Created media directory:', this.mediaDirectory);
+        await FileSystem.makeDirectoryAsync(mediaDir, { intermediates: true });
+        console.log('Created media directory:', mediaDir);
       }
     } catch (error) {
       console.error('Error creating media directory:', error);
@@ -39,7 +56,10 @@ class MediaService {
   }
 
   /**
-   * Process and save a photo to local storage
+   * Process and save a photo to local storage AND device gallery
+   * Photos are saved to both:
+   * 1. App's private directory (for app use)
+   * 2. Device's media library (visible in Gallery app)
    */
   async savePhoto(photoUri: string, entityName: string, entityID: number, metadata?: any): Promise<MediaFile> {
     try {
@@ -55,13 +75,45 @@ class MediaService {
       const timestamp = new Date().getTime();
       const extension = photoUri.split('.').pop() || 'jpg';
       const fileName = `${entityName}_${entityID}_${timestamp}.${extension}`;
-      const localPath = `${this.mediaDirectory}${fileName}`;
+      const mediaDir = await this.getMediaDirectory();
+      const localPath = `${mediaDir}${fileName}`;
 
       // Copy the image to our media directory (preserving full quality for high-value art)
       await FileSystem.copyAsync({
         from: photoUri,
         to: localPath
       });
+
+      // Also save to device's media library so it appears in Gallery
+      try {
+        // Request permissions first
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status === 'granted') {
+          // Create a user-friendly album name
+          const albumName = 'Valuations App';
+          
+          // Check if album exists, create if not
+          let album = await MediaLibrary.getAlbumAsync(albumName);
+          if (!album) {
+            album = await MediaLibrary.createAlbumAsync(albumName, localPath, false);
+            console.log('📸 Created album:', albumName);
+          }
+          
+          // Save photo to gallery
+          const asset = await MediaLibrary.createAssetAsync(localPath);
+          if (album) {
+            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+            console.log('📸 Saved photo to Gallery:', asset.uri);
+          } else {
+            console.log('📸 Saved photo to Gallery (no album):', asset.uri);
+          }
+        } else {
+          console.warn('⚠️ Media library permission not granted - photo saved locally but not in Gallery');
+        }
+      } catch (galleryError) {
+        // Don't fail the whole operation if gallery save fails
+        console.warn('⚠️ Failed to save photo to Gallery (non-critical):', galleryError);
+      }
 
       // Get file size
       const fileInfo = await FileSystem.getInfoAsync(localPath);
@@ -296,7 +348,8 @@ class MediaService {
           }
 
           // Download the file
-          const localPath = `${this.mediaDirectory}${serverMediaFile.FileName}`;
+          const mediaDir = await this.getMediaDirectory();
+          const localPath = `${mediaDir}${serverMediaFile.FileName}`;
           const downloadResult = await FileSystem.downloadAsync(
             serverMediaFile.BlobURL,
             localPath
@@ -352,10 +405,11 @@ class MediaService {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-      const files = await FileSystem.readDirectoryAsync(this.mediaDirectory);
+      const mediaDir = await this.getMediaDirectory();
+      const files = await FileSystem.readDirectoryAsync(mediaDir);
       
       for (const fileName of files) {
-        const filePath = `${this.mediaDirectory}${fileName}`;
+        const filePath = `${mediaDir}${fileName}`;
         const fileInfo = await FileSystem.getInfoAsync(filePath);
         
         if (fileInfo.exists && fileInfo.modificationTime && fileInfo.modificationTime < cutoffDate.getTime()) {
@@ -373,11 +427,12 @@ class MediaService {
    */
   async getStorageStats(): Promise<{ totalFiles: number; totalSize: number }> {
     try {
-      const files = await FileSystem.readDirectoryAsync(this.mediaDirectory);
+      const mediaDir = await this.getMediaDirectory();
+      const files = await FileSystem.readDirectoryAsync(mediaDir);
       let totalSize = 0;
 
       for (const fileName of files) {
-        const filePath = `${this.mediaDirectory}${fileName}`;
+        const filePath = `${mediaDir}${fileName}`;
         const fileInfo = await FileSystem.getInfoAsync(filePath);
         if (fileInfo.exists && (fileInfo as any).size) {
           totalSize += (fileInfo as any).size;

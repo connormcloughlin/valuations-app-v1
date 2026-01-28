@@ -52,7 +52,7 @@ export const AppointmentSchema = z.object({
   appointmentDate: z.string().optional(),
   policyNo: z.string().optional(),
   policyNumber: z.string().optional(),
-  sumInsured: z.string().optional().nullable(),
+  sumInsured: z.union([z.string(), z.number()]).optional().nullable(),
   broker: z.string().optional().nullable(),
   notes: z.string().optional(),
   orderNumber: z.union([z.string(), z.number()], {

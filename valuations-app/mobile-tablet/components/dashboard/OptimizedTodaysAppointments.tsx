@@ -11,6 +11,7 @@ import connectionUtils from '../../utils/connectionUtils';
 // Dynamic import to prevent bundling at startup
 const getRequestDeduplication = () => import('../../core/requestDeduplication');
 import { LoadingState, SkeletonLoader } from '../LoadingStates';
+import { getStartOfTodayISO, getEndOfTodayISO, formatTimeForSA, getTodayInSA } from '../../utils/dateUtils';
 
 interface Appointment {
   id: string;
@@ -98,20 +99,13 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
       const appointmentsData = await requestDeduplication.deduplicateRequest(
         cacheKey,
         async () => {
-          // Create today's date range
-          const today = new Date();
-          const startOfDay = new Date(today);
-          startOfDay.setHours(0, 0, 0, 0);
+          // Create today's date range in South Africa timezone
+          const startDateFrom = getStartOfTodayISO();
+          const startDateTo = getEndOfTodayISO();
           
-          const endOfDay = new Date(today);
-          endOfDay.setHours(23, 59, 59, 999);
-          
-          // Format dates to ISO string format
-          const startDateFrom = startOfDay.toISOString();
-          const startDateTo = endOfDay.toISOString();
-          
-          // Create cache key for today's appointments
-          const cacheKey = `todays_appointments_${today.toDateString()}`;
+          // Create cache key for today's appointments using SA date
+          const todaySA = getTodayInSA();
+          const cacheKey = `todays_appointments_${todaySA.toISOString().split('T')[0]}`;
           
           // Check if we're online and if force reload is requested
           const isOnline = await connectionUtils.getStatus();
@@ -128,13 +122,13 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
             if (cachedData) {
               // Support both raw array and wrapped object shapes
               if (Array.isArray(cachedData)) {
-                console.log(`✅ Cache hit for todays_appointments_${today.toDateString()}: ${(JSON.stringify(cachedData).length / 1024).toFixed(1)}KB`);
+                console.log(`✅ Cache hit for ${cacheKey}: ${(JSON.stringify(cachedData).length / 1024).toFixed(1)}KB`);
                 console.log('✅ Using cached today\'s appointments data');
                 return cachedData;
               }
               if (cachedData && Array.isArray((cachedData as any).data)) {
                 const arr = (cachedData as any).data;
-                console.log(`✅ Cache hit for todays_appointments_${today.toDateString()}: ${(JSON.stringify(arr).length / 1024).toFixed(1)}KB`);
+                console.log(`✅ Cache hit for ${cacheKey}: ${(JSON.stringify(arr).length / 1024).toFixed(1)}KB`);
                 console.log('✅ Using cached today\'s appointments data (wrapped)');
                 return arr;
               }
@@ -187,8 +181,8 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
       console.log(`Found ${foundCount} appointments for today`);
       
       // Cache the data for display
-      const today = new Date();
-      const displayCacheKey = `todays_appointments_${today.toDateString()}`;
+      const todaySA = getTodayInSA();
+      const displayCacheKey = `todays_appointments_${todaySA.toISOString().split('T')[0]}`;
       await storeDataForKey(displayCacheKey, appointmentsData, 1440); // Cache for 24 hours
       console.log('💾 Caching today\'s appointments data...');
       console.log(`📦 Stored ${displayCacheKey}: ${(JSON.stringify(appointmentsData).length / 1024).toFixed(1)}KB, TTL: 1440min`);
@@ -201,8 +195,8 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
       
       // Try to load from cache as fallback
       try {
-        const today = new Date();
-        const cacheKey = `todays_appointments_${today.toDateString()}`;
+        const todaySA = getTodayInSA();
+        const cacheKey = `todays_appointments_${todaySA.toISOString().split('T')[0]}`;
         const cachedData = await getDataForKey(cacheKey);
         if (cachedData) {
           console.log('📦 Using cached data as fallback');
@@ -284,7 +278,7 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
                   {appointment.address}
                 </Text>
                 <Text style={todaysAppointmentsStyles.appointmentDetails}>
-                  {appointment.client} • {appointment.date}
+                  {appointment.client} • {formatTimeForSA(appointment.date)}
                 </Text>
                 {appointment.policyNo && (
                   <Text style={todaysAppointmentsStyles.policyText}>

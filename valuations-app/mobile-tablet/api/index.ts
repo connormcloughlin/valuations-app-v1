@@ -1,6 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../constants/apiConfig';
+import appointmentsApi from './appointments';
 
 // Create axios instance
 const axiosInstance = axios.create({
@@ -11,11 +12,30 @@ const axiosInstance = axios.create({
   }
 });
 
-// Add request interceptor to include user context (JWT-only mode)
+// Add request interceptor to include user context and JWT token (JWT-only mode)
 axiosInstance.interceptors.request.use(
   async (config) => {
     try {
-      // Get user context from constants (JWT-only mode)
+      // Get JWT token and auth headers from sessionService
+      const sessionService = (await import('../core/auth/sessionService')).default;
+      const authHeaders = await sessionService.getAuthHeaders();
+      
+      // Add Authorization header with JWT token (required for authentication)
+      if (authHeaders && authHeaders.Authorization) {
+        config.headers['Authorization'] = authHeaders.Authorization;
+        if (__DEV__) {
+          console.log('🔐 JWT token added to Authorization header');
+        }
+      } else {
+        console.warn('⚠️ No JWT token available for API request - authentication may fail');
+      }
+      
+      // Merge any additional headers from sessionService (like X-User-Context)
+      if (authHeaders) {
+        Object.assign(config.headers, authHeaders);
+      }
+      
+      // Get user context from constants (JWT-only mode) for additional headers
       const { USER_CONTEXT_HEADER_NAME } = await import('../constants/apiConfig');
       const userContext = await AsyncStorage.getItem('userContext');
       
@@ -489,6 +509,15 @@ export default {
   getRiskTemplateItems,
   clearAllCachedData,
   syncChanges,
+  // Appointments methods
+  getAppointments: appointmentsApi.getAppointments,
+  getAppointmentById: appointmentsApi.getAppointmentById,
+  getAppointmentsByStatus: appointmentsApi.getAppointmentsByStatus,
+  getAppointmentsWithOrders: appointmentsApi.getAppointmentsWithOrders,
+  getAppointmentsWithOrdersByStatus: appointmentsApi.getAppointmentsWithOrdersByStatus,
+  getAppointmentsByListView: appointmentsApi.getAppointmentsByListView,
+  updateAppointment: appointmentsApi.updateAppointment,
+  updateRiskAssessmentMasterStatus: appointmentsApi.updateRiskAssessmentMasterStatus,
   
   // Function to get risk assessment master by order ID
   getRiskAssessmentMasterByOrder: async (orderId: string): Promise<ApiResponse> => {

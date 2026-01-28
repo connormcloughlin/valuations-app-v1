@@ -21,6 +21,7 @@ import { bundleOptimization } from '../core/bundleOptimization';
 import { useColorScheme } from '../hooks/useColorScheme';
 import { useOrientation } from '../hooks/useOrientation';
 import { logNavigation } from '../utils/logger';
+import SimplePerformanceMonitor from '../components/SimplePerformanceMonitor';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -128,7 +129,7 @@ export default function RootLayout() {
                 screenOptions={{ 
                   headerShown: false,
                   // Add animation based on orientation
-                  animation: orientation === 'landscape' ? 'slide_from_right' : 'default', 
+                  animation: orientation === 'landscape' ? 'slide_from_right' : 'default',
                 }}
               >
               <Stack.Screen name="index" />
@@ -148,6 +149,7 @@ export default function RootLayout() {
             </DashboardProvider>
           </AuthProvider>
         </PaperProvider>
+        <SimplePerformanceMonitor />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

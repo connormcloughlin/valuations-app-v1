@@ -9,6 +9,7 @@ import prefetchService from '../../../services/prefetchService';
 import { PrefetchProgressIndicator } from '../../../components/PrefetchProgressIndicator';
 import { appointmentDetailsStyles } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
+import { formatDateTimeForSA } from '../../../utils/dateUtils';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../../types/api';
@@ -243,8 +244,8 @@ export default function AppointmentDetails() {
     );
   }
   
-  const formattedDate = appointment.date?.split(' ')[0] || '';
-  const formattedTime = appointment.date?.split(' ')[1] || '';
+  // Format date and time from UTC date string
+  const { date: formattedDate, time: formattedTime } = formatDateTimeForSA(appointment.date);
   
   return (
     <>

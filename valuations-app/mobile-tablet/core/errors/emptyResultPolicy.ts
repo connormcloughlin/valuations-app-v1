@@ -41,6 +41,14 @@ export const EMPTY_RESULT_POLICIES: Record<string, EmptyResultPolicy> = {
     reason: 'Users may have no appointments - this is normal'
   },
   
+  // Appointments list-view - 404 means no appointments matching filter (normal)
+  'appointments.list-view': {
+    treatStatus: [204],
+    treat404: true,
+    treatEmptyArray: true,
+    reason: 'Users may have no appointments matching the filter criteria - this is normal'
+  },
+  
   // Dashboard stats - 404 should not happen
   'appointments.dashboard': {
     treatStatus: [204],

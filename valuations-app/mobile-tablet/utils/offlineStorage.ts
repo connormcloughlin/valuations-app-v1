@@ -12,6 +12,23 @@ const STORAGE_KEYS = {
   FIELD_CONFIG: 'field_config_',
 };
 
+/**
+ * Helper function to check if an appointment is completed
+ * Only incomplete appointments should be cached for offline use
+ */
+export function isAppointmentCompleted(appointment: any): boolean {
+  const status = (appointment.Invite_Status || appointment.inviteStatus || appointment.status || '').toLowerCase();
+  const completedStatuses = ['completed', 'complete', 'done', 'finished', 'closed'];
+  return completedStatuses.some(completed => status.includes(completed));
+}
+
+/**
+ * Filter out completed appointments - only cache incomplete ones for offline use
+ */
+export function filterIncompleteAppointments(appointments: any[]): any[] {
+  return appointments.filter(appointment => !isAppointmentCompleted(appointment));
+}
+
 // Store API data in AsyncStorage with managed caching
 export const storeApiData = async (key: string, data: any, ttl?: number): Promise<void> => {
   try {

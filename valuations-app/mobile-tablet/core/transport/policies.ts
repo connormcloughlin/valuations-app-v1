@@ -35,6 +35,13 @@ export const policies = new Map<string, TransportPolicy>([
     interpretEmptyPolicyKey: 'appointments_empty'
   }],
 
+  ['appointments.list-view', {
+    timeoutMs: 45000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 5 * 60 * 1000, // 5 minutes
+    interpretEmptyPolicyKey: 'appointments_empty'
+  }],
+
   // Risk Templates endpoints
   ['risk-templates.list', {
     timeoutMs: 20000,

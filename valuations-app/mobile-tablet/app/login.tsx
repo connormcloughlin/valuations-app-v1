@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import {
   View,
   Text,
@@ -13,13 +13,17 @@ import { logNavigation } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
 import { loginStyles } from './GlobalStyles';
 import { ProgressiveLoading } from '../components/LoadingStates';
+import { useRenderCount } from '../hooks/useRenderCount';
 
 type LoginStep = 'idle' | 'initiating' | 'opening_azure' | 'authenticating' | 'completing' | 'success' | 'error';
 
-export default function LoginScreen() {
+const LoginScreen = memo(function LoginScreen() {
   const { loginWithAzure, isLoading } = useAuth();
   const [currentStep, setCurrentStep] = useState<LoginStep>('idle');
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  
+  // Monitor re-renders for performance debugging
+  const { renderCount } = useRenderCount('LoginScreen', __DEV__);
 
   const loginSteps = [
     'Initiating login...',
@@ -132,4 +136,6 @@ export default function LoginScreen() {
       </View>
     </View>
   );
-} 
+});
+
+export default LoginScreen; 
