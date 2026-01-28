@@ -143,7 +143,9 @@ module.exports = {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "runtimeVersion": "1.0.0",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      },
       "softwareKeyboardLayoutMode": "pan",
       "allowBackup": true,
       "permissions": [

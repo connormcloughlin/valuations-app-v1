@@ -137,35 +137,79 @@ Thank you for choosing our services.
 
 /**
  * Format a date in a user-friendly way
- * @param {string} dateString - ISO date string
+ * Handles UTC dates from backend and displays them in South Africa timezone
+ * @param {string} dateString - ISO date string (UTC)
  * @returns {string} - Formatted date
  */
 const formatDate = (dateString) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-ZA', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  if (!dateString) return 'Unknown';
+  
+  try {
+    // Parse as UTC date
+    const date = new Date(dateString);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date string:', dateString);
+      return 'Invalid date';
+    }
+    
+    // Format for South Africa timezone
+    return date.toLocaleDateString('en-ZA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'Africa/Johannesburg'
+    });
+  } catch (error) {
+    console.warn('Error formatting date:', dateString, error);
+    return 'Invalid date';
+  }
 };
 
 /**
  * Format time in a user-friendly way
- * @param {string} timeString - Time string (e.g., "14:30")
+ * Handles UTC time strings from backend and displays them in South Africa timezone
+ * @param {string} timeString - Time string (e.g., "14:30") or ISO date string (UTC)
  * @returns {string} - Formatted time
  */
 const formatTime = (timeString) => {
-  const [hours, minutes] = timeString.split(':');
-  const time = new Date();
-  time.setHours(parseInt(hours, 10));
-  time.setMinutes(parseInt(minutes, 10));
+  if (!timeString) return 'Time TBD';
   
-  return time.toLocaleTimeString('en-ZA', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  });
+  try {
+    // If it's an ISO date string, parse it directly
+    if (timeString.includes('T') || timeString.includes('Z')) {
+      const date = new Date(timeString);
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date string:', timeString);
+        return 'Time TBD';
+      }
+      
+      return date.toLocaleTimeString('en-ZA', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Africa/Johannesburg'
+      });
+    }
+    
+    // Otherwise, treat as time string (e.g., "14:30")
+    const [hours, minutes] = timeString.split(':');
+    const time = new Date();
+    time.setUTCHours(parseInt(hours, 10));
+    time.setUTCMinutes(parseInt(minutes, 10));
+    
+    return time.toLocaleTimeString('en-ZA', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Africa/Johannesburg'
+    });
+  } catch (error) {
+    console.warn('Error formatting time:', timeString, error);
+    return 'Time TBD';
+  }
 };
 
 export default {
