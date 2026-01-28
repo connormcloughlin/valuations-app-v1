@@ -143,6 +143,7 @@ module.exports = {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "compileSdkVersion": 35,
       "runtimeVersion": {
         "policy": "appVersion"
       },
