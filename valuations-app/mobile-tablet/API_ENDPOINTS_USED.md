@@ -238,7 +238,7 @@ This document provides a comprehensive list of all external API endpoints used b
 ## Synchronization Endpoints
 
 ### 1. Sync Changes
-- **Endpoint**: `POST /sync/changes`
+- **Endpoint**: `POST /sync/batch`
 - **Purpose**: Synchronize local changes with server
 - **Parameters**: Sync data object with:
   - `riskAssessmentItems` (array): Modified items

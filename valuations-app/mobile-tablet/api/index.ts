@@ -2,6 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../constants/apiConfig';
 import appointmentsApi from './appointments';
+import { debugLog } from '../utils/debugUtils';
 
 // Create axios instance
 const axiosInstance = axios.create({
@@ -382,7 +383,11 @@ const syncChanges = async (syncData: {
       syncTimestamp: syncData.syncTimestamp
     });
 
-    const response = await axiosInstance.post('/sync/changes', syncData);
+    // Dev/debug utility log to allow copy/paste of the exact payload for endpoint testing
+    debugLog('SYNC POST /sync/batch payload (object)', syncData);
+    debugLog('SYNC POST /sync/batch payload (json)', JSON.stringify(syncData, null, 2));
+
+    const response = await axiosInstance.post('/sync/batch', syncData);
     
     return {
       success: true,

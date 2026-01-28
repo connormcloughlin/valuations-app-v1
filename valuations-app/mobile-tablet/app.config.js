@@ -173,6 +173,16 @@ module.exports = {
       "expo-system-ui",
       "expo-updates",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 24
+          }
+        }
+      ],
+      [
         "expo-media-library",
         {
           "photosPermission": "Allow Valuations App to save photos to your gallery.",

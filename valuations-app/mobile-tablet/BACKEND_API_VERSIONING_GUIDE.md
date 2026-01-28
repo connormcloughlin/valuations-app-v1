@@ -100,7 +100,7 @@ DELETE /media/{mediaId}                     → DELETE /api/v1/media/{mediaId}
 
 #### Current Endpoints → Versioned Endpoints
 ```
-POST /sync/changes                         → POST /api/v1/sync/changes
+POST /sync/batch                           → POST /api/v1/sync/batch
 GET  /sync/changes                         → GET  /api/v1/sync/changes
 POST /sync/batch                           → POST /api/v1/sync/batch
 GET  /sync/sessions                        → GET  /api/v1/sync/sessions
