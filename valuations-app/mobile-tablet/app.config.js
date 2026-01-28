@@ -60,12 +60,12 @@ const appEnv = process.env.APP_ENV || 'development';
 const getPackageName = () => {
   switch (appEnv) {
     case 'staging':
-      return 'com.anonymous.valuationsmobiletablet.staging';
+      return 'com.anonymous.qantamvaluationsmobiletablet.staging';
     case 'production':
-      return 'com.anonymous.valuationsmobiletablet';
+      return 'com.anonymous.qantamvaluationsmobiletablet';
     case 'development':
     default:
-      return 'com.anonymous.valuationsmobiletablet.dev';
+      return 'com.anonymous.qantamvaluationsmobiletablet.dev';
   }
 };
 
