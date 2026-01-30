@@ -192,17 +192,6 @@ module.exports = {
           "isAccessMediaLocationEnabled": true
         }
       ],
-      [
-        "react-native-msal",
-        {
-          "clientId": process.env.AZURE_MOBILE_CLIENT_ID,
-          "authority": `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}`,
-          "redirectUri": process.env.AZURE_REDIRECT_URI,
-          "additionalScopes": [`api://${process.env.AZURE_API_CLIENT_ID}/access_as_user`],
-          "additionalParameters": {},
-          "webviewParameters": {}
-        }
-      ]
     ],
     "newArchEnabled": true
   }
