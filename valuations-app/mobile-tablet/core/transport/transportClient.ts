@@ -3,6 +3,8 @@ import { API_BASE_URL } from '../../constants/apiConfig';
 import { policies } from './policies';
 import { handleApiError, handleApiSuccess } from '../errors/errorHandler';
 import { logger } from '../logging';
+import { isReviewMode } from '../reviewMode/reviewMode';
+import { getMockResponse } from '../reviewMode/mockData';
 
 // Transport client configuration
 interface TransportConfig {
@@ -114,6 +116,19 @@ class TransportClient {
     options: RequestOptions = {}
   ): Promise<T> {
     const { endpointId, timeout, retries, skipCache, priority } = options;
+
+    // Review mode: return mock data without calling the network
+    const inReviewMode = await isReviewMode();
+    if (inReviewMode) {
+      const mock = await getMockResponse(
+        endpointId,
+        config.method?.toUpperCase() || 'GET',
+        config.url || '',
+        config.params,
+        config.data
+      );
+      return mock as T;
+    }
     
     // Get policy for endpoint if specified
     const policy = endpointId ? policies.get(endpointId) : null;

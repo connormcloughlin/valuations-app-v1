@@ -345,6 +345,7 @@ class SessionService {
       // Clear user context (separate storage)
       await AsyncStorage.removeItem('userContext');
       await AsyncStorage.removeItem('authToken');
+      await AsyncStorage.removeItem('reviewMode');
       
       // Clear memory state
       this.currentSession = null;

@@ -1,4 +1,4 @@
-// Config plugin to ensure COMPILE_SDK_VERSION is set high enough for react-native-msal
+// Config plugin to ensure COMPILE_SDK_VERSION is set for Android builds.
 // Runs on the Android project build.gradle and injects COMPILE_SDK_VERSION = 35 into the ext block.
 
 const { withProjectBuildGradle } = require('@expo/config-plugins');

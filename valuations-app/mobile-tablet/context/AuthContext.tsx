@@ -11,6 +11,11 @@ const getInitializeDatabase = () => import('../utils/db');
 import { AppState, AppStateStatus } from 'react-native';
 import { fullSecurePurge } from '../core/security';
 import { useRenderCount } from '../hooks/useRenderCount';
+import {
+  MOCK_REVIEWER_EMAIL,
+  MOCK_REVIEWER_PASSWORD,
+  REVIEW_MODE_STORAGE_KEY,
+} from '../core/reviewMode/constants';
 
 interface User {
   id: string;
@@ -26,6 +31,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   loginWithAzure: () => Promise<boolean>;
+  loginWithCredentials: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuthStatus: () => Promise<void>;
   validateToken: (token: string) => Promise<boolean>;
@@ -64,6 +70,40 @@ const isTokenExpired = (token: string): boolean => {
     return true; // Consider expired on error
   }
 };
+
+/**
+ * Base64 encode for mock JWT (works in React Native where btoa may be unavailable).
+ */
+function base64Encode(str: string): string {
+  if (typeof btoa !== 'undefined') {
+    return btoa(str);
+  }
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let output = '';
+  for (let i = 0; i < str.length; i += 3) {
+    const a = str.charCodeAt(i);
+    const b = i + 1 < str.length ? str.charCodeAt(i + 1) : -1;
+    const c = i + 2 < str.length ? str.charCodeAt(i + 2) : -1;
+    output += chars[a >> 2];
+    output += chars[((a & 3) << 4) | (b >= 0 ? b >> 4 : 0)];
+    output += b >= 0 ? chars[((b & 15) << 2) | (c >= 0 ? c >> 6 : 0)] : '=';
+    output += c >= 0 ? chars[c & 63] : '=';
+  }
+  return output;
+}
+
+/**
+ * Build a minimal mock JWT for review mode (client-side only; not verified by backend).
+ * Payload must include iat and exp for sessionService.persistSession.
+ */
+function buildMockJWT(): string {
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + 365 * 24 * 3600; // 1 year
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const payload = { iat: now, exp, sub: 'review-user-id', email: MOCK_REVIEWER_EMAIL };
+  const b64 = (obj: object) => base64Encode(JSON.stringify(obj));
+  return `${b64(header)}.${b64(payload)}.mock_signature`;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -290,6 +330,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         
         setUser(user);
+        if (session.email === MOCK_REVIEWER_EMAIL) {
+          await AsyncStorage.setItem(REVIEW_MODE_STORAGE_KEY, 'true');
+        }
         console.log(`🔐 User authenticated via sessionService: ${session.email}`);
       } else {
         console.log('🔐 No valid session found, user not authenticated');
@@ -311,8 +354,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // DEPRECATED: Legacy username/password login removed
-  // Use loginWithAzure() for proper Azure AD authentication
+  const loginAsReviewer = async (): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      const mockJwt = buildMockJWT();
+      await sessionService.persistSession(
+        mockJwt,
+        'mock-refresh-token',
+        MOCK_REVIEWER_EMAIL,
+        'review-user-id'
+      );
+      await AsyncStorage.setItem(REVIEW_MODE_STORAGE_KEY, 'true');
+      const mockUser: User = {
+        id: 'review-user-id',
+        name: 'Review User',
+        email: MOCK_REVIEWER_EMAIL,
+        token: mockJwt,
+      };
+      setUser(mockUser);
+      console.log('🔐 Mock reviewer login successful');
+      return true;
+    } catch (error) {
+      console.error('❌ Mock reviewer login error:', error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithCredentials = async (username: string, password: string): Promise<boolean> => {
+    const usernameTrimmed = username.trim().toLowerCase();
+    if (usernameTrimmed === MOCK_REVIEWER_EMAIL && password === MOCK_REVIEWER_PASSWORD) {
+      return loginAsReviewer();
+    }
+    return loginWithAzure();
+  };
 
   const loginWithAzure = async (): Promise<boolean> => {
     try {
@@ -433,7 +509,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Invalidate session using sessionService
       await sessionService.invalidate();
-      
+      await AsyncStorage.removeItem(REVIEW_MODE_STORAGE_KEY);
+
       // Perform secure data purge (S6 implementation)
       try {
         console.log('🔐 Starting secure data purge...');
@@ -473,6 +550,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading,
     isAuthenticated,
     loginWithAzure,
+    loginWithCredentials,
     logout,
     checkAuthStatus,
     validateToken
@@ -514,6 +592,7 @@ export function useAuth() {
       isLoading: true,
       isAuthenticated: false,
       loginWithAzure: async () => false,
+      loginWithCredentials: async () => false,
       logout: async () => {},
       checkAuthStatus: async () => {},
       validateToken: async () => false

@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   AppState,
   AppStateStatus,
+  TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { logNavigation } from '../utils/logger';
@@ -18,7 +19,9 @@ import { useRenderCount } from '../hooks/useRenderCount';
 type LoginStep = 'idle' | 'initiating' | 'opening_azure' | 'authenticating' | 'completing' | 'success' | 'error';
 
 const LoginScreen = memo(function LoginScreen() {
-  const { loginWithAzure, isLoading } = useAuth();
+  const { loginWithAzure, loginWithCredentials, isLoading } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [currentStep, setCurrentStep] = useState<LoginStep>('idle');
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   
@@ -49,6 +52,29 @@ const LoginScreen = memo(function LoginScreen() {
     return () => subscription?.remove();
   }, [currentStep]);
 
+  const handleSignIn = async () => {
+    if (currentStep !== 'idle') return;
+    try {
+      setCurrentStep('initiating');
+      const success = await loginWithCredentials(username, password);
+      if (success) {
+        setCurrentStep('completing');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setCurrentStep('success');
+        router.replace('/(tabs)');
+      } else {
+        setCurrentStep('error');
+        Alert.alert('Login Failed', 'Login failed. Please try again.');
+        setCurrentStep('idle');
+      }
+    } catch (error) {
+      setCurrentStep('error');
+      console.error('🔐 Sign in error:', error);
+      Alert.alert('Error', 'An error occurred during sign in. Please try again.');
+      setCurrentStep('idle');
+    }
+  };
+
   const handleAzureLogin = async () => {
     if (currentStep !== 'idle') return; // Prevent multiple clicks
     
@@ -56,7 +82,6 @@ const LoginScreen = memo(function LoginScreen() {
       setCurrentStep('initiating');
       console.log('🔐 Starting Azure AD login process...');
       
-      // Step 1: Initiate login
       setCurrentStep('opening_azure');
       console.log('🔐 Opening Azure AD authentication...');
       
@@ -66,13 +91,11 @@ const LoginScreen = memo(function LoginScreen() {
         setCurrentStep('completing');
         console.log('🔐 Azure AD login successful, completing authentication...');
         
-        // Small delay to show completion step
         await new Promise(resolve => setTimeout(resolve, 500));
         
         setCurrentStep('success');
         console.log('🔐 Login completed successfully, navigating to dashboard');
         
-        // Navigate to dashboard
         router.replace('/(tabs)');
       } else {
         setCurrentStep('error');
@@ -100,6 +123,42 @@ const LoginScreen = memo(function LoginScreen() {
         <Text style={loginStyles.subtitle}>Sign in with your Azure AD account</Text>
 
         <View style={loginStyles.form}>
+          <TextInput
+            style={loginStyles.input}
+            placeholder="Username or email (optional)"
+            placeholderTextColor="#999"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!isProcessing}
+          />
+          <TextInput
+            style={loginStyles.input}
+            placeholder="Password (optional)"
+            placeholderTextColor="#999"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            editable={!isProcessing}
+          />
+          <TouchableOpacity 
+            style={[
+              loginStyles.loginButton, 
+              isProcessing && loginStyles.loginButtonDisabled
+            ]} 
+            onPress={handleSignIn}
+            disabled={isProcessing}
+          >
+            {isProcessing ? (
+              <View style={loginStyles.loadingContainer}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={loginStyles.loadingText}>Signing in...</Text>
+              </View>
+            ) : (
+              <Text style={loginStyles.loginButtonText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
           <TouchableOpacity 
             style={[
               loginStyles.azureButton, 
@@ -122,7 +181,7 @@ const LoginScreen = memo(function LoginScreen() {
               <Text style={loginStyles.azureButtonText}>Sign In with Azure AD</Text>
             )}
           </TouchableOpacity>
-          
+
           {isProcessing && (
             <View style={loginStyles.statusContainer}>
               <ProgressiveLoading
