@@ -15,8 +15,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 }) => {
   const { user } = useAuth();
   
-  // Extract first name from user's full name
-  const firstName = user?.name?.split(' ')[0] || 'User';
+  // Extract first name from user's full name and convert to Initcap (first letter uppercase, rest lowercase)
+  const getFirstName = () => {
+    const name = user?.name?.split(' ')[0] || 'User';
+    if (name.length === 0) return 'User';
+    return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  };
+  
+  const firstName = getFirstName();
 
   return (
     <View style={dashboardHeaderStyles.header}>

@@ -10,6 +10,10 @@
       "android": {
         "buildType": "apk"
       },
+      "env": {
+        "APP_ENV": "development",
+        "ENV_FILE": ".env.development"
+      },
       "channel": "development"
     },
     "staging": {
@@ -21,7 +25,7 @@
         "APP_ENV": "staging",
         "ENV_FILE": ".env.staging"
       },
-      "channel": "performance-refactor",
+      "channel": "staging",
       "autoIncrement": true
     },
     "production": {

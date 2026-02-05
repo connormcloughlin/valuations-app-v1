@@ -11,6 +11,7 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import ConnectionStatus from '../components/ConnectionStatus';
+import UpdateNotification from '../components/UpdateNotification';
 import connectionUtils from '../utils/connectionUtils';
 // Dynamic import to prevent bundling at startup
 const getInitializeDatabase = () => import('../utils/db');
@@ -49,6 +50,11 @@ export default function RootLayout() {
   
   // Remove font loading since it might be causing issues
   const [loaded] = useFonts({});
+  
+  // Update notification state
+  const [updateStatus, setUpdateStatus] = useState<'checking' | 'downloading' | 'ready' | 'error' | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<string | undefined>(undefined);
+  const [showUpdateNotification, setShowUpdateNotification] = useState(false);
 
   useEffect(() => {
     if (loaded) {
@@ -90,27 +96,68 @@ export default function RootLayout() {
     console.log('✅ Performance optimizations initialized');
   }, []);
 
-  // Automatic update checking
+  // Automatic update checking with user notifications
   useEffect(() => {
     const checkForUpdates = async () => {
       try {
-        // Only check for updates if we're not in development
-        if (!__DEV__) {
+        // Only check for updates if we're not in development and updates are enabled
+        if (!__DEV__ && Updates.isEnabled) {
+          // Show checking status
+          setUpdateStatus('checking');
+          setUpdateMessage('Checking for updates...');
+          setShowUpdateNotification(true);
+          
           const update = await Updates.checkForUpdateAsync();
+          
           if (update.isAvailable) {
-            await Updates.fetchUpdateAsync();
-            // Reload the app to apply the update
-            await Updates.reloadAsync();
+            // Show downloading status
+            setUpdateStatus('downloading');
+            setUpdateMessage('Downloading update...');
+            
+            const result = await Updates.fetchUpdateAsync();
+            
+            if (result.isNew) {
+              // Show ready status
+              setUpdateStatus('ready');
+              setUpdateMessage('Update ready! Reloading app...');
+              
+              // Wait a moment so user can see the message, then reload
+              setTimeout(async () => {
+                await Updates.reloadAsync();
+              }, 1500);
+            } else {
+              // Update was already downloaded
+              setUpdateStatus('ready');
+              setUpdateMessage('Update ready! Reloading app...');
+              setTimeout(async () => {
+                await Updates.reloadAsync();
+              }, 1500);
+            }
+          } else {
+            // No update available - hide notification after a brief moment
+            setTimeout(() => {
+              setShowUpdateNotification(false);
+              setUpdateStatus(null);
+            }, 1000);
           }
         }
       } catch (error) {
-        console.log('Error checking for updates:', error);
-        // Don't show error to user for automatic checks
+        console.error('Error checking for updates:', error);
+        // Show error to user
+        setUpdateStatus('error');
+        setUpdateMessage('Update check failed. You can continue using the app.');
+        // Auto-hide error after 5 seconds
+        setTimeout(() => {
+          setShowUpdateNotification(false);
+          setUpdateStatus(null);
+        }, 5000);
       }
     };
 
-    // Check for updates when app starts
-    checkForUpdates();
+    // Check for updates when app starts (with a small delay to not block initial render)
+    const timeoutId = setTimeout(checkForUpdates, 1000);
+    
+    return () => clearTimeout(timeoutId);
   }, []);
 
   if (!loaded) {
@@ -124,6 +171,15 @@ export default function RootLayout() {
           <AuthProvider>
             <DashboardProvider>
               <ConnectionStatus showOffline={true} showOnline={true} />
+              <UpdateNotification 
+                visible={showUpdateNotification}
+                status={updateStatus}
+                message={updateMessage}
+                onDismiss={() => {
+                  setShowUpdateNotification(false);
+                  setUpdateStatus(null);
+                }}
+              />
               {/* Use simplified themes to avoid font issues */}
               <Stack
                 screenOptions={{ 

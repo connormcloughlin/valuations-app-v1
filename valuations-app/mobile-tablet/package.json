@@ -45,6 +45,7 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-msal": "^4.0.4",
     "react-native-paper": "^5.9.1",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
@@ -67,7 +68,9 @@
     "doctor": {
       "reactNativeDirectoryCheck": {
         "listUnknownPackages": false,
-        "exclude": []
+        "exclude": [
+          "react-native-msal"
+        ]
       }
     }
   },
