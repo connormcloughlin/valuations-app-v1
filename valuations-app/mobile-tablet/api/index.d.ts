@@ -89,11 +89,17 @@ export interface ApiClient {
   updateAppointment: (appointmentId: string, updates: { inviteStatus?: string }) => Promise<ApiResponse<Appointment>>;
   updateRiskAssessmentMasterStatus: (orderId: number, status: string) => Promise<ApiResponse<any>>;
   syncChanges: (syncData: any) => Promise<ApiResponse<any>>;
+  getSyncChanges: (params: { lastSync?: string; deviceId?: string; entities?: string[] }) => Promise<ApiResponse<any>>;
+  pushSyncBatch: (syncData: any) => Promise<ApiResponse<any>>;
+  getSyncSessions: (deviceId: string) => Promise<ApiResponse<any>>;
+  getSyncHealth: () => Promise<ApiResponse<any>>;
+  getRiskAssessmentMasterByOrder: (orderId: string) => Promise<ApiResponse<any>>;
+  getRiskAssessmentCompleteHierarchy: (orderId: string) => Promise<ApiResponse<any>>;
+  getOrderCategoryFieldConfigurations: (orderId: string) => Promise<ApiResponse<any>>;
   uploadMedia: (mediaData: any) => Promise<ApiResponse<any>>;
   getMediaForEntity: (entityName: string, entityID: string) => Promise<ApiResponse<any>>;
   deleteMedia: (mediaID: string) => Promise<ApiResponse<any>>;
   uploadMediaBatch: (mediaFiles: any[]) => Promise<ApiResponse<any>>;
-  getSyncHealth: () => Promise<ApiResponse<any>>;
 }
 
 declare const api: ApiClient;

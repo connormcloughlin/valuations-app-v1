@@ -222,6 +222,29 @@ const surveysApi = {
         status: error.status || 0
       };
     }
+  },
+
+  deleteSurvey: async (surveyId: string) => {
+    try {
+      await transportClient.delete('surveys.delete', `/surveys/${surveyId}`);
+      return { success: true, status: 200 };
+    } catch (error: any) {
+      console.error(`Error deleting survey ${surveyId}:`, error);
+      return { success: false, message: error.message || 'Network error', status: error.status || 0 };
+    }
+  },
+
+  uploadFile: async (surveyId: string, fileData: any) => {
+    try {
+      const payload = typeof fileData === 'string'
+        ? { uri: fileData }
+        : { name: fileData?.name, type: fileData?.type, itemId: fileData?.itemId };
+      const response = await transportClient.post('surveys.upload', `/surveys/${surveyId}/upload`, payload);
+      return { success: true, data: response, status: 200 };
+    } catch (error: any) {
+      console.error(`Error uploading file for survey ${surveyId}:`, error);
+      return { success: false, message: error.message || 'Network error', status: error.status || 0 };
+    }
   }
 };
 

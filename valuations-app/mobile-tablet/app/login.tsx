@@ -9,6 +9,7 @@ import {
   AppStateStatus,
   TextInput,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { logNavigation } from '../utils/logger';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +23,7 @@ const LoginScreen = memo(function LoginScreen() {
   const { loginWithAzure, loginWithCredentials, isLoading } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [currentStep, setCurrentStep] = useState<LoginStep>('idle');
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   
@@ -133,15 +135,29 @@ const LoginScreen = memo(function LoginScreen() {
             autoCorrect={false}
             editable={!isProcessing}
           />
-          <TextInput
-            style={loginStyles.input}
-            placeholder="Password (optional)"
-            placeholderTextColor="#999"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            editable={!isProcessing}
-          />
+          <View style={loginStyles.passwordInputRow}>
+            <TextInput
+              style={loginStyles.passwordInput}
+              placeholder="Password (optional)"
+              placeholderTextColor="#999"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              editable={!isProcessing}
+            />
+            <TouchableOpacity
+              style={loginStyles.passwordToggleBtn}
+              onPress={() => setShowPassword((prev) => !prev)}
+              disabled={isProcessing}
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <MaterialCommunityIcons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={24}
+                color="#666"
+              />
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity 
             style={[
               loginStyles.loginButton, 

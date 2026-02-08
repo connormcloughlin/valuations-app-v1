@@ -195,14 +195,24 @@ async function checkpointWal(): Promise<void> {
 let lastCheckpointTime = 0;
 const CHECKPOINT_INTERVAL = 5 * 60 * 1000; // Checkpoint every 5 minutes
 
+// Detect if an error indicates the native DB was released (stale reference)
+function isReleasedOrInvalidDbError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes('already released') ||
+    msg.includes('Cannot use shared object') ||
+    (msg.includes('prepareAsync') && msg.includes('Integer'))
+  );
+}
+
 // Helper to run SQL with promise
 export async function runSql(sql: string, params: any[] = []): Promise<SQLiteResult> {
   await ensureDatabaseConnection();
-  
+
   if (!db) {
     throw new Error('Database not initialized');
   }
-  
+
   // Periodically checkpoint WAL to prevent it from growing too large
   const now = Date.now();
   if (now - lastCheckpointTime > CHECKPOINT_INTERVAL) {
@@ -214,29 +224,37 @@ export async function runSql(sql: string, params: any[] = []): Promise<SQLiteRes
       console.warn('⚠️ Background WAL checkpoint failed (non-critical):', checkpointError);
     }
   }
-  
-  try {
+
+  const run = async (database: SQLite.SQLiteDatabase): Promise<SQLiteResult> => {
     if (sql.trim().toLowerCase().startsWith('select')) {
-      // For SELECT queries, use getAllAsync
-      const result = await db.getAllAsync(sql, params);
+      const result = await database.getAllAsync(sql, ...params);
       return {
-        rows: {
-          _array: result,
-          length: result.length
-        },
+        rows: { _array: result, length: result.length },
         rowsAffected: 0,
         insertId: null
       };
     } else {
-      // For other queries, use runAsync
-      const result = await db.runAsync(sql, params);
+      const result = await database.runAsync(sql, ...params);
       return {
         rows: { _array: [], length: 0 },
         rowsAffected: result.changes,
         insertId: result.lastInsertRowId
       };
     }
+  };
+
+  try {
+    return await run(db);
   } catch (error) {
+    if (isReleasedOrInvalidDbError(error)) {
+      console.warn('⚠️ Database connection was released, reinitializing and retrying...');
+      isDbReady = false;
+      db = null;
+      initPromise = null;
+      await ensureDatabaseConnection();
+      if (!db) throw new Error('Database not initialized');
+      return await run(db);
+    }
     console.error('Error executing SQL:', sql, params, error);
     throw error;
   }

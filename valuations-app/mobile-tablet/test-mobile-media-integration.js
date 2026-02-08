@@ -1,5 +1,5 @@
 // Test our mobile app's media API integration
-const api = require('./api/index.ts').default;
+const api = require('./api').default;
 
 // Simple test image as base64
 const TEST_IMAGE_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAGA0DC+hwAAAABJRU5ErkJggg==';
