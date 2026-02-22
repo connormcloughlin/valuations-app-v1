@@ -42,7 +42,7 @@ export default function ValuationSummaryCard({ assessmentTypes, totalValue }: Va
       <Card style={valuationSummaryCardStyles.summaryCard}>
         <Card.Content>
           {assessmentTypes.map((assessmentType, typeIndex) => (
-            <React.Fragment key={assessmentType.id}>
+            <React.Fragment key={assessmentType.id || `assessment-type-${typeIndex}`}>
               <View style={valuationSummaryCardStyles.assessmentTypeSummary}>
                 <View style={valuationSummaryCardStyles.assessmentTypeHeader}>
                   <Text style={valuationSummaryCardStyles.assessmentTypeName}>{assessmentType.name}</Text>
@@ -52,7 +52,7 @@ export default function ValuationSummaryCard({ assessmentTypes, totalValue }: Va
                 
                 {/* Render sections within this assessment type */}
                 {assessmentType.sections.map((section, sectionIndex) => (
-                  <View key={section.id} style={valuationSummaryCardStyles.sectionContainer}>
+                  <View key={section.id || `section-${typeIndex}-${sectionIndex}`} style={valuationSummaryCardStyles.sectionContainer}>
                     <View style={valuationSummaryCardStyles.sectionHeader}>
                       <Text style={valuationSummaryCardStyles.sectionName}>{section.name}</Text>
                       <Text style={valuationSummaryCardStyles.sectionValue}>R{section.totalValue.toLocaleString()}</Text>
@@ -61,7 +61,7 @@ export default function ValuationSummaryCard({ assessmentTypes, totalValue }: Va
                     
                     {/* Render categories within this section */}
                     {section.categories.map((category, categoryIndex) => (
-                      <View key={category.id} style={valuationSummaryCardStyles.categoryContainer}>
+                      <View key={category.id || `category-${typeIndex}-${sectionIndex}-${categoryIndex}`} style={valuationSummaryCardStyles.categoryContainer}>
                         <View style={valuationSummaryCardStyles.categoryHeader}>
                           <Text style={valuationSummaryCardStyles.categoryName}>{category.name}</Text>
                           <Text style={valuationSummaryCardStyles.categoryValue}>R{category.value.toLocaleString()}</Text>

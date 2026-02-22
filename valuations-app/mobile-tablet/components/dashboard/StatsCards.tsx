@@ -4,11 +4,12 @@ import { View } from '../Themed';
 import { Card, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { enhancedApiClient } from '../../api/enhancedClient';
+import transportClient from '../../core/transport/transportClient';
 import { statsCardsStyles } from '../../app/GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
 import { useDashboard } from '../../context/DashboardContext';
 import { setGlobalRefreshFunction } from '../../utils/dashboardRefresh';
+import riskAssessmentSyncService from '../../services/riskAssessmentSyncService';
 
 interface StatsData {
   scheduled: number;
@@ -27,9 +28,10 @@ interface ApiStatsResponse {
 
 interface StatsCardsProps {
   onCardPress: (cardType: 'scheduled' | 'inProgress' | 'completed' | 'finalise' | 'sync') => void;
+  forceReload?: boolean; // Add prop to force reload from API
 }
 
-export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
+export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress, forceReload = false }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   const { setRefreshStats } = useDashboard();
   
@@ -58,11 +60,11 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
       const startTime = Date.now();
       console.log(`📊 Fetching dashboard stats from: ${endpoint}`);
       console.log(`📊 Surveyor filtering will be handled by backend based on X-User-Context header`);
-      const response = await enhancedApiClient.get(endpoint);
+      const response = await transportClient.get('appointments.list', endpoint);
       const loadTime = Date.now() - startTime;
       
-      if (response?.data?.success && response?.data?.data) {
-        const data = response.data.data;
+      if (response?.success && response?.data) {
+        const data = response.data;
         
         console.log(`📊 Dashboard stats loaded in ${loadTime}ms:`, data);
         
@@ -76,7 +78,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
               case 'Booked':
                 scheduled = item.count;
                 break;
-              case 'In-progress':
+              case 'In-Progress':  // Fixed: API returns "In-Progress" not "In-progress"
                 inProgress = item.count;
                 break;
               case 'Completed':
@@ -95,12 +97,18 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
           finalise = data.byInviteStatus?.['Finalise'] || 0;
         }
         
+        // Get pending sync count from local database
+        const pendingChanges = await riskAssessmentSyncService.getPendingChangesCount();
+        const pendingSyncCount = pendingChanges.total || 0;
+        
+        console.log(`📊 Pending sync count: ${pendingSyncCount} (${pendingChanges.riskAssessmentItems} items, ${pendingChanges.appointments} appointments, ${pendingChanges.riskAssessmentMasters} masters, ${pendingChanges.mediaFiles} media)`);
+        
         const newStats = {
           scheduled,
           inProgress,
           completed,
           finalise,
-          pendingSync: data.pendingSync || 0,
+          pendingSync: pendingSyncCount,
           lastSync: new Date().toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
@@ -113,19 +121,42 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
         setStats(newStats);
       } else {
         console.error('❌ Failed to load dashboard stats:', response?.data?.message || 'Unknown error');
-        // Set error state for user feedback
+        
+        // Even if API fails, still get pending sync count from local database
+        const pendingChanges = await riskAssessmentSyncService.getPendingChangesCount();
+        const pendingSyncCount = pendingChanges.total || 0;
+        
+        console.log(`📊 Pending sync count (API failed): ${pendingSyncCount}`);
+        
+        // Set error state for user feedback but keep pending sync count
         setStats(prevStats => ({
           ...prevStats,
+          pendingSync: pendingSyncCount,
           lastSync: 'Error loading stats'
         }));
       }
     } catch (error) {
       console.error('❌ Error fetching dashboard stats:', error);
-      // Set error state for user feedback
-      setStats(prevStats => ({
-        ...prevStats,
-        lastSync: 'Error loading stats'
-      }));
+      
+      // Even if there's an error, try to get pending sync count from local database
+      try {
+        const pendingChanges = await riskAssessmentSyncService.getPendingChangesCount();
+        const pendingSyncCount = pendingChanges.total || 0;
+        
+        console.log(`📊 Pending sync count (error occurred): ${pendingSyncCount}`);
+        
+        setStats(prevStats => ({
+          ...prevStats,
+          pendingSync: pendingSyncCount,
+          lastSync: 'Error loading stats'
+        }));
+      } catch (syncError) {
+        console.error('❌ Error getting pending sync count:', syncError);
+        setStats(prevStats => ({
+          ...prevStats,
+          lastSync: 'Error loading stats'
+        }));
+      }
     } finally {
       setLoading(false);
     }
@@ -143,6 +174,15 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ onCardPress }) => {
   useEffect(() => {
     setGlobalRefreshFunction(refreshStats);
   }, [refreshStats]);
+
+  // Handle force reload when forceReload prop changes
+  useEffect(() => {
+    if (forceReload && isAuthenticated && user && !isLoading) {
+      console.log('🔄 Force reload triggered for StatsCards');
+      statsFetchedRef.current = false; // Allow fetching again
+      fetchStats();
+    }
+  }, [forceReload, isAuthenticated, user, isLoading, fetchStats]);
 
   // Don't render anything if auth is still loading or not authenticated
   if (isLoading || !isAuthenticated || !user) {

@@ -58,9 +58,10 @@ class AzureAdService {
         tokenEndpoint: `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/token`,
       };
 
-      // Use proper redirect URI for the current platform
+      // Use scheme from app config (per-environment: valuations-app, valuations-app-staging, valuations-app-dev)
+      const scheme = Constants.expoConfig?.extra?.appScheme ?? 'valuations-app';
       const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'valuations-app',
+        scheme,
         path: 'auth',
       });
 
@@ -172,7 +173,8 @@ class AzureAdService {
       
       // For AuthSession-based authentication, we can use the logout endpoint
       // to clear the session on Azure AD side
-      const logoutUrl = `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent('valuations-app://auth')}`;
+      const scheme = Constants.expoConfig?.extra?.appScheme ?? 'valuations-app';
+      const logoutUrl = `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(`${scheme}://auth`)}`;
       
       // Open logout URL to clear Azure AD session
       try {

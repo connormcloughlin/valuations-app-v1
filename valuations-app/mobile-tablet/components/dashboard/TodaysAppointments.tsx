@@ -4,9 +4,11 @@ import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import appointmentsApi from '../../api/appointments';
-import { storeDataForKey, getDataForKey } from '../../utils/offlineStorage';
+import { storeDataForKey, getDataForKey, removeDataForKey } from '../../utils/offlineStorage';
 import { todaysAppointmentsStyles } from '../../app/GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
+import connectionUtils from '../../utils/connectionUtils';
+import { getStartOfTodayISO, getEndOfTodayISO, formatTimeForSA, getTodayInSA } from '../../utils/dateUtils';
 
 interface Appointment {
   id: string;
@@ -21,9 +23,10 @@ interface Appointment {
 interface TodaysAppointmentsProps {
   onAppointmentPress: (id: string) => void;
   shouldFetchData?: boolean; // Add prop to control when to fetch data
+  forceReload?: boolean; // Add prop to force reload from API
 }
 
-export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppointmentPress, shouldFetchData = true }) => {
+export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppointmentPress, shouldFetchData = true, forceReload = false }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +58,15 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
     }
   }, [isAuthenticated, user, isLoading]);
 
+  // Handle force reload when forceReload prop changes
+  useEffect(() => {
+    if (forceReload && isAuthenticated && user && !isLoading && shouldFetchData) {
+      console.log('🔄 Force reload triggered for TodaysAppointments');
+      appointmentsFetchedRef.current = false; // Allow fetching again
+      fetchTodaysAppointments();
+    }
+  }, [forceReload, isAuthenticated, user, isLoading, shouldFetchData]);
+
   // Don't render anything if auth is still loading, not authenticated, or data fetching is disabled
   if (isLoading || !isAuthenticated || !user || !shouldFetchData) {
     return null;
@@ -65,61 +77,79 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
       setLoading(true);
       setError(null);
       
-      // Create today's date range
-      const today = new Date();
-      const startOfDay = new Date(today);
-      startOfDay.setHours(0, 0, 0, 0);
+      // Create today's date range in South Africa timezone
+      const startDateFrom = getStartOfTodayISO();
+      const startDateTo = getEndOfTodayISO();
       
-      const endOfDay = new Date(today);
-      endOfDay.setHours(23, 59, 59, 999);
+      // Create cache key for today's appointments using SA date
+      const todaySA = getTodayInSA();
+      const cacheKey = `todays_appointments_${todaySA.toISOString().split('T')[0]}`;
       
-      // Format dates to ISO string format
-      const startDateFrom = startOfDay.toISOString();
-      const startDateTo = endOfDay.toISOString();
+      // Check if we're online and if force reload is requested
+      const isOnline = await connectionUtils.getStatus();
       
-      // Create cache key for today's appointments
-      const cacheKey = `todays_appointments_${today.toDateString()}`;
-      
-      // Check cache first
-      console.log('📦 Checking cache for today\'s appointments...');
-      const cachedData = await getDataForKey(cacheKey);
-      if (cachedData && cachedData.data) {
-        console.log('✅ Using cached today\'s appointments data');
-        setAppointments(cachedData.data);
-        setLoading(false);
-        return; // Exit early if we have valid cached data
+      // If force reload is requested and we're online, clear cache
+      if (forceReload && isOnline) {
+        console.log('🔄 Force reload requested and online - clearing cache for today\'s appointments');
+        await removeDataForKey(cacheKey);
       }
       
-      console.log('Fetching today\'s appointments:', { startDateFrom, startDateTo });
+      // Check cache first (only if not force reloading or offline)
+      if (!forceReload) {
+        console.log('📦 Checking cache for today\'s appointments...');
+        const cachedData = await getDataForKey(cacheKey);
+        if (cachedData && cachedData.data) {
+          console.log('✅ Using cached today\'s appointments data');
+          setAppointments(cachedData.data);
+          setLoading(false);
+          return; // Exit early if we have valid cached data
+        }
+      }
       
-      // Fetch appointments using the list-view endpoint with date filtering
-      const response = await appointmentsApi.getAppointmentsByListView({
+      // If offline and no cache, show error
+      if (!isOnline && !forceReload) {
+        console.log('📱 Offline - no cached data available for today\'s appointments');
+        setError('No internet connection. Please check your network and try again.');
+        setLoading(false);
+        return;
+      }
+      
+      const requestParams = {
         page: 1,
         pageSize: 50, // Get more appointments to ensure we don't miss any
         status: 'Booked', // Default to booked appointments
         surveyor: '', // Add empty surveyor parameter
         startDateFrom,
         startDateTo
-      });
+      };
+      
+      console.log('🏠 TodaysAppointments calling getAppointmentsByListView with:', requestParams);
+      
+      // Fetch appointments using the list-view endpoint with date filtering
+      const response = await appointmentsApi.getAppointmentsByListView(requestParams);
       
       if ((response as any).success && Array.isArray((response as any).data)) {
         // Map the response data to our interface
-        const todaysAppointments: Appointment[] = (response as any).data.map((appointment: any) => ({
-          id: appointment.id || appointment.appointmentId,
-          address: appointment.address || appointment.fullAddress || 'No address provided',
-          client: appointment.client || 'Unknown client',
-          date: appointment.date || new Date().toISOString(),
-          policyNo: appointment.policyNo || appointment.policyNumber || 'No policy',
-          status: appointment.status,
+        const todaysAppointments: Appointment[] = (response as any).data.map((appointment: any, index: number) => ({
+          id: appointment.id || appointment.appointmentId || `appointment_${index}`,
+          address: appointment.address || appointment.fullAddress || appointment.location || 'No address provided',
+          client: appointment.client || appointment.Client || 'Unknown client',
+          date: appointment.date || appointment.Start_Time || new Date().toISOString(),
+          policyNo: appointment.policyNo || appointment.policyNumber || appointment.Policy || 'No policy',
+          status: appointment.status || appointment.Invite_Status,
           Invite_Status: appointment.Invite_Status
         }));
         
         console.log(`Found ${todaysAppointments.length} appointments for today`);
         setAppointments(todaysAppointments);
         
-        // Cache the fresh data only once
-        console.log('💾 Caching today\'s appointments data...');
-        await storeDataForKey(cacheKey, todaysAppointments);
+        // Cache the fresh data only when online
+        if (isOnline) {
+          console.log('💾 Caching today\'s appointments data...');
+          await storeDataForKey(cacheKey, todaysAppointments);
+        } else {
+          console.log('📱 Offline - not caching today\'s appointments data');
+        }
       } else {
         console.warn('No appointments found for today or API call failed:', response);
         // Don't clear appointments on API failure - keep existing data
@@ -143,18 +173,7 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
     fetchTodaysAppointments();
   };
 
-  const formatTime = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-      });
-    } catch {
-      return 'Time TBD';
-    }
-  };
+  // formatTime is now handled by formatTimeForSA utility
 
   if (loading) {
     return (
@@ -195,7 +214,7 @@ export const TodaysAppointments: React.FC<TodaysAppointmentsProps> = ({ onAppoin
                 <View style={todaysAppointmentsStyles.appointmentContent}>
                   <Text style={todaysAppointmentsStyles.appointmentAddress}>{appointment.address}</Text>
                   <Text style={todaysAppointmentsStyles.appointmentDetails}>
-                    {appointment.client} • {formatTime(appointment.date)}
+                    {appointment.client} • {formatTimeForSA(appointment.date)}
                   </Text>
                   <Text style={todaysAppointmentsStyles.policyText}>Policy: {appointment.policyNo}</Text>
                 </View>

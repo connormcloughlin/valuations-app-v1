@@ -43,53 +43,8 @@ const syncService = {
     }
   },
 
-  /**
-   * Log in user and store credentials
-   * @param {string} username - User's username or email
-   * @param {string} password - User's password
-   * @returns {Promise<Object>} Result with success status and user info
-   */
-  login: async (username, password) => {
-    try {
-      // Check internet connection
-      if (!(await syncService.isConnected())) {
-        return { 
-          success: false, 
-          error: 'No internet connection',
-          offline: true
-        };
-      }
-      
-      // Attempt login via API
-      const response = await api.login(username, password);
-      
-      if (response.success && response.data) {
-        // Store user info including token
-        const userInfo = {
-          ...response.data,
-          lastLogin: new Date().toISOString()
-        };
-        
-        await storageService.saveUserInfo(userInfo);
-        
-        // Set token for future API calls
-        api.setAuthToken(userInfo.token);
-        
-        return { 
-          success: true, 
-          data: userInfo 
-        };
-      }
-      
-      return response;
-    } catch (error) {
-      console.error('Login error:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Login failed' 
-      };
-    }
-  },
+  // DEPRECATED: Legacy username/password login method removed
+  // Use AuthContext.loginWithAzure() for proper Azure AD authentication
 
   /**
    * Sync a single survey to the server

@@ -53,19 +53,73 @@ console.log('🔧 process.env.API_TIMEOUT:', process.env.API_TIMEOUT);
 console.log('🔧 process.env.AZURE_MOBILE_CLIENT_ID:', process.env.AZURE_MOBILE_CLIENT_ID);
 console.log('🔧 === END APP.CONFIG.JS DEBUG ===');
 
+// Determine environment
+const appEnv = process.env.APP_ENV || 'development';
+
+// Configure package name and app name based on environment
+const getPackageName = () => {
+  switch (appEnv) {
+    case 'staging':
+      return 'com.anonymous.qantamvaluationsmobiletablet.staging';
+    case 'production':
+      return 'com.anonymous.qantamvaluationsmobiletablet';
+    case 'development':
+    default:
+      return 'com.anonymous.qantamvaluationsmobiletablet.dev';
+  }
+};
+
+const getAppName = () => {
+  switch (appEnv) {
+    case 'staging':
+      return 'Qantam App (Staging)';
+    case 'production':
+      return 'Qantam App';
+    case 'development':
+    default:
+      return 'Qantam App (Dev)';
+  }
+};
+
+const getBundleIdentifier = () => {
+  switch (appEnv) {
+    case 'staging':
+      return 'com.anonymous.qantamvaluationsmobiletablet.staging';
+    case 'production':
+      return 'com.anonymous.qantamvaluationsmobiletablet';
+    case 'development':
+    default:
+      return 'com.anonymous.qantamvaluationsmobiletablet.dev';
+  }
+};
+
+// URL scheme per environment so auth callbacks route to the correct app when multiple builds are installed
+const getScheme = () => {
+  switch (appEnv) {
+    case 'staging':
+      return 'valuations-app-staging';
+    case 'production':
+      return 'valuations-app';
+    case 'development':
+    default:
+      return 'valuations-app-dev';
+  }
+};
+
 module.exports = {
   "expo": {
-    "name": "Valuations App",
+    "name": getAppName(),
     "slug": "valuations-mobile-tablet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "valuations-app",
+    "scheme": getScheme(),
     "userInterfaceStyle": "light",
     "extra": {
       "eas": {
         "projectId": "fe1dee59-ac56-4ef1-82cd-b04aabd1bebc"
       },
+      appScheme: getScheme(),
       azureMobileClientId: process.env.AZURE_MOBILE_CLIENT_ID,
       azureTenantId: process.env.AZURE_TENANT_ID,
       azureApiClientId: process.env.AZURE_API_CLIENT_ID,
@@ -74,9 +128,9 @@ module.exports = {
       apiTimeout: process.env.API_TIMEOUT,
       debugMode: process.env.DEBUG_MODE,
       logLevel: process.env.LOG_LEVEL,
-      // API Key Authentication Configuration
-      apiKey: process.env.API_KEY,
-      apiKeyHeaderName: process.env.API_KEY_HEADER_NAME || 'X-API-Key',
+      // API Key Authentication Configuration (DEPRECATED - JWT only)
+      // apiKey: process.env.API_KEY,
+      // apiKeyHeaderName: process.env.API_KEY_HEADER_NAME || 'X-API-Key',
       userContextHeaderName: process.env.USER_CONTEXT_HEADER_NAME || 'X-User-Context',
     },
     "splash": {
@@ -92,25 +146,30 @@ module.exports = {
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.valuationsmobiletablet",
+      "bundleIdentifier": getBundleIdentifier(),
       "runtimeVersion": {
         "policy": "appVersion"
       }
     },
     "android": {
-      "package": "com.anonymous.valuationsmobiletablet",
+      "package": getPackageName(),
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "runtimeVersion": "1.0.0",
+      "compileSdkVersion": 35,
+      "runtimeVersion": {
+        "policy": "appVersion"
+      },
       "softwareKeyboardLayoutMode": "pan",
       "allowBackup": true,
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_EXTERNAL_STORAGE"
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
       ]
     },
     "web": {
@@ -129,16 +188,24 @@ module.exports = {
       "expo-system-ui",
       "expo-updates",
       [
-        "react-native-msal",
+        "expo-build-properties",
         {
-          "clientId": process.env.AZURE_MOBILE_CLIENT_ID,
-          "authority": `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}`,
-          "redirectUri": process.env.AZURE_REDIRECT_URI,
-          "additionalScopes": [`api://${process.env.AZURE_API_CLIENT_ID}/access_as_user`],
-          "additionalParameters": {},
-          "webviewParameters": {}
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 24
+          }
         }
-      ]
+      ],
+      "./withAndroidCompileSdk.js",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Valuations App to save photos to your gallery.",
+          "savePhotosPermission": "Allow Valuations App to save photos to your gallery.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
     ],
     "newArchEnabled": true
   }

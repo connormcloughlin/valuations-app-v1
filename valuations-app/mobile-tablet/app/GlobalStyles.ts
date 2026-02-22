@@ -926,20 +926,17 @@ export const itemsSummaryStyles = StyleSheet.create({
     gap: 8,
   },
   addButton: {
-    backgroundColor: '#4a90e2',
-    flexDirection: 'row',
-    alignItems: 'center',
+    height: 48,
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    backgroundColor: '#4a90e2',
     flex: 1,
   },
+  addButtonContent: {
+    height: 48,
+  },
   addButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 6,
     fontSize: 14,
+    fontWeight: '600',
   },
   syncButton: {
     height: 48,
@@ -1131,6 +1128,29 @@ export const loginStyles = StyleSheet.create({
     marginBottom: 15,
     fontSize: 16,
   },
+  passwordInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    height: 50,
+  },
+  passwordInput: {
+    flex: 1,
+    height: 48,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    marginBottom: 0,
+    borderWidth: 0,
+  },
+  passwordToggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   loginButton: {
     backgroundColor: '#007AFF',
     height: 50,
@@ -1167,6 +1187,28 @@ export const loginStyles = StyleSheet.create({
   },
   loginButtonDisabled: {
     opacity: 0.5,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  statusContainer: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 }); 
 

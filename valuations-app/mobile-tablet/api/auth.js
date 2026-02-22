@@ -1,11 +1,7 @@
-import apiClient, { updateTokenCache, clearTokenCache, updateUserContextCache } from './client';
+import transportClient from '../core/transport/transportClient';
 import { 
-  isApiKeyMode, 
   isJwtMode, 
-  API_KEY, 
-  API_KEY_HEADER_NAME, 
-  USER_CONTEXT_HEADER_NAME,
-  validateApiKeyConfig 
+  USER_CONTEXT_HEADER_NAME
 } from '../constants/apiConfig';
 
 /**
@@ -18,54 +14,28 @@ const authApi = {
    */
   setAuthToken: (token) => {
     if (isJwtMode()) {
-      if (token) {
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        updateTokenCache(token); // Update the cache
-        console.log('🔐 JWT Auth token set and cached');
-      } else {
-        delete apiClient.defaults.headers.common['Authorization'];
-        clearTokenCache(); // Clear the cache
-        console.log('🔐 JWT Auth token cleared');
-      }
+      console.log('🔐 JWT token set for authentication');
     } else {
       console.log('⚠️ setAuthToken called but not in JWT mode');
     }
   },
 
-  /**
-   * Set user context for API key mode
-   * @param {Object|null} userContext - User context object or null to clear
-   */
-  setUserContext: (userContext) => {
-    if (isApiKeyMode()) {
-      if (userContext) {
-        updateUserContextCache(userContext); // Update the cache
-        console.log('👤 User context set and cached for API key mode');
-      } else {
-        clearTokenCache(); // This also clears user context cache
-        console.log('👤 User context cleared');
-      }
-    } else {
-      console.log('⚠️ setUserContext called but not in API key mode');
-    }
-  },
 
   /**
    * Get current authentication mode
-   * @returns {string} 'jwt' or 'api_key'
+   * @returns {string} 'jwt' (JWT mode only)
    */
   getAuthMode: () => {
-    if (isApiKeyMode()) return 'api_key';
     if (isJwtMode()) return 'jwt';
     return 'unknown';
   },
 
   /**
-   * Check if API key configuration is valid
+   * Check if authentication configuration is valid (JWT-only mode)
    * @returns {boolean} True if valid
    */
-  isApiKeyConfigValid: () => {
-    return validateApiKeyConfig();
+  isAuthConfigValid: () => {
+    return isJwtMode();
   },
 
   /**
@@ -74,19 +44,13 @@ const authApi = {
    */
   verifyAuth: async () => {
     try {
-      if (isApiKeyMode()) {
-        console.log('🔑 Verifying API key authentication...');
-        // For API key mode, we can verify by making a simple request
-        const response = await apiClient.get('/auth/verify');
-        console.log('🔑 API key authentication verification successful');
-        return response;
-      } else if (isJwtMode()) {
+      if (isJwtMode()) {
         console.log('🔐 Verifying JWT token...');
-        const response = await apiClient.get('/auth/verify');
+        const response = await transportClient.get('auth.verify', '/auth/verify');
         console.log('🔐 JWT token verification successful');
         return response;
       } else {
-        throw new Error('Unknown authentication mode');
+        throw new Error('JWT mode is required');
       }
     } catch (error) {
       console.error('❌ Authentication verification error:', error.message);
@@ -125,8 +89,8 @@ const authApi = {
         success: false,
         data: {
           valid: false,
-          message: 'verifyToken is deprecated for API key mode, use verifyAuth instead',
-          code: 'DEPRECATED_METHOD'
+          message: 'Token verification failed',
+          code: 'TOKEN_VERIFICATION_FAILED'
         }
       };
     }
@@ -145,49 +109,67 @@ const authApi = {
       return {
         success: false,
         data: {
-          message: 'Token exchange is not available in API key mode',
-          code: 'DEPRECATED_METHOD'
+          message: 'Token exchange is not available in non-JWT mode',
+          code: 'INVALID_MODE'
         }
       };
     }
 
     try {
       console.log('🔄 Starting token exchange...');
+      console.log('🔄 Endpoint: /auth/token-exchange');
+      console.log('🔄 Azure token length:', azureToken ? azureToken.length : 'null');
+      console.log('🔄 User info:', userInfo);
       
       // Validate inputs
       if (!azureToken) {
         throw new Error('Azure token is required for token exchange');
       }
       
-      // Temporarily set the Azure AD token for this request
-      const originalAuth = apiClient.defaults.headers.common['Authorization'];
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${azureToken}`;
-      
       const requestData = {
         azureToken: azureToken,
         userInfo: userInfo || {}
       };
       
-      const response = await apiClient.post('/auth/token-exchange', requestData);
+      console.log('🔄 Request data structure:', {
+        hasAzureToken: !!requestData.azureToken,
+        azureTokenPreview: requestData.azureToken ? requestData.azureToken.substring(0, 20) + '...' : 'null',
+        userInfo: requestData.userInfo
+      });
       
-      // Restore original auth header
-      if (originalAuth) {
-        apiClient.defaults.headers.common['Authorization'] = originalAuth;
-      } else {
-        delete apiClient.defaults.headers.common['Authorization'];
-      }
+      console.log('🔄 Making POST request to /auth/token-exchange...');
+      const response = await transportClient.post('auth.token-exchange', '/auth/token-exchange', requestData);
       
-      console.log('🔄 Token exchange successful');
+      console.log('🔄 Token exchange response received:');
+      console.log('🔄 Response success:', response?.success);
+      console.log('🔄 Response status:', response?.status);
+      console.log('🔄 Response data keys:', response?.data ? Object.keys(response.data) : 'no data');
+      console.log('🔄 Full response structure:', JSON.stringify(response, null, 2));
       
-      // Set the new API token automatically if included in response
-      if (response.data?.token) {
-        authApi.setAuthToken(response.data.token);
+      // Normalize success shapes from backend (token may be top-level or under data)
+      const normalized = {
+        success: response?.success ?? true,
+        status: response?.status ?? 200,
+        data: response?.data ?? response
+      };
+
+      const token = normalized.data?.token || normalized.token;
+      const refreshToken = normalized.data?.refreshToken || normalized.refreshToken;
+
+      if (token) {
+        authApi.setAuthToken(token);
         console.log('🔄 API token set in client for subsequent requests');
       }
       
-      return response;
+      return normalized;
     } catch (error) {
-      console.error('❌ Token exchange error:', error.message);
+      console.error('❌ Token exchange error details:');
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error response status:', error.response?.status);
+      console.error('❌ Error response data:', error.response?.data);
+      console.error('❌ Error response headers:', error.response?.headers);
+      console.error('❌ Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       
       // Handle different types of errors
       if (error.response?.data) {
@@ -236,25 +218,85 @@ const authApi = {
   },
 
   /**
-   * Login user and get authentication token
-   * @param {Object} credentials - User credentials
-   * @returns {Promise<Object>} Response with token
+   * Refresh JWT token using refresh token
+   * @param {string} refreshToken - Refresh token
+   * @returns {Promise<Object>} Response with new token
    */
-  login: async (credentials) => {
+  refreshToken: async (refreshToken) => {
+    if (!isJwtMode()) {
+      console.warn('⚠️ refreshToken called but not in JWT mode');
+      return {
+        success: false,
+        data: {
+          message: 'Token refresh is not available in non-JWT mode',
+          code: 'INVALID_MODE'
+        }
+      };
+    }
+
     try {
-      const response = await apiClient.post('/auth/login', credentials);
+      console.log('🔄 Starting token refresh...');
       
-      // Set auth token automatically if included in response
-      if (response.data?.token) {
-        authApi.setAuthToken(response.data.token);
+      if (!refreshToken) {
+        throw new Error('Refresh token is required');
       }
+      
+      const requestData = {
+        refreshToken: refreshToken
+      };
+      
+      const response = await transportClient.post('auth.refresh-token', '/auth/refresh-token', requestData);
+      
+      console.log('🔄 Token refresh successful');
       
       return response;
     } catch (error) {
-      console.error('Login error:', error);
-      return error.success === false ? error : { success: false, message: error.message };
+      console.error('❌ Token refresh error:', error.message);
+      
+      // Handle different types of errors
+      if (error.response?.data) {
+        return {
+          success: false,
+          status: error.response.status,
+          data: error.response.data,
+          message: error.response.data.message || error.message
+        };
+      } else if (error.code === 'ERR_NETWORK') {
+        return {
+          success: false,
+          status: 0,
+          data: {
+            code: 'NETWORK_ERROR',
+            message: 'Unable to reach the server. Please check your connection.'
+          },
+          message: 'Network error during token refresh'
+        };
+      } else if (error.code === 'ECONNABORTED') {
+        return {
+          success: false,
+          status: 0,
+          data: {
+            code: 'TIMEOUT_ERROR',
+            message: 'Request timed out. Please try again.'
+          },
+          message: 'Token refresh request timed out'
+        };
+      } else {
+        return {
+          success: false,
+          status: 0,
+          data: {
+            code: 'UNKNOWN_ERROR',
+            message: 'An unexpected error occurred during token refresh.'
+          },
+          message: error.message || 'Unknown error during token refresh'
+        };
+      }
     }
-  }
+  },
+
+  // DEPRECATED: Legacy username/password login method removed
+  // Use AuthContext.loginWithAzure() for proper Azure AD authentication
 };
 
 export default authApi; 

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card, ActivityIndicator, Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../../../api';
 import { API_BASE_URL } from '../../../constants/apiConfig';
-import axios from 'axios';
+import transportClient from '../../../core/transport/transportClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import mediaService from '../../../services/mediaService';
 
 // Import GlobalStyles constants
 import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
@@ -37,8 +38,14 @@ interface Section {
 
 interface RiskAssessmentTemplatesProps {
   orderNumber: string;
+  /** Increment to refresh template photo counts (e.g. after adding a template photo) */
+  templatePhotosRefreshKey?: number;
   onTemplatePress?: (template: RiskTemplate) => void;
   onSectionPress?: (sectionId: string, sectionTitle: string) => void;
+  onAddTemplatePhoto?: (templateId: string, templateName: string) => void;
+  onViewTemplatePhotos?: (templateId: string, templateName: string) => void;
+  onAddSectionPhoto?: (sectionId: string, sectionName: string) => void;
+  onViewSectionPhotos?: (sectionId: string, sectionName: string) => void;
 }
 
 // Helper function to fetch templates by order ID
@@ -46,21 +53,20 @@ const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<Ris
   try {
     console.log(`Fetching templates for order ID: ${orderId}`);
     
-    // Use the configured API client instead of creating a new axios instance
-    const apiClient = await import('../../../api/client');
-    const response = await apiClient.default.get(`/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`);
+    // Use the transport client instead of the deprecated API client
+    const response = await transportClient.get('risk-assessments.sections', `/risk-assessment-master/by-order/${orderId}?page=1&pageSize=20`);
     
-    console.log('API response:', JSON.stringify(response.data, null, 2));
+    console.log('API response:', JSON.stringify(response, null, 2));
     
     // Ensure we return an array, even if API returns different structure
-    const templatesArray = Array.isArray(response.data) ? response.data : 
-                          response.data && Array.isArray(response.data.data) ? response.data.data :
-                          response.data && Array.isArray(response.data.templates) ? response.data.templates : [];
+    const templatesArray = Array.isArray(response) ? response : 
+                          response && Array.isArray(response.data) ? response.data :
+                          response && Array.isArray(response.templates) ? response.templates : [];
     
     return {
       success: true,
       data: templatesArray,
-      status: response.status
+      status: 200
     };
   } catch (error: any) {
     console.error(`❌ Error in API call: ${error instanceof Error ? error.message : String(error)}`);
@@ -79,7 +85,7 @@ const fetchTemplatesByOrderId = async (orderId: string): Promise<ApiResponse<Ris
   }
 };
 
-export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, onSectionPress }: RiskAssessmentTemplatesProps) {
+export default function RiskAssessmentTemplates({ orderNumber, templatePhotosRefreshKey = 0, onTemplatePress, onSectionPress, onAddTemplatePhoto, onViewTemplatePhotos, onAddSectionPhoto, onViewSectionPhotos }: RiskAssessmentTemplatesProps) {
   const [templates, setTemplates] = useState<RiskTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,10 +94,65 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
   const [sectionsLoading, setSectionsLoading] = useState<Record<string, boolean>>({});
   const [sectionsError, setSectionsError] = useState<Record<string, string | null>>({});
   const [hierarchyData, setHierarchyData] = useState<any>(null);
+  const [templatePhotoCounts, setTemplatePhotoCounts] = useState<Record<string, number>>({});
+  const [sectionPhotoCounts, setSectionPhotoCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchTemplatesAndHierarchy();
   }, [orderNumber]);
+
+  // Load photo count per template so we can disable view icon when 0
+  useEffect(() => {
+    if (templates.length === 0 || !onViewTemplatePhotos) return;
+    let cancelled = false;
+    const loadCounts = async () => {
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        templates.map(async (template: RiskTemplate) => {
+          const templateId = template.riskAssessmentId || template.riskassessmentid || String(template.assessmentid);
+          if (!templateId) return;
+          try {
+            const entityId = parseInt(templateId, 10);
+            if (isNaN(entityId)) return;
+            const photos = await mediaService.getPhotosForEntity('riskAssessmentMaster', entityId);
+            if (!cancelled) counts[templateId] = photos.length;
+          } catch {
+            if (!cancelled) counts[templateId] = 0;
+          }
+        })
+      );
+      if (!cancelled) setTemplatePhotoCounts(counts);
+    };
+    loadCounts();
+    return () => { cancelled = true; };
+  }, [templates, onViewTemplatePhotos, templatePhotosRefreshKey]);
+
+  // Load photo count per section so we can disable view icon when 0
+  useEffect(() => {
+    const allSections = Object.values(sections).flat();
+    if (allSections.length === 0 || !onViewSectionPhotos) return;
+    let cancelled = false;
+    const loadCounts = async () => {
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        allSections.map(async (section: Section) => {
+          const sectionId = section.id;
+          if (!sectionId) return;
+          try {
+            const entityId = parseInt(sectionId, 10);
+            if (isNaN(entityId)) return;
+            const photos = await mediaService.getPhotosForEntity('riskAssessmentSection', entityId);
+            if (!cancelled) counts[sectionId] = photos.length;
+          } catch {
+            if (!cancelled) counts[sectionId] = 0;
+          }
+        })
+      );
+      if (!cancelled) setSectionPhotoCounts(counts);
+    };
+    loadCounts();
+    return () => { cancelled = true; };
+  }, [sections, onViewSectionPhotos, templatePhotosRefreshKey]);
 
   // Fetch both templates and complete hierarchy
   const fetchTemplatesAndHierarchy = async () => {
@@ -268,7 +329,7 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
       
       // Log the first template to see its structure
       if (response.data.length > 0) {
-        console.log('First template structure:', JSON.stringify(response.data[0], null, 2));
+        console.log('First template structure size:', JSON.stringify(response.data[0]).length, 'bytes');
       }
       
       const templatesArray = Array.isArray(response.data) ? response.data : [];
@@ -352,37 +413,65 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
           <Card 
             key={`template-${templateId}-${index}`} 
             style={styles.templateCard}
-            onPress={() => {
-              if (isExpanded) {
-                setExpandedTemplate(null);
-              } else {
-                setExpandedTemplate(templateId);
-                // Fetch sections for this template if not already loaded
-                if (!sections[templateId] && !sectionsLoading[templateId]) {
-                  fetchSections(templateId);
-                }
-              }
-              // Also call the optional callback
-              if (onTemplatePress) {
-                onTemplatePress(template);
-              }
-            }}
           >
             <Card.Content>
               <View style={styles.templateContent}>
-                <View style={styles.templateInfo}>
-                  <Text style={styles.templateName}>{templateName}</Text>
-                  {template.comments && (
-                    <Text style={styles.templateDescription}>
-                      {template.comments}
-                    </Text>
-                  )}
-                </View>
-                <MaterialCommunityIcons 
-                  name={isExpanded ? "chevron-down" : "chevron-right"} 
-                  size={24} 
-                  color={colors.textMuted} 
-                />
+                <TouchableOpacity
+                  style={styles.templateMainRow}
+                  onPress={() => {
+                    if (isExpanded) {
+                      setExpandedTemplate(null);
+                    } else {
+                      setExpandedTemplate(templateId);
+                      if (!sections[templateId] && !sectionsLoading[templateId]) {
+                        fetchSections(templateId);
+                      }
+                    }
+                    if (onTemplatePress) {
+                      onTemplatePress(template);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.templateInfo}>
+                    <Text style={styles.templateName}>{templateName}</Text>
+                    {template.comments && (
+                      <Text style={styles.templateDescription}>
+                        {template.comments}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.templateRightRow}>
+                    {onAddTemplatePhoto && (
+                      <TouchableOpacity
+                        onPress={() => onAddTemplatePhoto(templateId, templateName)}
+                        style={styles.templatePhotoIcon}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <MaterialCommunityIcons name="camera" size={20} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
+                    {onViewTemplatePhotos && (
+                      <TouchableOpacity
+                        onPress={templatePhotoCounts[templateId] > 0 ? () => onViewTemplatePhotos(templateId, templateName) : undefined}
+                        style={styles.templatePhotoIcon}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        disabled={(templatePhotoCounts[templateId] ?? 0) === 0}
+                      >
+                        <MaterialCommunityIcons
+                          name="image-multiple"
+                          size={20}
+                          color={(templatePhotoCounts[templateId] ?? 0) > 0 ? colors.primary : colors.textMuted}
+                        />
+                      </TouchableOpacity>
+                    )}
+                    <MaterialCommunityIcons 
+                      name={isExpanded ? "chevron-down" : "chevron-right"} 
+                      size={24} 
+                      color={colors.textMuted} 
+                    />
+                  </View>
+                </TouchableOpacity>
               </View>
               
               {/* Expanded sections */}
@@ -414,7 +503,40 @@ export default function RiskAssessmentTemplates({ orderNumber, onTemplatePress, 
                             Section • Tap to view categories
                           </Text>
                         </View>
-                        <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textMuted} />
+                        <View style={styles.sectionRightRow}>
+                          {onAddSectionPhoto && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e?.stopPropagation?.();
+                                onAddSectionPhoto(section.id, section.title);
+                              }}
+                              style={styles.templatePhotoIcon}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <MaterialCommunityIcons name="camera" size={20} color={colors.primary} />
+                            </TouchableOpacity>
+                          )}
+                          {onViewSectionPhotos && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e?.stopPropagation?.();
+                                if ((sectionPhotoCounts[section.id] ?? 0) > 0) {
+                                  onViewSectionPhotos(section.id, section.title);
+                                }
+                              }}
+                              style={styles.templatePhotoIcon}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              disabled={(sectionPhotoCounts[section.id] ?? 0) === 0}
+                            >
+                              <MaterialCommunityIcons
+                                name="image-multiple"
+                                size={20}
+                                color={(sectionPhotoCounts[section.id] ?? 0) > 0 ? colors.primary : colors.textMuted}
+                              />
+                            </TouchableOpacity>
+                          )}
+                          <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textMuted} />
+                        </View>
                       </Card.Content>
                     </Card>
                   ))}
@@ -458,14 +580,25 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
   },
   templateContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingVertical: 3,
     paddingHorizontal: 2,
   },
+  templateMainRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flex: 1,
+  },
   templateInfo: {
     flex: 1,
+  },
+  templateRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  templatePhotoIcon: {
+    padding: 4,
   },
   templateName: {
     fontSize: 13,
@@ -543,6 +676,11 @@ const styles = StyleSheet.create({
   },
   sectionInfo: {
     flex: 1,
+  },
+  sectionRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   sectionName: {
     fontSize: 12,

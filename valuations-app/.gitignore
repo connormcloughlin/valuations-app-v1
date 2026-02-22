@@ -42,6 +42,10 @@ yarn-error.log
 # CocoaPods
 /ios/Pods/
 
+# Expo CNG (managed workflow) native folders
+/valuations-app/mobile-tablet/android/
+/valuations-app/mobile-tablet/ios/
+
 # Expo
 .expo/
 web-build/

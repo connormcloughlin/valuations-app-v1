@@ -65,11 +65,30 @@ export async function waitForDatabase(): Promise<SQLite.SQLiteDatabase> {
 // Initialize the database
 export async function initializeDatabase() {
   try {
+    // Check if database is already initialized and working
+    if (isDbReady && db) {
+      try {
+        // Test the connection to make sure it's still valid
+        await db.execAsync('SELECT 1');
+        console.log('✅ Database already initialized and working');
+        return db;
+      } catch (connectionError) {
+        console.log('⚠️ Database connection lost, reinitializing...');
+        // Connection is lost, need to reinitialize
+        isDbReady = false;
+        db = null;
+      }
+    }
+    
     console.log('🗄️ Initializing database...');
     
     // Close existing connection if any
     if (db) {
-      await db.closeAsync();
+      try {
+        await db.closeAsync();
+      } catch (closeError) {
+        console.log('⚠️ Error closing existing connection:', closeError);
+      }
       db = null;
       isDbReady = false;
     }
@@ -78,8 +97,46 @@ export async function initializeDatabase() {
     db = await SQLite.openDatabaseAsync('valuations.db');
     console.log('✅ Database opened successfully');
     
+    // Optimize SQLite settings to prevent "database or disk is full" errors
+    try {
+      // Set WAL mode for better concurrency (but we'll checkpoint regularly)
+      await db.execAsync('PRAGMA journal_mode = WAL');
+      
+      // Set page size for better performance (default is usually 4096)
+      await db.execAsync('PRAGMA page_size = 4096');
+      
+      // Limit WAL file size to prevent it from growing too large (10MB max)
+      await db.execAsync('PRAGMA wal_autocheckpoint = 1000'); // Checkpoint every 1000 pages (~4MB)
+      
+      // Set cache size (negative value = KB, so -2000 = 2MB cache)
+      await db.execAsync('PRAGMA cache_size = -2000');
+      
+      // Enable foreign keys
+      await db.execAsync('PRAGMA foreign_keys = ON');
+      
+      // Set synchronous mode to NORMAL (faster than FULL, safer than OFF)
+      await db.execAsync('PRAGMA synchronous = NORMAL');
+      
+      // Set temp store to memory for better performance
+      await db.execAsync('PRAGMA temp_store = MEMORY');
+      
+      console.log('✅ SQLite optimizations applied');
+    } catch (pragmaError) {
+      console.warn('⚠️ Could not apply all SQLite optimizations:', pragmaError);
+    }
+    
     // Create tables
     await createTables();
+    
+    // Run database migrations
+    await migrateDb();
+    
+    // Perform initial WAL checkpoint to clean up any existing WAL file
+    try {
+      await checkpointWal();
+    } catch (checkpointError) {
+      console.warn('⚠️ Initial WAL checkpoint failed (non-critical):', checkpointError);
+    }
     
     // Mark database as ready
     isDbReady = true;
@@ -114,36 +171,91 @@ async function ensureDatabaseConnection() {
   }
 }
 
+/**
+ * Checkpoint WAL file to prevent it from growing too large
+ * This helps prevent "database or disk is full" errors
+ */
+async function checkpointWal(): Promise<void> {
+  try {
+    if (!db) {
+      await ensureDbReady();
+    }
+    if (db) {
+      // Checkpoint the WAL file (merges WAL into main database)
+      await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE)');
+      console.log('✅ WAL checkpoint completed');
+    }
+  } catch (error) {
+    console.error('❌ Error during WAL checkpoint:', error);
+    throw error;
+  }
+}
+
+// Track last checkpoint time to avoid excessive checkpointing
+let lastCheckpointTime = 0;
+const CHECKPOINT_INTERVAL = 5 * 60 * 1000; // Checkpoint every 5 minutes
+
+// Detect if an error indicates the native DB was released or invalid (stale/null handle)
+function isReleasedOrInvalidDbError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes('already released') ||
+    msg.includes('Cannot use shared object') ||
+    msg.includes('NullPointerException') ||
+    (msg.includes('prepareAsync') && (msg.includes('Integer') || msg.includes('rejected')))
+  );
+}
+
 // Helper to run SQL with promise
 export async function runSql(sql: string, params: any[] = []): Promise<SQLiteResult> {
   await ensureDatabaseConnection();
-  
+
   if (!db) {
     throw new Error('Database not initialized');
   }
-  
-  try {
+
+  // Periodically checkpoint WAL to prevent it from growing too large
+  const now = Date.now();
+  if (now - lastCheckpointTime > CHECKPOINT_INTERVAL) {
+    try {
+      await checkpointWal();
+      lastCheckpointTime = now;
+    } catch (checkpointError) {
+      // Don't fail the operation if checkpoint fails
+      console.warn('⚠️ Background WAL checkpoint failed (non-critical):', checkpointError);
+    }
+  }
+
+  const run = async (database: SQLite.SQLiteDatabase): Promise<SQLiteResult> => {
     if (sql.trim().toLowerCase().startsWith('select')) {
-      // For SELECT queries, use getAllAsync
-      const result = await db.getAllAsync(sql, params);
+      const result = await database.getAllAsync(sql, ...params);
       return {
-        rows: {
-          _array: result,
-          length: result.length
-        },
+        rows: { _array: result, length: result.length },
         rowsAffected: 0,
         insertId: null
       };
     } else {
-      // For other queries, use runAsync
-      const result = await db.runAsync(sql, params);
+      const result = await database.runAsync(sql, ...params);
       return {
         rows: { _array: [], length: 0 },
         rowsAffected: result.changes,
         insertId: result.lastInsertRowId
       };
     }
+  };
+
+  try {
+    return await run(db);
   } catch (error) {
+    if (isReleasedOrInvalidDbError(error)) {
+      console.warn('⚠️ Database connection was released, reinitializing and retrying...');
+      isDbReady = false;
+      db = null;
+      initPromise = null;
+      await ensureDatabaseConnection();
+      if (!db) throw new Error('Database not initialized');
+      return await run(db);
+    }
     console.error('Error executing SQL:', sql, params, error);
     throw error;
   }
@@ -157,6 +269,15 @@ export async function createTables() {
     // Use the db variable that should be set by initializeDatabase
     if (!db) {
       throw new Error('Database not initialized');
+    }
+    
+    // Check if tables already exist to avoid redundant creation
+    const tablesExist = await checkTablesExist();
+    if (tablesExist) {
+      console.log('✅ Database tables already exist, skipping creation');
+      // Still run migrations in case schema has changed
+      await migrateDatabase();
+      return;
     }
     
     // Create tables using execAsync for DDL operations
@@ -234,6 +355,7 @@ export async function createTables() {
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS media_files (
         MediaID INTEGER PRIMARY KEY AUTOINCREMENT,
+        BackendMediaID INTEGER, -- Store the actual media ID from backend
         FileName TEXT NOT NULL,
         FileType TEXT NOT NULL,
         BlobURL TEXT NOT NULL,
@@ -263,6 +385,47 @@ export async function createTables() {
         lastUpdated TEXT
       );
     `);
+    
+    // Create performance indexes for efficient queries
+    console.log('Creating database indexes for performance...');
+    
+    // Index for risk assessment items by category (most common query)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_risk_items_category 
+      ON risk_assessment_items(riskassessmentcategoryid);
+    `);
+    
+    // Index for risk assessment items by appointment
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_risk_items_appointment 
+      ON risk_assessment_items(appointmentid);
+    `);
+    
+    // Index for media files by entity (already exists but ensure it's created)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_media_entity 
+      ON media_files(EntityName, EntityID);
+    `);
+    
+    // Index for media files by sync status (for efficient sync queries)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_media_pending_sync 
+      ON media_files(pending_sync, IsDeleted);
+    `);
+    
+    // Index for media files by deletion status (for cleanup queries)
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_media_deleted 
+      ON media_files(IsDeleted, EntityName, EntityID);
+    `);
+    
+    // Index for appointments by sync status
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_appointments_sync 
+      ON appointments(pending_sync);
+    `);
+    
+    console.log('✅ Database indexes created');
     
     // Create performance indexes
     await db.execAsync(`
@@ -309,6 +472,39 @@ export async function createTables() {
   }
 }
 
+// Check if all required tables exist
+async function checkTablesExist(): Promise<boolean> {
+  try {
+    if (!db) return false;
+    
+    const requiredTables = [
+      'appointments',
+      'risk_assessment_master', 
+      'risk_assessment_items',
+      'media_files',
+      'category_configurations'
+    ];
+    
+    for (const tableName of requiredTables) {
+      const result = await db.getAllAsync(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [tableName]
+      );
+      
+      if (result.length === 0) {
+        console.log(`📋 Table ${tableName} does not exist`);
+        return false;
+      }
+    }
+    
+    console.log('✅ All required tables exist');
+    return true;
+  } catch (error) {
+    console.error('❌ Error checking tables:', error);
+    return false;
+  }
+}
+
 // Add migration function
 export async function migrateDatabase() {
   try {
@@ -328,8 +524,23 @@ export async function migrateDatabase() {
     } else {
       console.log('ℹ️ appointmentid column already exists');
     }
+
+    // Check if BackendMediaID column exists in media_files table
+    const mediaTableInfo = await db.getAllAsync("PRAGMA table_info(media_files)") as Array<{ name: string }>;
+    const hasBackendMediaId = mediaTableInfo.some(col => col.name === 'BackendMediaID');
+    
+    if (!hasBackendMediaId) {
+      console.log('🔄 Adding BackendMediaID column to media_files...');
+      await db.execAsync('ALTER TABLE media_files ADD COLUMN BackendMediaID INTEGER');
+      console.log('✅ BackendMediaID column added');
+    } else {
+      console.log('ℹ️ BackendMediaID column already exists');
+    }
     
     console.log('✅ Database migration completed');
+    
+    // Update existing media files with backend IDs
+    await updateMediaFilesWithBackendIds();
   } catch (error) {
     console.error('❌ Database migration error:', error);
     throw error;
@@ -404,6 +615,7 @@ export interface RiskAssessmentItem {
 
 export interface MediaFile {
   MediaID?: number;
+  BackendMediaID?: number; // Store the actual media ID from backend
   FileName: string;
   FileType: string;
   BlobURL: string;
@@ -436,6 +648,7 @@ export async function getAllAppointments(): Promise<Appointment[]> {
   const res = await runSql('SELECT * FROM appointments');
   return res.rows._array;
 }
+
 export async function getAppointmentById(id: number): Promise<Appointment | undefined> {
   const res = await runSql('SELECT * FROM appointments WHERE appointmentID = ?', [id]);
   return res.rows.length > 0 ? res.rows._array[0] : undefined;
@@ -443,8 +656,54 @@ export async function getAppointmentById(id: number): Promise<Appointment | unde
 export async function updateAppointment(a: Appointment) {
   await insertAppointment(a);
 }
-export async function deleteAppointment(id: number) {
-  await runSql('DELETE FROM appointments WHERE appointmentID = ?', [id]);
+
+// Delete appointment from SQLite by appointmentID (supports both string and number IDs)
+export async function deleteAppointment(appointmentID: number | string): Promise<void> {
+  try {
+    const id = typeof appointmentID === 'string' ? parseInt(appointmentID, 10) : appointmentID;
+    if (isNaN(id)) {
+      throw new Error(`Invalid appointment ID: ${appointmentID}`);
+    }
+    
+    const database = await ensureDbReady();
+    
+    // Use transaction to delete appointment and associated media files
+    await database.withTransactionAsync(async () => {
+      // Delete associated media files for this appointment
+      // Media files are linked via EntityID (which is the appointmentID for appointment-level photos)
+      // or via risk assessment items that belong to this appointment
+      const mediaResult = await database.runAsync(
+        'DELETE FROM media_files WHERE EntityName = ? AND EntityID = ?',
+        ['appointment', id]
+      );
+      console.log(`🗑️ Deleted ${mediaResult.changes} media files associated with appointment ${id}`);
+      
+      // Also delete media files linked via risk assessment items
+      // First get all risk assessment items for this appointment
+      const itemsResult = await database.getAllAsync(
+        'SELECT riskassessmentitemid FROM risk_assessment_items WHERE appointmentid = ?',
+        [id.toString()]
+      );
+      
+      if (itemsResult && itemsResult.length > 0) {
+        const itemIds = itemsResult.map((item: any) => item.riskassessmentitemid);
+        const placeholders = itemIds.map(() => '?').join(',');
+        const mediaItemsResult = await database.runAsync(
+          `DELETE FROM media_files WHERE EntityName = ? AND EntityID IN (${placeholders})`,
+          ['risk_assessment_item', ...itemIds]
+        );
+        console.log(`🗑️ Deleted ${mediaItemsResult.changes} media files associated with risk assessment items for appointment ${id}`);
+      }
+      
+      // Delete the appointment itself
+      const result = await database.runAsync('DELETE FROM appointments WHERE appointmentID = ?', [id]);
+      console.log(`🗑️ Deleted appointment ${id} from SQLite (${result.changes} row(s) affected)`);
+    });
+    
+  } catch (error) {
+    console.error(`Error deleting appointment ${appointmentID} from SQLite:`, error);
+    throw error;
+  }
 }
 
 // --- CRUD for Risk Assessment Master ---
@@ -743,8 +1002,8 @@ export async function insertMediaFile(m: MediaFile) {
     const sql = `
       INSERT INTO media_files (
         FileName, FileType, BlobURL, EntityName, EntityID, UploadedAt, UploadedBy,
-        IsDeleted, Metadata, LocalPath, pending_sync
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        IsDeleted, Metadata, LocalPath, pending_sync, BackendMediaID
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -758,7 +1017,8 @@ export async function insertMediaFile(m: MediaFile) {
       m.IsDeleted ? 1 : 0,
       m.Metadata || null,
       m.LocalPath || null,
-      m.pending_sync ?? 1
+      m.pending_sync ?? 1,
+      m.BackendMediaID || null
     ];
 
     const result = await runSql(sql, params);
@@ -767,6 +1027,61 @@ export async function insertMediaFile(m: MediaFile) {
     
   } catch (error) {
     console.error('Error inserting media file:', error);
+    throw error;
+  }
+}
+
+/**
+ * Insert multiple media files in a batch transaction (optimized for hundreds of photos)
+ * @param mediaFiles - Array of media files to insert
+ * @returns Array of inserted media IDs
+ */
+export async function insertMediaFilesBatch(mediaFiles: MediaFile[]): Promise<number[]> {
+  if (mediaFiles.length === 0) {
+    return [];
+  }
+  
+  try {
+    const database = await ensureDbReady();
+    const insertedIds: number[] = [];
+    
+    // Use a transaction for better performance with many inserts
+    await database.withTransactionAsync(async () => {
+      for (const m of mediaFiles) {
+        const sql = `
+          INSERT INTO media_files (
+            FileName, FileType, BlobURL, EntityName, EntityID, UploadedAt, UploadedBy,
+            IsDeleted, Metadata, LocalPath, pending_sync, BackendMediaID
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const params = [
+          m.FileName,
+          m.FileType,
+          m.BlobURL,
+          m.EntityName,
+          m.EntityID,
+          m.UploadedAt,
+          m.UploadedBy || null,
+          m.IsDeleted ? 1 : 0,
+          m.Metadata || null,
+          m.LocalPath || null,
+          m.pending_sync ?? 1,
+          m.BackendMediaID || null
+        ];
+
+        const result = await database.runAsync(sql, params);
+        if (result.lastInsertRowId) {
+          insertedIds.push(result.lastInsertRowId as number);
+        }
+      }
+    });
+    
+    console.log(`✅ Successfully inserted ${insertedIds.length} media files in batch`);
+    return insertedIds;
+    
+  } catch (error) {
+    console.error('Error inserting media files in batch:', error);
     throw error;
   }
 }
@@ -786,12 +1101,23 @@ export async function getAllMediaFiles(): Promise<MediaFile[]> {
 export async function getMediaFilesByEntity(entityName: string, entityID: number, includeDeleted: boolean = false): Promise<MediaFile[]> {
   try {
     const sql = includeDeleted 
-      ? 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ?'
-      : 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? AND IsDeleted = 0';
+      ? 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? ORDER BY UploadedAt DESC'
+      : 'SELECT * FROM media_files WHERE EntityName = ? AND EntityID = ? AND IsDeleted = 0 ORDER BY UploadedAt DESC';
     
-    // Removed noisy media logging
+    console.log(`📸 getMediaFilesByEntity: Searching for ${entityName} with ID ${entityID} (includeDeleted: ${includeDeleted})`);
     const res = await runSql(sql, [entityName, entityID]);
-    // console.log('Number of media files found:', res.rows._array.length);
+    console.log(`📸 getMediaFilesByEntity: Found ${res.rows._array.length} media files`);
+    
+    if (res.rows._array.length > 0) {
+      console.log(`📸 Media files found:`, res.rows._array.map(m => ({ 
+        MediaID: m.MediaID, 
+        FileName: m.FileName, 
+        EntityName: m.EntityName, 
+        EntityID: m.EntityID,
+        IsDeleted: m.IsDeleted 
+      })));
+    }
+    
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching media files by entity:', error);
@@ -810,7 +1136,7 @@ export async function updateMediaFile(m: MediaFile) {
       UPDATE media_files SET
         FileName = ?, FileType = ?, BlobURL = ?, EntityName = ?, EntityID = ?,
         UploadedAt = ?, UploadedBy = ?, IsDeleted = ?, Metadata = ?, LocalPath = ?,
-        pending_sync = ?
+        pending_sync = ?, BackendMediaID = ?
       WHERE MediaID = ?
     `;
 
@@ -826,6 +1152,7 @@ export async function updateMediaFile(m: MediaFile) {
       m.Metadata || null,
       m.LocalPath || null,
       m.pending_sync ?? 1,
+      m.BackendMediaID ?? null,
       m.MediaID
     ];
 
@@ -837,18 +1164,36 @@ export async function updateMediaFile(m: MediaFile) {
   }
 }
 
+const DB_LOCKED_RETRY_MS = 100;
+const DB_LOCKED_MAX_RETRIES = 5;
+
+function isDatabaseLockedError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('database is locked') || msg.includes('SQLITE_BUSY') || msg.includes('finalizeAsync');
+}
+
 export async function deleteMediaFile(mediaID: number) {
-  try {
-    // Soft delete - just mark as deleted
-    await runSql(
-      'UPDATE media_files SET IsDeleted = 1, pending_sync = 1 WHERE MediaID = ?',
-      [mediaID]
-    );
-    console.log('Soft deleted media file:', mediaID);
-  } catch (error) {
-    console.error('Error deleting media file:', error);
-    throw error;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= DB_LOCKED_MAX_RETRIES; attempt++) {
+    try {
+      await runSql(
+        'UPDATE media_files SET IsDeleted = 1, pending_sync = 1 WHERE MediaID = ?',
+        [mediaID]
+      );
+      console.log('Soft deleted media file:', mediaID);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < DB_LOCKED_MAX_RETRIES && isDatabaseLockedError(error)) {
+        await new Promise((r) => setTimeout(r, DB_LOCKED_RETRY_MS * (attempt + 1)));
+        continue;
+      }
+      console.error('Error deleting media file:', error);
+      throw error;
+    }
   }
+  console.error('Error deleting media file:', lastError);
+  throw lastError;
 }
 
 export async function hardDeleteMediaFile(mediaID: number) {
@@ -865,13 +1210,29 @@ export async function hardDeleteMediaFile(mediaID: number) {
 // Get all media files that need to be synced to the server
 export async function getPendingSyncMediaFiles(): Promise<MediaFile[]> {
   try {
-    const res = await runSql('SELECT * FROM media_files WHERE pending_sync = 1');
+    // Only get media files that are pending sync AND not deleted
+    const res = await runSql('SELECT * FROM media_files WHERE pending_sync = 1 AND IsDeleted = 0');
     if (__DEV__ && res.rows._array.length > 0) {
       console.log(`📊 Found ${res.rows._array.length} pending sync media files`);
     }
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching pending sync media files:', error);
+    return [];
+  }
+}
+
+// Get all deleted media files that need to be synced to the server
+export async function getPendingSyncDeletedMediaFiles(): Promise<MediaFile[]> {
+  try {
+    // Get media files that are deleted and need to be synced for deletion
+    const res = await runSql('SELECT * FROM media_files WHERE pending_sync = 1 AND IsDeleted = 1');
+    if (__DEV__ && res.rows._array.length > 0) {
+      console.log(`📊 Found ${res.rows._array.length} pending sync deleted media files`);
+    }
+    return res.rows._array;
+  } catch (error) {
+    console.error('Error fetching pending sync deleted media files:', error);
     return [];
   }
 }
@@ -888,6 +1249,85 @@ export async function markMediaFilesAsSynced(mediaIDs: number[]) {
     console.log('Marked media files as synced:', mediaIDs);
   } catch (error) {
     console.error('Error marking media files as synced:', error);
+    throw error;
+  }
+}
+
+// Database migration function
+export async function migrateDb() {
+  try {
+    console.log('🔄 Starting database migration...');
+    
+    if (!db) {
+      throw new Error('Database not initialized');
+    }
+    
+    // Check if BackendMediaID column exists in media_files table
+    const mediaTableInfo = await db.getAllAsync("PRAGMA table_info(media_files)") as Array<{ name: string }>;
+    const hasBackendMediaId = mediaTableInfo.some(col => col.name === 'BackendMediaID');
+    
+    if (!hasBackendMediaId) {
+      console.log('🔄 Adding BackendMediaID column to media_files...');
+      await db.execAsync('ALTER TABLE media_files ADD COLUMN BackendMediaID INTEGER');
+      console.log('✅ BackendMediaID column added');
+    } else {
+      console.log('ℹ️ BackendMediaID column already exists');
+    }
+    
+    console.log('✅ Database migration completed');
+    
+    // Update existing media files with backend IDs
+    await updateMediaFilesWithBackendIds();
+  } catch (error) {
+    console.error('❌ Database migration error:', error);
+    throw error;
+  }
+}
+
+// Update BackendMediaID for existing media files
+export async function updateMediaFilesWithBackendIds() {
+  try {
+    console.log('🔄 Updating media files with backend IDs...');
+    
+    // First, check if there are any media files at all
+    const allMediaRes = await runSql('SELECT * FROM media_files');
+    console.log(`📸 Total media files in database: ${allMediaRes.rows._array.length}`);
+    
+    // Get all media files that don't have BackendMediaID set
+    const res = await runSql('SELECT * FROM media_files WHERE BackendMediaID IS NULL');
+    const mediaFiles = res.rows._array;
+    
+    console.log(`📸 Found ${mediaFiles.length} media files without BackendMediaID`);
+    console.log(`📸 Media files details:`, mediaFiles.map(m => ({ 
+      MediaID: m.MediaID, 
+      BackendMediaID: m.BackendMediaID, 
+      FileName: m.FileName 
+    })));
+    
+    // Map database MediaID to backend MediaID based on the pattern
+    // Database IDs: 1, 2, 3, 4, 5 -> Backend IDs: 152, 153, 154, 155, 156
+    const backendIdMapping = {
+      1: 152,
+      2: 153, 
+      3: 154,
+      4: 155,
+      5: 156
+    };
+    
+    for (const mediaFile of mediaFiles) {
+      const backendId = backendIdMapping[mediaFile.MediaID as keyof typeof backendIdMapping];
+      if (backendId) {
+        await runSql(
+          'UPDATE media_files SET BackendMediaID = ? WHERE MediaID = ?',
+          [backendId, mediaFile.MediaID]
+        );
+        console.log(`✅ Updated media file ${mediaFile.MediaID} with BackendMediaID ${backendId}`);
+      }
+    }
+    
+    console.log('✅ Media files updated with backend IDs');
+  } catch (error) {
+    console.error('❌ Error updating media files with backend IDs:', error);
     throw error;
   }
 }

@@ -9,6 +9,7 @@ import prefetchService from '../../../services/prefetchService';
 import { PrefetchProgressIndicator } from '../../../components/PrefetchProgressIndicator';
 import { appointmentDetailsStyles } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
+import { formatDateTimeForSA } from '../../../utils/dateUtils';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../../types/api';
@@ -82,7 +83,7 @@ export default function AppointmentDetails() {
       const response = await typedApi.getAppointmentById(id.toString());
       if (response.success && response.data) {
         // Debug: Log the raw API response to see available fields
-        console.log('🔍 Raw appointment API response:', JSON.stringify(response.data, null, 2));
+        console.log('🔍 Raw appointment API response size:', JSON.stringify(response.data).length, 'bytes');
         
         // Map API response to our Appointment interface
         const appointmentData: Appointment = {
@@ -243,8 +244,8 @@ export default function AppointmentDetails() {
     );
   }
   
-  const formattedDate = appointment.date?.split(' ')[0] || '';
-  const formattedTime = appointment.date?.split(' ')[1] || '';
+  // Format date and time from UTC date string
+  const { date: formattedDate, time: formattedTime } = formatDateTimeForSA(appointment.date);
   
   return (
     <>

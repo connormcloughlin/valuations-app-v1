@@ -264,7 +264,7 @@ export default function SyncScreen() {
       title="Data Sync"
       tabs={tabs}
       showHeader={true}
-      showBottomNav={false}
+      showBottomNav={true}
       showLogout={true}
     >
       <ScrollView style={syncStyles.container}>

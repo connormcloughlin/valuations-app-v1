@@ -9,6 +9,7 @@ import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { finaliseAppointmentsStyles, colors } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { SurveyorFilterIndicator } from '../../../components/SurveyorFilterIndicator';
+import { formatDateForSA } from '../../../utils/dateUtils';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -153,20 +154,7 @@ export default function FinaliseAppointmentsScreen() {
     }).format(numValue);
   };
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'Unknown';
-    
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-ZA', {
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric'
-      });
-    } catch (e) {
-      return dateString || 'Invalid date';
-    }
-  };
+  // formatDate is now handled by formatDateForSA utility
 
   const renderAppointmentItem = ({ item }: { item: Appointment }) => {
     // Debug logging for problematic data
@@ -207,7 +195,7 @@ export default function FinaliseAppointmentsScreen() {
           
           <View style={finaliseAppointmentsStyles.detailRow}>
             <MaterialCommunityIcons name="calendar-edit" size={16} color={colors.gray[500]} style={finaliseAppointmentsStyles.detailIcon} />
-            <Text style={finaliseAppointmentsStyles.detailText}>Last edited: {formatDate(item.lastEdited)}</Text>
+            <Text style={finaliseAppointmentsStyles.detailText}>Last edited: {formatDateForSA(item.lastEdited)}</Text>
           </View>
           
           <View style={finaliseAppointmentsStyles.detailRow}>

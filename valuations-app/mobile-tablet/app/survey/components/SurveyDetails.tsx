@@ -20,6 +20,10 @@ interface SurveyDetailsProps {
   broker: string;
   lastEdited: string;
   initialExpanded?: boolean;
+  /** Order form photos: show camera + view icons next to header (like Risk Assessment Templates) */
+  orderFormPhotoCount?: number;
+  onAddOrderFormPhoto?: () => void;
+  onViewOrderFormPhotos?: () => void;
 }
 
 export default function SurveyDetails({ 
@@ -29,7 +33,10 @@ export default function SurveyDetails({
   sumInsured, 
   broker, 
   lastEdited,
-  initialExpanded = false
+  initialExpanded = false,
+  orderFormPhotoCount = 0,
+  onAddOrderFormPhoto,
+  onViewOrderFormPhotos,
 }: SurveyDetailsProps) {
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
   const animationProgress = useSharedValue(initialExpanded ? 1 : 0);
@@ -72,21 +79,48 @@ export default function SurveyDetails({
 
   return (
     <View style={styles.sectionContainer}>
-      {/* Collapsible Header */}
-      <TouchableOpacity 
-        style={styles.headerContainer} 
-        onPress={toggleExpanded}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.sectionTitle}>Survey Details</Text>
-        <Animated.View style={animatedChevronStyle}>
-          <MaterialCommunityIcons 
-            name="chevron-down" 
-            size={24} 
-            color={colors.textPrimary} 
-          />
-        </Animated.View>
-      </TouchableOpacity>
+      {/* Collapsible Header: title (expand) + order form photo icons + chevron */}
+      <View style={styles.headerContainer}>
+        <TouchableOpacity 
+          style={styles.headerTitleTouchable}
+          onPress={toggleExpanded}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.sectionTitle}>Survey Details</Text>
+        </TouchableOpacity>
+        <View style={styles.headerIcons}>
+          {onAddOrderFormPhoto && (
+            <TouchableOpacity
+              onPress={onAddOrderFormPhoto}
+              style={styles.headerIconButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MaterialCommunityIcons name="camera" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+          {onViewOrderFormPhotos && (
+            <TouchableOpacity
+              onPress={orderFormPhotoCount > 0 ? onViewOrderFormPhotos : undefined}
+              style={styles.headerIconButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              disabled={orderFormPhotoCount === 0}
+            >
+              <MaterialCommunityIcons
+                name="image-multiple"
+                size={20}
+                color={orderFormPhotoCount > 0 ? colors.primary : colors.textMuted}
+              />
+            </TouchableOpacity>
+          )}
+          <Animated.View style={animatedChevronStyle}>
+            <MaterialCommunityIcons 
+              name="chevron-down" 
+              size={24} 
+              color={colors.textPrimary} 
+            />
+          </Animated.View>
+        </View>
+      </View>
       
       {/* Collapsible Content */}
       <Animated.View style={animatedContentStyle}>
@@ -135,11 +169,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     marginBottom: spacing.sm,
   },
+  headerTitleTouchable: {
+    flex: 1,
+  },
   sectionTitle: {
     fontSize: typography.xl,
     fontWeight: '600',
     color: colors.textPrimary,
-    flex: 1,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerIconButton: {
+    padding: 4,
   },
   detailsCard: {
     borderRadius: borderRadius.md,

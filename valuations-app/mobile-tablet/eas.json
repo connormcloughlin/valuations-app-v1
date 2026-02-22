@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 5.9.1"
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -8,6 +9,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "development",
+        "ENV_FILE": ".env.development"
       },
       "channel": "development"
     },
@@ -20,16 +25,20 @@
         "APP_ENV": "staging",
         "ENV_FILE": ".env.staging"
       },
-      "channel": "performance-refactor"
+      "channel": "staging",
+      "autoIncrement": true
     },
     "production": {
+      "distribution": "internal",
       "android": {
         "buildType": "app-bundle"
       },
-      "channel": "production"
+      "env": {
+        "APP_ENV": "production",
+        "ENV_FILE": ".env.production"
+      },
+      "channel": "production",
+      "autoIncrement": true
     }
-  },
-  "submit": {
-    "production": {}
   }
 }

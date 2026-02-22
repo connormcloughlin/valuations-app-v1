@@ -105,7 +105,7 @@ async function testMediaSyncAPI() {
     }
     console.log('');
 
-    // Test 4: Test Sync Changes (what our mobile app will call for pull)
+    // Test 4: Test Sync Changes (Pull from server)
     console.log('4️⃣ Testing Sync Changes (Pull from server)');
     try {
       const changesResponse = await axios.get(`${BASE_URL}/sync/changes`, {

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
 import api from '../../../api';
 import { storeDataForKey, getDataForKey } from '../../../utils/offlineStorage';
+import { getAllRiskAssessmentItems } from '../../../utils/db';
 
 // Types
 export interface Category {
@@ -50,10 +51,12 @@ interface SurveyContextType {
   categoriesLoading: boolean;
   categoriesError: string | null;
   selectedSectionTitle: string | null;
+  selectedSectionId: string | null;
   
   // Actions
   fetchSurveyData: () => Promise<void>;
   fetchCategories: (sectionId: string, sectionTitle: string) => Promise<void>;
+  refreshCategoryValues: () => Promise<void>;
   updateSurvey: (updates: Partial<Survey>) => void;
 }
 
@@ -82,6 +85,13 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [selectedSectionTitle, setSelectedSectionTitle] = useState<string | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+
+  // Refs so refreshCategoryValues can read latest without changing its identity (avoids useFocusEffect loop)
+  const surveyRef = useRef<Survey | null>(null);
+  const categoriesRef = useRef<Category[]>([]);
+  surveyRef.current = survey;
+  categoriesRef.current = categories;
 
   const fetchSurveyData = async () => {
     try {
@@ -220,6 +230,7 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
     setCategoriesLoading(true);
     setCategoriesError(null);
     setSelectedSectionTitle(sectionTitle);
+    setSelectedSectionId(sectionId);
     
     const cacheKey = `section_categories_${sectionId}`;
     
@@ -348,6 +359,47 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
     }
   };
 
+  /** Recompute category values and item counts from SQLite so totals stay correct after editing items. */
+  const refreshCategoryValues = useCallback(async () => {
+    const currentSurvey = surveyRef.current;
+    if (!currentSurvey) return;
+    const currentCategories = categoriesRef.current;
+    const currentList = currentCategories.length > 0 ? currentCategories : currentSurvey.categories;
+    if (currentList.length === 0) return;
+    try {
+      const allItems = await getAllRiskAssessmentItems();
+      const appointmentId = currentSurvey.appointmentId ?? surveyId;
+      const relevantItems = appointmentId
+        ? allItems.filter(
+            (i) => !i.isDeleted && (i.appointmentid == null || String(i.appointmentid) === String(appointmentId))
+          )
+        : allItems.filter((i) => !i.isDeleted);
+      const byCategory: Record<string, { value: number; items: number }> = {};
+      for (const item of relevantItems) {
+        const catId = String(item.riskassessmentcategoryid);
+        if (!byCategory[catId]) byCategory[catId] = { value: 0, items: 0 };
+        const price = Number(item.price) || 0;
+        const qty = Number(item.qty) ?? 1;
+        byCategory[catId].value += price * qty;
+        byCategory[catId].items += 1;
+      }
+      const updated = currentList.map((c) => {
+        const key = String(c.id);
+        const rec = byCategory[key];
+        return {
+          ...c,
+          value: rec ? rec.value : c.value,
+          items: rec ? rec.items : c.items,
+        };
+      });
+      const totalValue = updated.reduce((sum, cat) => sum + cat.value, 0);
+      if (currentCategories.length > 0) setCategories(updated);
+      setSurvey((prev) => (prev ? { ...prev, categories: updated, totalValue } : prev));
+    } catch (err) {
+      console.warn('Failed to refresh category values from SQLite:', err);
+    }
+  }, [surveyId]);
+
   useEffect(() => {
     // Safety check: ensure category configurations are loaded before fetching survey data
     const initializeSurvey = async () => {
@@ -365,23 +417,23 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
     initializeSurvey();
   }, [surveyId]);
 
-  // Start prefetch when survey data is loaded
+  // Start prefetch when survey data is first loaded (by surveyId + orderNumber only, so category/totalValue updates don't re-trigger)
+  const orderNumber = survey?.orderNumber ?? null;
   useEffect(() => {
-    if (survey && survey.orderNumber) {
+    if (surveyId && orderNumber) {
       const startPrefetch = async () => {
         try {
-          console.log(`🚀 SURVEY DATA PROVIDER - Starting prefetch for survey ${surveyId}, order ${survey.orderNumber}`);
+          console.log(`🚀 SURVEY DATA PROVIDER - Starting prefetch for survey ${surveyId}, order ${orderNumber}`);
           const prefetchService = await import('../../../services/prefetchService');
-          const prefetchResult = await prefetchService.default.startAppointmentPrefetch(surveyId, survey.orderNumber);
+          const prefetchResult = await prefetchService.default.startAppointmentPrefetch(surveyId, orderNumber);
           console.log(`🔍 SURVEY DATA PROVIDER - Prefetch result:`, prefetchResult);
         } catch (error) {
           console.error('❌ SURVEY DATA PROVIDER - Prefetch error:', error);
         }
       };
-      
       startPrefetch();
     }
-  }, [survey, surveyId]);
+  }, [surveyId, orderNumber]);
 
   const contextValue: SurveyContextType = {
     survey,
@@ -391,8 +443,10 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
     categoriesLoading,
     categoriesError,
     selectedSectionTitle,
+    selectedSectionId,
     fetchSurveyData,
     fetchCategories,
+    refreshCategoryValues,
     updateSurvey,
   };
 

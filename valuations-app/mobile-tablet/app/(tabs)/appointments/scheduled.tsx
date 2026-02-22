@@ -9,6 +9,7 @@ import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { scheduledAppointmentsStyles, colors } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { SurveyorFilterIndicator } from '../../../components/SurveyorFilterIndicator';
+import { formatDateForSA, formatTimeForSA } from '../../../utils/dateUtils';
 
 // Extend the API's Appointment type with any additional fields we need
 interface Appointment extends ApiAppointment {
@@ -148,36 +149,48 @@ export default function ScheduledAppointmentsScreen() {
     });
   };
 
-  const renderAppointmentItem = ({ item }: { item: Appointment }) => (
-    <Card 
-      style={scheduledAppointmentsStyles.appointmentCard}
-      onPress={() => navigateToAppointment(item.id)}
-    >
-      <Card.Content>
-        <View style={scheduledAppointmentsStyles.appointmentHeader}>
-          <MaterialCommunityIcons name="map-marker" size={20} color={colors.primary} style={scheduledAppointmentsStyles.icon} />
-          <Text style={scheduledAppointmentsStyles.appointmentAddress}>{item.address || 'No address'}</Text>
-        </View>
-        
-        <View style={scheduledAppointmentsStyles.appointmentDetails}>
-          <View style={scheduledAppointmentsStyles.detailRow}>
-            <MaterialCommunityIcons name="account" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
-            <Text style={scheduledAppointmentsStyles.detailText}>{item.client || 'No client name'}</Text>
+  const renderAppointmentItem = ({ item }: { item: Appointment }) => {
+    // Get the date from various possible fields (date, startTime, Start_Time)
+    const dateString = item.date || (item as any).startTime || (item as any).Start_Time;
+    
+    // Format date and time for SA timezone
+    const formattedDate = dateString ? formatDateForSA(dateString) : 'No date';
+    const formattedTime = dateString ? formatTimeForSA(dateString) : '';
+    const formattedDateTime = dateString 
+      ? `${formattedDate} • ${formattedTime}`
+      : 'No date';
+    
+    return (
+      <Card 
+        style={scheduledAppointmentsStyles.appointmentCard}
+        onPress={() => navigateToAppointment(item.id)}
+      >
+        <Card.Content>
+          <View style={scheduledAppointmentsStyles.appointmentHeader}>
+            <MaterialCommunityIcons name="map-marker" size={20} color={colors.primary} style={scheduledAppointmentsStyles.icon} />
+            <Text style={scheduledAppointmentsStyles.appointmentAddress}>{item.address || 'No address'}</Text>
           </View>
           
-          <View style={scheduledAppointmentsStyles.detailRow}>
-            <MaterialCommunityIcons name="calendar" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
-            <Text style={scheduledAppointmentsStyles.detailText}>{item.date || 'No date'}</Text>
+          <View style={scheduledAppointmentsStyles.appointmentDetails}>
+            <View style={scheduledAppointmentsStyles.detailRow}>
+              <MaterialCommunityIcons name="account" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
+              <Text style={scheduledAppointmentsStyles.detailText}>{item.client || 'No client name'}</Text>
+            </View>
+            
+            <View style={scheduledAppointmentsStyles.detailRow}>
+              <MaterialCommunityIcons name="calendar" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
+              <Text style={scheduledAppointmentsStyles.detailText}>{formattedDateTime}</Text>
+            </View>
+            
+            <View style={scheduledAppointmentsStyles.detailRow}>
+              <MaterialCommunityIcons name="file-document-outline" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
+              <Text style={scheduledAppointmentsStyles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
+            </View>
           </View>
-          
-          <View style={scheduledAppointmentsStyles.detailRow}>
-            <MaterialCommunityIcons name="file-document-outline" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
-            <Text style={scheduledAppointmentsStyles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
-          </View>
-        </View>
-      </Card.Content>
-    </Card>
-  );
+        </Card.Content>
+      </Card>
+    );
+  };
 
   return (
     <>

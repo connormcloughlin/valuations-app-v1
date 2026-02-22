@@ -3,8 +3,8 @@ require('dotenv').config();
 module.exports = {
   "expo": {
     "name": "Valuations App",
-    "slug": "valuations-mobile-tablet",
-    "version": "1.0.0",
+    "slug": "valuationstablet",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "valuations-app",

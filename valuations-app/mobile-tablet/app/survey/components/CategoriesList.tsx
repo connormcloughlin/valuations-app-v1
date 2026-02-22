@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import mediaService from '../../../services/mediaService';
 
 // Import GlobalStyles constants
 import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
@@ -18,9 +19,40 @@ interface CategoriesListProps {
   categories: Category[];
   totalValue: number;
   onCategoryPress: (categoryId: string, categoryName: string, riskTemplateCategoryId?: number) => void;
+  /** Increment to refresh category photo counts (e.g. after adding a category photo) */
+  photoCountRefreshKey?: number;
+  onAddCategoryPhoto?: (categoryId: string, categoryName: string) => void;
+  onViewCategoryPhotos?: (categoryId: string, categoryName: string) => void;
 }
 
-export default function CategoriesList({ categories, totalValue, onCategoryPress }: CategoriesListProps) {
+export default function CategoriesList({ categories, totalValue, onCategoryPress, photoCountRefreshKey = 0, onAddCategoryPhoto, onViewCategoryPhotos }: CategoriesListProps) {
+  const [categoryPhotoCounts, setCategoryPhotoCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (categories.length === 0 || !onViewCategoryPhotos) return;
+    let cancelled = false;
+    const loadCounts = async () => {
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        categories.map(async (category: Category) => {
+          const categoryId = category.id;
+          if (!categoryId) return;
+          try {
+            const entityId = parseInt(categoryId, 10);
+            if (isNaN(entityId)) return;
+            const photos = await mediaService.getPhotosForEntity('riskAssessmentCategory', entityId);
+            if (!cancelled) counts[categoryId] = photos.length;
+          } catch {
+            if (!cancelled) counts[categoryId] = 0;
+          }
+        })
+      );
+      if (!cancelled) setCategoryPhotoCounts(counts);
+    };
+    loadCounts();
+    return () => { cancelled = true; };
+  }, [categories, onViewCategoryPhotos, photoCountRefreshKey]);
+
   return (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader}>
@@ -41,7 +73,40 @@ export default function CategoriesList({ categories, totalValue, onCategoryPress
                 {category.items} items • R{category.value.toLocaleString()}
               </Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#95a5a6" />
+            <View style={styles.categoryRightRow}>
+              {onAddCategoryPhoto && (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    onAddCategoryPhoto(category.id, category.name);
+                  }}
+                  style={styles.photoIcon}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialCommunityIcons name="camera" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              )}
+              {onViewCategoryPhotos && (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    if ((categoryPhotoCounts[category.id] ?? 0) > 0) {
+                      onViewCategoryPhotos(category.id, category.name);
+                    }
+                  }}
+                  style={styles.photoIcon}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  disabled={(categoryPhotoCounts[category.id] ?? 0) === 0}
+                >
+                  <MaterialCommunityIcons
+                    name="image-multiple"
+                    size={20}
+                    color={(categoryPhotoCounts[category.id] ?? 0) > 0 ? colors.primary : colors.textMuted}
+                  />
+                </TouchableOpacity>
+              )}
+              <MaterialCommunityIcons name="chevron-right" size={24} color="#95a5a6" />
+            </View>
           </Card.Content>
         </Card>
       ))}
@@ -82,6 +147,14 @@ const styles = StyleSheet.create({
   },
   categoryInfo: {
     flex: 1,
+  },
+  categoryRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  photoIcon: {
+    padding: 4,
   },
   categoryName: {
     fontSize: typography.sm,

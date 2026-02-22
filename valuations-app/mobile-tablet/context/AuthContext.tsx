@@ -1,11 +1,21 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import azureAdService from '../services/azureAdService';
 import authApi from '../api/auth';
-import apiClient from '../api/client';
-import { initializeDatabase } from '../utils/db';
+import sessionService from '../core/auth/sessionService';
+// Note: Using transport client for API calls instead of deprecated apiClient
+// Dynamic import to prevent bundling at startup
+const getInitializeDatabase = () => import('../utils/db');
 import { AppState, AppStateStatus } from 'react-native';
+import { fullSecurePurge } from '../core/security';
+import { useRenderCount } from '../hooks/useRenderCount';
+import {
+  MOCK_REVIEWER_EMAIL,
+  MOCK_REVIEWER_PASSWORD,
+  REVIEW_MODE_STORAGE_KEY,
+} from '../core/reviewMode/constants';
 
 interface User {
   id: string;
@@ -20,8 +30,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
   loginWithAzure: () => Promise<boolean>;
+  loginWithCredentials: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuthStatus: () => Promise<void>;
   validateToken: (token: string) => Promise<boolean>;
@@ -61,36 +71,62 @@ const isTokenExpired = (token: string): boolean => {
   }
 };
 
+/**
+ * Base64 encode for mock JWT (works in React Native where btoa may be unavailable).
+ */
+function base64Encode(str: string): string {
+  if (typeof btoa !== 'undefined') {
+    return btoa(str);
+  }
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let output = '';
+  for (let i = 0; i < str.length; i += 3) {
+    const a = str.charCodeAt(i);
+    const b = i + 1 < str.length ? str.charCodeAt(i + 1) : -1;
+    const c = i + 2 < str.length ? str.charCodeAt(i + 2) : -1;
+    output += chars[a >> 2];
+    output += chars[((a & 3) << 4) | (b >= 0 ? b >> 4 : 0)];
+    output += b >= 0 ? chars[((b & 15) << 2) | (c >= 0 ? c >> 6 : 0)] : '=';
+    output += c >= 0 ? chars[c & 63] : '=';
+  }
+  return output;
+}
+
+/**
+ * Build a minimal mock JWT for review mode (client-side only; not verified by backend).
+ * Payload must include iat and exp for sessionService.persistSession.
+ */
+function buildMockJWT(): string {
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + 365 * 24 * 3600; // 1 year
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const payload = { iat: now, exp, sub: 'review-user-id', email: MOCK_REVIEWER_EMAIL };
+  const b64 = (obj: object) => base64Encode(JSON.stringify(obj));
+  return `${b64(header)}.${b64(payload)}.mock_signature`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dbInitialized, setDbInitialized] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const isAuthenticated = !!user;
+  
+  // Monitor re-renders for performance debugging
+  const { renderCount } = useRenderCount('AuthProvider', __DEV__);
 
   useEffect(() => {
-    initializeApp();
+    const startTime = Date.now();
+    console.log('🚀 AuthProvider: Starting initialization...');
+    
+    initializeApp().then(() => {
+      const endTime = Date.now();
+      console.log(`✅ AuthProvider: Initialization completed in ${endTime - startTime}ms`);
+    }).catch((error) => {
+      console.error('❌ AuthProvider: Initialization failed:', error);
+    });
   }, []);
-
-  // Handle app state changes (background/foreground)
-  useEffect(() => {
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      console.log('🔐 App state changed:', nextAppState);
-      
-      if (nextAppState === 'active' && !isAuthenticated) {
-        // App came to foreground and user is not authenticated
-        // Try to restore authentication state
-        console.log('🔐 App became active, checking for stored auth...');
-        checkAuthStatus();
-      }
-    };
-
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-
-    return () => {
-      subscription?.remove();
-    };
-  }, [isAuthenticated]);
 
   const initializeApp = async () => {
     try {
@@ -98,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Check if database is already initialized to prevent duplicate initialization
       if (!dbInitialized) {
+        const { initializeDatabase } = await getInitializeDatabase();
         await initializeDatabase();
         setDbInitialized(true);
         console.log('✅ Database initialized');
@@ -147,302 +184,144 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Ensure loading is stopped even if everything fails
         setIsLoading(false);
       }
+    } finally {
+      // Mark initialization as complete
+      setIsInitialized(true);
+      console.log('✅ App initialization completed');
     }
   };
 
   /**
    * Validate token with the backend
    */
-  const validateToken = async (token: string): Promise<boolean> => {
+  const validateToken = useCallback(async (token: string): Promise<boolean> => {
     try {
       if (!token) {
         console.log('🔐 No token provided for validation');
         return false;
       }
-
-      // Check if this is API key mode
-      if (token === 'api-key-mode') {
-        console.log('🔑 API key mode detected, checking user context');
-        
-        // For API key mode, check if user context exists
-        const userContext = await AsyncStorage.getItem('userContext');
-        if (userContext) {
-          console.log('🔑 User context found for API key mode');
-          return true;
-        } else {
-          console.log('🔑 No user context found for API key mode');
-          return false;
-        }
-      }
-
-      // JWT mode validation
-      // First, do client-side validation to check if token is expired
       if (isTokenExpired(token)) {
         console.log('🔐 Token expired (client-side check)');
         return false;
       }
-
-      // For external APIs, we'll rely primarily on client-side validation
-      // and only attempt server validation if needed
       console.log('🔐 Token appears valid (client-side check)');
-      
-      // Optionally try server validation, but don't fail if endpoint doesn't exist
       try {
-        // Store the current auth header before setting the token
-        const originalAuth = apiClient.defaults.headers.common['Authorization'];
-        
-        // Set the token temporarily for this validation request
         authApi.setAuthToken(token);
-        
-        // Call the verify endpoint (this might not exist in external APIs)
         const response = await authApi.verifyToken();
-        
-        // Restore original auth token
-        if (originalAuth) {
-          apiClient.defaults.headers.common['Authorization'] = originalAuth;
-        } else {
-          delete apiClient.defaults.headers.common['Authorization'];
-        }
-
-        // Handle the new response format from the implemented backend
         if (response && (response as any).data) {
           if ((response as any).data.valid === true) {
             console.log('🔐 Token validation successful (server-side)');
-            console.log('🔐 User info:', (response as any).data.user);
             return true;
-          } else {
-            // Handle normalized error responses
-            const errorCode = (response as any).data.code;
-            console.log('🔐 Token validation failed (server-side):', {
-              code: errorCode,
-              message: (response as any).data.message
-            });
-            
-            // Handle specific error codes
-            if (errorCode === 'INVALID_TOKEN' || errorCode === 'NO_TOKEN') {
-              console.log('🔐 Token is invalid, clearing stored data');
-              return false;
-            } else if (errorCode === 'RATE_LIMITED') {
-              console.log('🔐 Rate limited, but token might still be valid');
-              // Don't clear tokens on rate limiting, just accept client-side validation
-              return !isTokenExpired(token);
-            } else {
-              console.log('🔐 Unknown error code, accepting token based on client-side validation');
-              return !isTokenExpired(token);
-            }
           }
-        } else {
-          console.log('🔐 Invalid response format, using client-side validation');
+          const errorCode = (response as any).data.code;
+          if (errorCode === 'INVALID_TOKEN' || errorCode === 'NO_TOKEN') return false;
+          if (errorCode === 'RATE_LIMITED') return !isTokenExpired(token);
           return !isTokenExpired(token);
         }
-      } catch (serverError) {
-        console.log('🔐 Server validation not available or failed, using client-side validation');
-        // If server validation fails (e.g., endpoint doesn't exist), 
-        // we'll accept the token if it passes client-side validation
+        return !isTokenExpired(token);
+      } catch {
         return !isTokenExpired(token);
       }
     } catch (error) {
       console.error('❌ Token validation error:', error);
       return false;
     }
-  };
+  }, []);
 
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = useCallback(async () => {
     try {
       setIsLoading(true);
+      console.log('🔐 Checking authentication status using sessionService...');
       
-      const token = await AsyncStorage.getItem('authToken');
-      const azureToken = await AsyncStorage.getItem('azureToken');
-      const userData = await AsyncStorage.getItem('userData');
+      // Load session from sessionService
+      const session = await sessionService.getCurrentSession();
       
-      if (__DEV__) {
-        console.log('🔐 Token status:', {
-          hasAuthToken: !!token,
-          hasAzureToken: !!azureToken,
-          hasUserData: !!userData
+      if (session) {
+        console.log('🔐 Valid session found via sessionService');
+        console.log('🔐 Session details:', {
+          userId: session.userId,
+          email: session.email,
+          hasToken: !!session.token,
+          tokenPreview: session.token ? session.token.substring(0, 20) + '...' : 'null',
+          softExpiry: new Date(session.softExpiry).toISOString(),
+          hardExpiry: new Date(session.hardExpiry).toISOString(),
+          isHardExpired: Date.now() >= session.hardExpiry
         });
-      }
-      
-      if (token && userData) {
-        console.log('🔐 Found stored token and user data, validating...');
         
-        // Validate the token before considering user authenticated
-        const isTokenValid = await validateToken(token);
+        // Get any stored Azure token for display/refresh purposes
+        const azureToken = await AsyncStorage.getItem('azureToken');
         
-        if (isTokenValid) {
-          console.log('🔐 Token validation successful, setting user as authenticated');
-          
-          // Check if this is API key mode
-          if (token === 'api-key-mode') {
-            console.log('🔑 API key mode detected, using stored user data');
-            
-            // For API key mode, use stored user data
+        // Create user object from session data
+        const user: User = {
+          id: session.userId,
+          name: session.email.split('@')[0], // Use email prefix as default name
+          email: session.email,
+          token: session.token,
+          azureToken: azureToken || undefined
+        };
+        
+        // Try to get stored user data for better display name
+        try {
+          const userData = await AsyncStorage.getItem('userData');
+          if (userData) {
             const parsedUser = JSON.parse(userData);
-            setUser({ 
-              ...parsedUser, 
-              token,
-              azureToken: azureToken || undefined
-            });
-            
-            // Restore user context for API key mode
-            const userContext = await AsyncStorage.getItem('userContext');
-            if (userContext) {
-              const parsedUserContext = JSON.parse(userContext);
-              authApi.setUserContext(parsedUserContext);
-              console.log('👤 User context restored for API key mode');
-            }
-          } else {
-            // JWT mode - try to get fresh user data from the verify endpoint
-            try {
-              const originalAuth = apiClient.defaults.headers.common['Authorization'];
-              authApi.setAuthToken(token);
-              const verifyResponse = await authApi.verifyToken();
-              
-              if (verifyResponse && (verifyResponse as any).data && (verifyResponse as any).data.valid === true) {
-                // Use fresh user data from the server
-                const freshUserData = (verifyResponse as any).data.user;
-                console.log('🔐 Using fresh user data from server:', freshUserData);
-                
-                setUser({ 
-                  id: freshUserData.id,
-                  name: freshUserData.name,
-                  email: freshUserData.email,
-                  token,
-                  azureToken: azureToken || undefined
-                });
-                
-                // Update stored user data with fresh information
-                await AsyncStorage.setItem('userData', JSON.stringify({
-                  id: freshUserData.id,
-                  name: freshUserData.name,
-                  email: freshUserData.email
-                }));
-              } else {
-                // Fall back to stored user data
-                const parsedUser = JSON.parse(userData);
-                setUser({ 
-                  ...parsedUser, 
-                  token,
-                  azureToken: azureToken || undefined
-                });
-              }
-              
-              // Restore original auth header
-              if (originalAuth) {
-                apiClient.defaults.headers.common['Authorization'] = originalAuth;
-              } else {
-                delete apiClient.defaults.headers.common['Authorization'];
-              }
-            } catch (verifyError) {
-              console.log('🔐 Could not get fresh user data, using stored data');
-              // Fall back to stored user data
-              const parsedUser = JSON.parse(userData);
-              setUser({ 
-                ...parsedUser, 
-                token,
-                azureToken: azureToken || undefined
-              });
-            }
-            
-            // Set the API token for subsequent requests (JWT mode)
-            authApi.setAuthToken(token);
+            user.name = parsedUser.name || user.name;
           }
-          
-          if (__DEV__) {
-            console.log('🔐 User authenticated:', user?.email);
-          }
-          
-          // Add a small delay to ensure state is properly set
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } else {
-          // Only clear tokens if they are definitely invalid (expired)
-          // Don't clear on network issues or server unavailability
-          console.log('🔐 Token validation failed, but keeping tokens for retry');
-          // Set user as null but don't clear stored tokens yet
-          setUser(null);
-          
-          if (__DEV__) {
-            console.log('🔐 User not authenticated, but tokens preserved');
-          }
+        } catch (parseError) {
+          console.warn('⚠️ Could not parse stored user data, using email prefix as name');
         }
+        
+        setUser(user);
+        if (session.email === MOCK_REVIEWER_EMAIL) {
+          await AsyncStorage.setItem(REVIEW_MODE_STORAGE_KEY, 'true');
+        }
+        console.log(`🔐 User authenticated via sessionService: ${session.email}`);
       } else {
-        console.log('🔐 No authentication data found, user not authenticated');
-        if (__DEV__) {
-          console.log('🔐 No authentication data found');
-        }
+        console.log('🔐 No valid session found, user not authenticated');
+        setUser(null);
       }
     } catch (error) {
       console.error('❌ Error checking auth status:', error);
+      setUser(null);
       
-      // Only clear auth data if it's a critical error, not just a network issue
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('timeout')) {
-        console.log('🔐 Auth check timeout, keeping existing auth state');
-        // Don't clear auth data on timeout, just continue with existing state
-      } else {
-        console.log('🔐 Critical auth error, clearing stored data...');
-        // On critical error, clear stored data to be safe
-        try {
-          await AsyncStorage.multiRemove(['authToken', 'azureToken', 'userData']);
-          authApi.setAuthToken('');
-          setUser(null);
-          console.log('🔐 Cleared auth data due to critical error');
-        } catch (clearError) {
-          console.error('❌ Error clearing auth data:', clearError);
-        }
+      // Let sessionService handle session cleanup
+      if (error instanceof Error && error.message.includes('expired')) {
+        console.log('🔒 Session expired, sessionService will handle cleanup');
       }
     } finally {
       setIsLoading(false);
-      if (__DEV__) {
-        console.log('🔐 Auth check completed:', { isAuthenticated: !!user });
-      }
     }
-  };
+  }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const loginAsReviewer = useCallback(async (): Promise<boolean> => {
     try {
       setIsLoading(true);
-      
-      // TODO: Replace with actual Azure AD authentication
-      // For now, simulate login
-      if (email && password) {
-        const mockUser: User = {
-          id: '1',
-          name: 'Connor McLoughlin',
-          email: email,
-          token: 'mock-token-' + Date.now()
-        };
-
-        await AsyncStorage.setItem('authToken', 'api-key-mode');
-        await AsyncStorage.setItem('userData', JSON.stringify({
-          id: mockUser.id,
-          name: mockUser.name,
-          email: mockUser.email
-        }));
-
-        // Store user context for API key authentication
-        const userContext = {
-          id: mockUser.id,
-          name: mockUser.name,
-          email: mockUser.email
-        };
-        await AsyncStorage.setItem('userContext', JSON.stringify(userContext));
-        authApi.setUserContext(userContext);
-
-        setUser(mockUser);
-        console.log('🔐 Mock user logged in with API key authentication:', email);
-        return true;
-      }
-      return false;
+      const mockJwt = buildMockJWT();
+      await sessionService.persistSession(
+        mockJwt,
+        'mock-refresh-token',
+        MOCK_REVIEWER_EMAIL,
+        'review-user-id'
+      );
+      await AsyncStorage.setItem(REVIEW_MODE_STORAGE_KEY, 'true');
+      const mockUser: User = {
+        id: 'review-user-id',
+        name: 'Review User',
+        email: MOCK_REVIEWER_EMAIL,
+        token: mockJwt,
+      };
+      setUser(mockUser);
+      console.log('🔐 Mock reviewer login successful');
+      return true;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Mock reviewer login error:', error);
       return false;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const loginWithAzure = async (): Promise<boolean> => {
+  const loginWithAzure = useCallback(async (): Promise<boolean> => {
     try {
       setIsLoading(true);
       
@@ -463,6 +342,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       
+      console.log('🔐 Azure AD auth result:', {
+        hasAuthResult: !!authResult,
+        hasAccount: !!authResult?.account,
+        hasAccessToken: !!authResult?.accessToken,
+        accountId: authResult?.account?.identifier,
+        accountEmail: authResult?.account?.username
+      });
+
       if (authResult && authResult.account) {
         console.log('🔐 Azure AD authentication successful, starting token exchange...');
         
@@ -473,43 +360,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: authResult.account.username
         };
         
-        console.log('🔐 User info for API key authentication:', userInfo);
+        console.log('🔐 User info for JWT token exchange:', userInfo);
+        console.log('🔐 About to call authApi.exchangeToken...');
+        console.log('🔐 Azure access token preview:', authResult.accessToken ? authResult.accessToken.substring(0, 50) + '...' : 'null');
         
-        // For API key mode, we don't need token exchange - just store user context
-        const azureUser: User = {
-          id: authResult.account.identifier,
-          name: authResult.account.name || 'Azure User',
-          email: authResult.account.username,
-          token: 'api-key-mode', // Placeholder for API key mode
-          azureToken: authResult.accessToken, // Store Azure token for potential refresh
-          roles: authResult.roles || [] // Include roles from Azure AD
-        };
+        // Step 3: Exchange Azure AD token for JWT token
+        try {
+          const exchangeResponse = await authApi.exchangeToken(authResult.accessToken, userInfo);
+          
+          const jwtToken = (exchangeResponse as any)?.data?.token || (exchangeResponse as any)?.token;
+          const refreshToken = (exchangeResponse as any)?.data?.refreshToken || (exchangeResponse as any)?.refreshToken || 'dummy_refresh_token';
+          
+          if ((exchangeResponse as any)?.success && jwtToken) {
+            
+            console.log('🔄 JWT token exchange successful');
+            console.log('🔄 JWT token preview:', jwtToken ? jwtToken.substring(0, 50) + '...' : 'null');
+            console.log('🔄 Refresh token preview:', refreshToken ? refreshToken.substring(0, 20) + '...' : 'null');
+            
+            // Store session using sessionService
+            try {
+              await sessionService.persistSession(
+                jwtToken,
+                refreshToken,
+                authResult.account.username,
+                authResult.account.identifier
+              );
+              console.log('✅ Session persisted successfully');
+            } catch (persistError) {
+              console.error('❌ Failed to persist session:', persistError);
+              throw persistError;
+            }
+            
+            // Create user object from Azure AD info
+            const azureUser: User = {
+              id: authResult.account.identifier,
+              name: authResult.account.name || 'Azure User',
+              email: authResult.account.username,
+              token: jwtToken,
+              azureToken: authResult.accessToken,
+              roles: authResult.roles || []
+            };
 
-        // Store user data for API key authentication
-        await AsyncStorage.setItem('authToken', azureUser.token);
-        await AsyncStorage.setItem('azureToken', azureUser.azureToken || '');
-        await AsyncStorage.setItem('userData', JSON.stringify({
-          id: azureUser.id,
-          name: azureUser.name,
-          email: azureUser.email
-        }));
-
-        // Store user context for API key authentication
-        const userContext = {
-          id: azureUser.id,
-          name: azureUser.name,
-          email: azureUser.email,
-          azureId: authResult.account.identifier,
-          roles: authResult.roles || [], // Include roles from Azure AD
-          role: authResult.roles?.[0] || 'Surveyor' // Primary role (first role or default)
-        };
-        await AsyncStorage.setItem('userContext', JSON.stringify(userContext));
-        
-        // Update the user context cache for API key mode
-        authApi.setUserContext(userContext);
-
-        setUser(azureUser);
-        console.log('🔐 API key authentication successful, user logged in:', azureUser.email);
+            setUser(azureUser);
+            console.log('🔐 JWT authentication successful, user logged in:', azureUser.email);
+          } else {
+            throw new Error('Token exchange failed: ' + ((exchangeResponse as any).data?.message || 'Unknown error'));
+          }
+        } catch (exchangeError: any) {
+          console.error('❌ JWT token exchange failed:', exchangeError);
+          throw new Error('Failed to exchange Azure AD token for JWT: ' + (exchangeError?.message || exchangeError));
+        }
         return true;
       } else {
         console.error('❌ Azure AD authentication failed - no account returned');
@@ -522,9 +422,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       console.log('🔐 Azure AD login process completed');
     }
-  };
+  }, []);
 
-  const logout = async (): Promise<void> => {
+  const loginWithCredentials = useCallback(async (username: string, password: string): Promise<boolean> => {
+    const usernameTrimmed = username.trim().toLowerCase();
+    if (usernameTrimmed === MOCK_REVIEWER_EMAIL && password === MOCK_REVIEWER_PASSWORD) {
+      return loginAsReviewer();
+    }
+    return loginWithAzure();
+  }, [loginAsReviewer, loginWithAzure]);
+
+  const logout = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true);
       
@@ -538,12 +446,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Continue with local logout even if Azure logout fails
       }
       
-      // Clear stored authentication data (including both API and Azure tokens)
-      await AsyncStorage.multiRemove(['authToken', 'azureToken', 'userData', 'userContext']);
-      
-      // Clear API client auth header and user context
-      authApi.setAuthToken('');
-      authApi.setUserContext(null);
+      // Invalidate session using sessionService
+      await sessionService.invalidate();
+      await AsyncStorage.removeItem(REVIEW_MODE_STORAGE_KEY);
+
+      // Perform secure data purge (S6 implementation)
+      try {
+        console.log('🔐 Starting secure data purge...');
+        const purgeResult = await fullSecurePurge();
+        
+        if (purgeResult.success) {
+          console.log('✅ Secure data purge completed successfully', {
+            asyncStorageKeys: purgeResult.clearedItems.asyncStorage.length,
+            databaseTables: purgeResult.clearedItems.databaseTables.length,
+            cacheKeys: purgeResult.clearedItems.cacheKeys.length
+          });
+        } else {
+          console.warn('⚠️ Secure data purge completed with errors:', purgeResult.errors);
+        }
+      } catch (purgeError) {
+        console.error('❌ Secure data purge failed:', purgeError);
+        // Continue with logout even if purge fails
+      }
       
       // Clear user state
       setUser(null);
@@ -557,18 +481,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const value: AuthContextType = {
+  // Handle app state changes (background/foreground) - after checkAuthStatus is defined
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (__DEV__) console.log('🔐 App state changed:', nextAppState);
+      if (nextAppState === 'active' && !isAuthenticated) {
+        checkAuthStatus();
+      }
+    };
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription?.remove();
+  }, [isAuthenticated, checkAuthStatus]);
+
+  // Memoize the context value so consumers only re-render when user/isLoading/isAuthenticated or callbacks change
+  const value: AuthContextType = useMemo(() => ({
     user,
     isLoading,
     isAuthenticated,
-    login,
     loginWithAzure,
+    loginWithCredentials,
     logout,
     checkAuthStatus,
     validateToken
-  };
+  }), [user, isLoading, isAuthenticated, loginWithAzure, loginWithCredentials, logout, checkAuthStatus, validateToken]);
+
+  // Don't render children until initialization is complete
+  if (!isInitialized) {
+    return (
+      <AuthContext.Provider value={value}>
+        <View style={{ 
+          flex: 1, 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          backgroundColor: '#f5f5f5'
+        }}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>
+            Initializing app...
+          </Text>
+        </View>
+      </AuthContext.Provider>
+    );
+  }
 
   return (
     <AuthContext.Provider value={value}>
@@ -580,7 +536,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    console.error('❌ useAuth called outside of AuthProvider context');
+    // Return a default context to prevent crashes
+    return {
+      user: null,
+      isLoading: true,
+      isAuthenticated: false,
+      loginWithAzure: async () => false,
+      loginWithCredentials: async () => false,
+      logout: async () => {},
+      checkAuthStatus: async () => {},
+      validateToken: async () => false
+    };
   }
   return context;
 } 

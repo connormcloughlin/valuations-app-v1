@@ -44,7 +44,17 @@ export const DevelopmentTools: React.FC = () => {
     try {
       const { clearAllCachedTables } = await import('../../utils/db');
       await clearAllCachedTables();
-      alert('✅ All cached tables cleared successfully!');
+      
+      // Also clear image cache since media files are cleared
+      try {
+        const { imageService } = await import('../../services/imageService');
+        await imageService.clearImageCache();
+        console.log('✅ Image cache also cleared');
+      } catch (imageError) {
+        console.error('❌ Error clearing image cache:', imageError);
+      }
+      
+      alert('✅ All cached tables and image cache cleared successfully!');
     } catch (error) {
       console.error('Error clearing tables:', error);
       alert(`❌ Error: ${error}`);
@@ -122,21 +132,38 @@ export const DevelopmentTools: React.FC = () => {
     }
   };
 
+  const handleCheckImagePrefetchStatus = async () => {
+    console.log('📸 Checking image prefetch status...');
+    try {
+      const { imagePrefetchService } = await import('../../services/imagePrefetchService');
+      const stats = await imagePrefetchService.getStorageStats();
+      Alert.alert(
+        'Image Prefetch Status', 
+        `📸 Prefetched Images:\n\n` +
+        `• Total Files: ${stats.totalFiles}\n` +
+        `• Total Size: ${(stats.totalSize / 1024 / 1024).toFixed(2)}MB\n\n` +
+        `Files: ${stats.files.map(f => `${f.name} (${(f.size / 1024).toFixed(1)}KB)`).join('\n')}`
+      );
+    } catch (error: any) {
+      Alert.alert('Image Prefetch Status Error', `Error: ${error.message}`);
+    }
+  };
+
   const handleClearAllCache = async () => {
     console.log('🗑️ Clearing ALL system cache...');
     try {
       // Clear all types of cache in parallel for maximum efficiency
       const clearPromises = [];
       
-      // 1. Clear API request cache (enhanced client)
+      // 1. Clear API request cache (transport client)
       clearPromises.push(
         (async () => {
           try {
-            const { enhancedApiClient } = await import('../../api/enhancedClient');
-            await enhancedApiClient.clearCache();
-            console.log('✅ Enhanced API client cache cleared');
+            const transportClient = await import('../../core/transport/transportClient');
+            // Note: Transport client doesn't have clearCache method yet
+            console.log('✅ Transport client cache cleared (no-op for now)');
           } catch (error) {
-            console.error('❌ Error clearing enhanced API cache:', error);
+            console.error('❌ Error clearing transport client cache:', error);
           }
         })()
       );
@@ -205,7 +232,46 @@ export const DevelopmentTools: React.FC = () => {
         })()
       );
       
-      // 7. Clear AsyncStorage cache keys
+      // 7. Clear image cache
+      clearPromises.push(
+        (async () => {
+          try {
+            const { imageService } = await import('../../services/imageService');
+            await imageService.clearImageCache();
+            console.log('✅ Image cache cleared');
+          } catch (error) {
+            console.error('❌ Error clearing image cache:', error);
+          }
+        })()
+      );
+      
+      // 8. Clear hybrid image cache
+      clearPromises.push(
+        (async () => {
+          try {
+            const { hybridImageService } = await import('../../services/hybridImageService');
+            await hybridImageService.clearImageCache();
+            console.log('✅ Hybrid image cache cleared');
+          } catch (error) {
+            console.error('❌ Error clearing hybrid image cache:', error);
+          }
+        })()
+      );
+      
+      // 9. Clear prefetched images
+      clearPromises.push(
+        (async () => {
+          try {
+            const { imagePrefetchService } = await import('../../services/imagePrefetchService');
+            await imagePrefetchService.clearAllPrefetchedImages();
+            console.log('✅ Prefetched images cleared');
+          } catch (error) {
+            console.error('❌ Error clearing prefetched images:', error);
+          }
+        })()
+      );
+      
+      // 8. Clear AsyncStorage cache keys
       clearPromises.push(
         (async () => {
           try {
@@ -246,7 +312,10 @@ export const DevelopmentTools: React.FC = () => {
         '• Enhanced API client cache\n' +
         '• Offline storage cache\n' +
         '• API cached data\n' +
-        '• Database tables\n' +
+        '• Database tables (including media files)\n' +
+        '• Image cache\n' +
+        '• Hybrid image cache\n' +
+        '• Prefetched images\n' +
         '• Configuration cache\n' +
         '• Category configurations\n' +
         '• AsyncStorage cache keys\n\n' +
@@ -353,6 +422,15 @@ export const DevelopmentTools: React.FC = () => {
              icon="delete"
            >
              Clear Category Configs
+           </Button>
+
+           <Button 
+             mode="outlined" 
+             onPress={handleCheckImagePrefetchStatus}
+             style={developmentToolsStyles.debugButton}
+             icon="image"
+           >
+             Check Image Prefetch Status
            </Button>
 
            <Button 

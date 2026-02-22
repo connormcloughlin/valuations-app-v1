@@ -18,6 +18,7 @@
 
 | ID | Priority | Effort | Title | Key Risks Reduced |
 |----|----------|--------|-------|-------------------|
+| S0 | P0 | S | Remove API‑Key Remnants and Broken Imports | SEC-01,R6 |
 | S1 | P0 | L | Unify Transport Layer | R1,R6,R7,SEC-04,DUP-* |
 | S2 | P0 | M | Secure Token & User Context Handling | SEC-01,SEC-02,DUP-TOKEN-CACHE |
 | S2C | P0 | M | Seamless Session Continuity (Preemptive & Graceful Refresh) | SEC-01,SEC-02 + UX Stability |
@@ -41,6 +42,18 @@
 
 ---
 ## P0 – Foundation & Security
+
+### S0 – Remove API‑Key Remnants and Broken Imports
+Evidence (from code):
+- `mobile-tablet/constants/apiConfig.ts` enforces JWT‑only (API key symbols removed).
+- `mobile-tablet/api/client.js` still references `API_KEY`, `API_KEY_HEADER_NAME`, and `validateApiKeyConfig` which no longer exist.
+- Several services (e.g., `services/prefetchService.ts`) dynamically import removed API‑key constants.
+Acceptance Criteria:
+1. Delete API‑key branches from `api/client.js` and affected services; rely solely on `core/auth/sessionService.getAuthHeaders()`.
+2. Remove stale imports (`API_KEY`, `API_KEY_HEADER_NAME`, `validateApiKeyConfig`).
+3. Ensure `X-User-Context` is produced via sessionService with SHA‑256 email hash.
+4. Smoke test app startup and a simple authenticated fetch; no missing export errors.
+Traceability: SEC‑01, R6.
 
 ### S1 – Unify Transport Layer (Retire Dual Clients)
 Story: As a Dev I want a single transport abstraction so retries, headers, circuit breaker, caching and error semantics are consistent and testable.
@@ -69,7 +82,7 @@ Story: As Sec I want centralized secure token & user context management prepared
 Acceptance Criteria:
 1. New `core/auth/sessionService.ts` with: loadSession(), persistSession(), getAuthHeaders(), invalidate(), refreshIfStale().
 2. Email hashed (SHA-256 hex) before adding to `X-User-Context` header; user context trimmed to { userId, emailHash }.
-3. API key mode only (JWT path behind feature flag `ENABLE_JWT_MODE=false`).
+3. JWT‑only mode across app (remove API‑key branches and imports).
 4. No residual token logic in legacy client shims.
 5. Redacted logging: tokens masked (first 6 chars + length).
 6. Concurrency guard: multiple parallel API calls during an active refresh await a single refresh promise (single-flight refresh).
@@ -78,6 +91,7 @@ Acceptance Criteria:
 9. Distinguish soft vs hard expiry: softExpiry used for preemptive refresh; only hard expiry (or explicit server revocation code) forces logout.
 10. Provide lightweight metrics counters: `session.refresh.count`, `session.refresh.failure`, `session.refresh.softWindow`. (Logging only now; formal metrics later S17.)
 11. Tests: (a) coalesced refresh; (b) preemptive refresh occurs when remaining <= threshold; (c) transient failure retry; (d) hard expiry triggers invalidate.
+Implementation note: Fix duplicate `getCurrentSession` definitions in `core/auth/sessionService.ts` (keep a single public getter and a private internal helper with distinct names).
 Traceability: SEC-01,SEC-02,DUP-TOKEN-CACHE.
 Agent Prompt:
 1. Create sessionService; move token caching logic out of clients.
@@ -99,8 +113,8 @@ Acceptance Criteria:
 5. Large media upload operations (size > configurable threshold) may proceed with expiring token if > 30s remain; otherwise they are paused and resumed after refresh (if resumable) or aborted with user guidance.
 6. Provide hook `core/auth/useSessionContinuity.ts` returning { timeToSoftExpiry, timeToHardExpiry, refreshStatus, queuedRequests } for optional UI instrumentation (no core dependency required in business logic).
 7. Tests: (a) two parallel mutations during refresh execute once each; (b) queued GET resolves after refresh; (c) hardExpiry path forces logout event; (d) mutation dedupe works (same signature only once).
-8. Documentation: continuity strategy comment block at top of `sessionService.ts` referencing backend requirements (A3 + A20) for soft/hard expiry codes.
-Dependencies: S2 (foundation), API stories A3, A20.
+8. Documentation: continuity strategy comment block at top of `sessionService.ts` referencing backend requirements for soft/hard expiry codes.
+Dependencies: S2 (foundation). API dependencies moved to `valuations-api/API_IMPLEMENTATION_BACKLOG.md` (e.g., AUTH‑A1/A3).
 Traceability: UX stability, SEC-01, SEC-02.
 Agent Prompt:
 1. Extend sessionService to persist & interpret soft/hard expiry from token payload or accompanying metadata.
@@ -351,7 +365,7 @@ Follow-ups: (if any)
 ## Notes
 - Keep refactors incremental; avoid wide churn (minimize merge conflicts).
 - Introduce metrics hooks early (S1 scaffolding) even if not surfaced until S17.
-- JWT mode intentionally disabled until server signature verification & rotation strategy ready.
+- JWT‑only on client. API‑side stories have been split into `valuations-api/API_IMPLEMENTATION_BACKLOG.md` and removed from this mobile backlog.
 
 ---
 End of Backlog.

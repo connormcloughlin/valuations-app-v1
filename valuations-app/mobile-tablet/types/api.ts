@@ -142,7 +142,6 @@ export interface AppointmentData {
 export interface ApiClient {
   // Auth methods
   setAuthToken: (token: string) => void;
-  login: (username: string, password: string) => Promise<ApiResponse<any>>;
   
   // Survey methods
   getSurveys: () => Promise<ApiResponse<any>>;

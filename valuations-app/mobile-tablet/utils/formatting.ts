@@ -1,6 +1,7 @@
 /**
  * Formatting utility functions for the app
  */
+import { formatDateForSA, parseUTCDate } from './dateUtils';
 
 /**
  * Format a number as currency (ZAR)
@@ -18,14 +19,22 @@ export const currencyFormat = (value: number): string => {
 
 /**
  * Format a date to a readable string
- * @param date - Date to format
+ * Handles both Date objects and UTC date strings from the backend
+ * @param date - Date to format (Date object or UTC ISO string)
  * @returns Formatted date string
  */
-export const dateFormat = (date: Date): string => {
+export const dateFormat = (date: Date | string): string => {
+  // If it's a string, parse it as UTC and format for SA
+  if (typeof date === 'string') {
+    return formatDateForSA(date);
+  }
+  
+  // If it's a Date object, format it with SA timezone
   return new Intl.DateTimeFormat('en-ZA', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    timeZone: 'Africa/Johannesburg',
   }).format(date);
 };
 

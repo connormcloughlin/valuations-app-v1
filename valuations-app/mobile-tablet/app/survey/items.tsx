@@ -503,12 +503,8 @@ export default function ItemsScreen() {
       if (!result.canceled) {
         const photoUri = result.assets[0].uri;
         setPhoto(photoUri);
-        
-        // Photo captured successfully
+        // Keep modal open so user can take another photo
       }
-      
-      // Close camera modal
-      setShowCamera(false);
     } catch (err) {
       console.error('Error taking photo:', err);
       Alert.alert('Error', 'Failed to capture photo. Please try again.');
@@ -521,18 +517,16 @@ export default function ItemsScreen() {
         allowsEditing: false,
         aspect: undefined,
         quality: 1.0,
-        mediaTypes: ImagePicker.MediaTypeOptions.Images
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true
       });
       
-      if (!result.canceled) {
+      if (!result.canceled && result.assets?.length) {
+        // Use the first selected image when multiple are chosen
         const photoUri = result.assets[0].uri;
         setPhoto(photoUri);
-        
-        // Photo selected successfully
+        // Keep modal open so user can select or take another
       }
-      
-      // Close camera modal
-      setShowCamera(false);
     } catch (err) {
       console.error('Error selecting photo:', err);
       Alert.alert('Error', 'Failed to select photo. Please try again.');

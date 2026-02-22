@@ -1,7 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { Button } from 'react-native-paper';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ItemsSummaryProps } from './types';
 import { itemsSummaryStyles } from '../../../GlobalStyles';
 
@@ -24,13 +23,16 @@ export default function ItemsSummary({
       
       {/* Buttons Row */}
       <View style={itemsSummaryStyles.buttonRow}>
-        <TouchableOpacity
-          style={itemsSummaryStyles.addButton}
+        <Button
+          mode="contained"
           onPress={onAddItem}
+          style={itemsSummaryStyles.addButton}
+          contentStyle={itemsSummaryStyles.addButtonContent}
+          labelStyle={itemsSummaryStyles.addButtonText}
+          icon="plus"
         >
-          <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-          <Text style={itemsSummaryStyles.addButtonText}>Add Item</Text>
-        </TouchableOpacity>
+          Add Item
+        </Button>
         
         <Button
           mode="outlined"

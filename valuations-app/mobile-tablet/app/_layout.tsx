@@ -11,14 +11,18 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import ConnectionStatus from '../components/ConnectionStatus';
+import UpdateNotification from '../components/UpdateNotification';
 import connectionUtils from '../utils/connectionUtils';
-import { initializeDatabase } from '../utils/db';
+// Dynamic import to prevent bundling at startup
+const getInitializeDatabase = () => import('../utils/db');
 import { AuthProvider } from '../context/AuthContext';
 import { DashboardProvider } from '../context/DashboardContext';
+import { bundleOptimization } from '../core/bundleOptimization';
 
 import { useColorScheme } from '../hooks/useColorScheme';
 import { useOrientation } from '../hooks/useOrientation';
 import { logNavigation } from '../utils/logger';
+import SimplePerformanceMonitor from '../components/SimplePerformanceMonitor';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -46,6 +50,11 @@ export default function RootLayout() {
   
   // Remove font loading since it might be causing issues
   const [loaded] = useFonts({});
+  
+  // Update notification state
+  const [updateStatus, setUpdateStatus] = useState<'checking' | 'downloading' | 'ready' | 'error' | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<string | undefined>(undefined);
+  const [showUpdateNotification, setShowUpdateNotification] = useState(false);
 
   useEffect(() => {
     if (loaded) {
@@ -77,27 +86,78 @@ export default function RootLayout() {
     };
   }, []);
 
-  // Automatic update checking
+  // Initialize bundle optimization
+  useEffect(() => {
+    console.log('🚀 Initializing performance optimizations...');
+    
+    // Initialize bundle optimization
+    bundleOptimization.processPreloadQueue();
+    
+    console.log('✅ Performance optimizations initialized');
+  }, []);
+
+  // Automatic update checking with user notifications
   useEffect(() => {
     const checkForUpdates = async () => {
       try {
-        // Only check for updates if we're not in development
-        if (!__DEV__) {
+        // Only check for updates if we're not in development and updates are enabled
+        if (!__DEV__ && Updates.isEnabled) {
+          // Show checking status
+          setUpdateStatus('checking');
+          setUpdateMessage('Checking for updates...');
+          setShowUpdateNotification(true);
+          
           const update = await Updates.checkForUpdateAsync();
+          
           if (update.isAvailable) {
-            await Updates.fetchUpdateAsync();
-            // Reload the app to apply the update
-            await Updates.reloadAsync();
+            // Show downloading status
+            setUpdateStatus('downloading');
+            setUpdateMessage('Downloading update...');
+            
+            const result = await Updates.fetchUpdateAsync();
+            
+            if (result.isNew) {
+              // Show ready status
+              setUpdateStatus('ready');
+              setUpdateMessage('Update ready! Reloading app...');
+              
+              // Wait a moment so user can see the message, then reload
+              setTimeout(async () => {
+                await Updates.reloadAsync();
+              }, 1500);
+            } else {
+              // Update was already downloaded
+              setUpdateStatus('ready');
+              setUpdateMessage('Update ready! Reloading app...');
+              setTimeout(async () => {
+                await Updates.reloadAsync();
+              }, 1500);
+            }
+          } else {
+            // No update available - hide notification after a brief moment
+            setTimeout(() => {
+              setShowUpdateNotification(false);
+              setUpdateStatus(null);
+            }, 1000);
           }
         }
       } catch (error) {
-        console.log('Error checking for updates:', error);
-        // Don't show error to user for automatic checks
+        console.error('Error checking for updates:', error);
+        // Show error to user
+        setUpdateStatus('error');
+        setUpdateMessage('Update check failed. You can continue using the app.');
+        // Auto-hide error after 5 seconds
+        setTimeout(() => {
+          setShowUpdateNotification(false);
+          setUpdateStatus(null);
+        }, 5000);
       }
     };
 
-    // Check for updates when app starts
-    checkForUpdates();
+    // Check for updates when app starts (with a small delay to not block initial render)
+    const timeoutId = setTimeout(checkForUpdates, 1000);
+    
+    return () => clearTimeout(timeoutId);
   }, []);
 
   if (!loaded) {
@@ -111,22 +171,28 @@ export default function RootLayout() {
           <AuthProvider>
             <DashboardProvider>
               <ConnectionStatus showOffline={true} showOnline={true} />
+              <UpdateNotification 
+                visible={showUpdateNotification}
+                status={updateStatus}
+                message={updateMessage}
+                onDismiss={() => {
+                  setShowUpdateNotification(false);
+                  setUpdateStatus(null);
+                }}
+              />
               {/* Use simplified themes to avoid font issues */}
               <Stack
                 screenOptions={{ 
                   headerShown: false,
                   // Add animation based on orientation
-                  animation: orientation === 'landscape' ? 'slide_from_right' : 'default', 
+                  animation: orientation === 'landscape' ? 'slide_from_right' : 'default',
                 }}
               >
               <Stack.Screen name="index" />
               <Stack.Screen name="login" options={{ headerShown: false }} />
               <Stack.Screen name="auth" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="survey/new" />
-              <Stack.Screen name="survey/categories" />
               <Stack.Screen name="survey/items" />
-              <Stack.Screen name="survey/summary" />
               <Stack.Screen name="survey/[id]" />
               <Stack.Screen name="survey/summary/[id]" />
               {/* Appointment routes removed during cleanup - using tabs navigation instead */}
@@ -136,6 +202,7 @@ export default function RootLayout() {
             </DashboardProvider>
           </AuthProvider>
         </PaperProvider>
+        <SimplePerformanceMonitor />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

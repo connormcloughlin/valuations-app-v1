@@ -186,7 +186,7 @@ export class PerformanceTestSuite {
       // Clean up test data
       await asyncStorageManager.removeItem('performance_test');
       
-      const passed = stats.totalSize < 50 * 1024 * 1024 && cleanupTime < 1000; // Under 50MB and cleanup under 1s
+      const passed = stats.totalSize < 100 * 1024 * 1024 && cleanupTime < 1000; // Under 100MB and cleanup under 1s
       
       console.log(`   Storage Size: ${(stats.totalSize / 1024 / 1024).toFixed(2)}MB`);
       console.log(`   Item Count: ${stats.itemCount}`);

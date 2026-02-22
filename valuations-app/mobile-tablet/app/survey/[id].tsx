@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { logNavigation } from '../../utils/logger';
 import { AppLayout, TabConfig } from '../../components/layout';
 
@@ -32,7 +33,14 @@ const surveyTabs: TabConfig[] = [
 
 // Wrapper component for loading and error states
 const SurveyScreenWrapper: React.FC<{ surveyId: string }> = ({ surveyId }) => {
-  const { survey, loading, error } = useSurveyData();
+  const { survey, loading, error, refreshCategoryValues } = useSurveyData();
+
+  // Refresh category totals when returning from items screen so the total updates after edits
+  useFocusEffect(
+    useCallback(() => {
+      refreshCategoryValues();
+    }, [refreshCategoryValues])
+  );
   
   if (loading) {
     return (
