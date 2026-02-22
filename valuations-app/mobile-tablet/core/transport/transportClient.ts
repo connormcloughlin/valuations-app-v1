@@ -138,6 +138,14 @@ class TransportClient {
       ...config,
       timeout: timeout || policy?.timeoutMs || this.config.timeout,
     };
+
+    // When sending FormData (e.g. media upload), do not set Content-Type so the client
+    // sets multipart/form-data with the correct boundary. Otherwise server gets "No file was uploaded".
+    const isFormData = requestConfig.data && typeof (requestConfig.data as any).append === 'function';
+    if (isFormData) {
+      requestConfig.headers = { ...requestConfig.headers } as any;
+      delete (requestConfig.headers as any)['Content-Type'];
+    }
     
     // Store endpointId for header provider
     (requestConfig as any)._endpointId = endpointId;

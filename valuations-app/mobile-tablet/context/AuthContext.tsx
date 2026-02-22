@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -128,26 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Handle app state changes (background/foreground)
-  useEffect(() => {
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      console.log('🔐 App state changed:', nextAppState);
-      
-      if (nextAppState === 'active' && !isAuthenticated) {
-        // App came to foreground and user is not authenticated
-        // Try to restore authentication state
-        console.log('🔐 App became active, checking for stored auth...');
-        checkAuthStatus();
-      }
-    };
-
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-
-    return () => {
-      subscription?.remove();
-    };
-  }, [isAuthenticated]);
-
   const initializeApp = async () => {
     try {
       console.log('🚀 Starting app initialization...');
@@ -214,79 +194,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /**
    * Validate token with the backend
    */
-  const validateToken = async (token: string): Promise<boolean> => {
+  const validateToken = useCallback(async (token: string): Promise<boolean> => {
     try {
       if (!token) {
         console.log('🔐 No token provided for validation');
         return false;
       }
-
-      // API key mode removed - JWT authentication only
-
-      // JWT mode validation
-      // First, do client-side validation to check if token is expired
       if (isTokenExpired(token)) {
         console.log('🔐 Token expired (client-side check)');
         return false;
       }
-
-      // For external APIs, we'll rely primarily on client-side validation
-      // and only attempt server validation if needed
       console.log('🔐 Token appears valid (client-side check)');
-      
-      // Optionally try server validation, but don't fail if endpoint doesn't exist
       try {
-        // Note: JWT validation removed - using API key mode instead
-        // Set the token temporarily for this validation request
         authApi.setAuthToken(token);
-        
-        // Call the verify endpoint (this might not exist in external APIs)
         const response = await authApi.verifyToken();
-
-        // Handle the new response format from the implemented backend
         if (response && (response as any).data) {
           if ((response as any).data.valid === true) {
             console.log('🔐 Token validation successful (server-side)');
-            console.log('🔐 User info:', (response as any).data.user);
             return true;
-          } else {
-            // Handle normalized error responses
-            const errorCode = (response as any).data.code;
-            console.log('🔐 Token validation failed (server-side):', {
-              code: errorCode,
-              message: (response as any).data.message
-            });
-            
-            // Handle specific error codes
-            if (errorCode === 'INVALID_TOKEN' || errorCode === 'NO_TOKEN') {
-              console.log('🔐 Token is invalid, clearing stored data');
-              return false;
-            } else if (errorCode === 'RATE_LIMITED') {
-              console.log('🔐 Rate limited, but token might still be valid');
-              // Don't clear tokens on rate limiting, just accept client-side validation
-              return !isTokenExpired(token);
-            } else {
-              console.log('🔐 Unknown error code, accepting token based on client-side validation');
-              return !isTokenExpired(token);
-            }
           }
-        } else {
-          console.log('🔐 Invalid response format, using client-side validation');
+          const errorCode = (response as any).data.code;
+          if (errorCode === 'INVALID_TOKEN' || errorCode === 'NO_TOKEN') return false;
+          if (errorCode === 'RATE_LIMITED') return !isTokenExpired(token);
           return !isTokenExpired(token);
         }
-      } catch (serverError) {
-        console.log('🔐 Server validation not available or failed, using client-side validation');
-        // If server validation fails (e.g., endpoint doesn't exist), 
-        // we'll accept the token if it passes client-side validation
+        return !isTokenExpired(token);
+      } catch {
         return !isTokenExpired(token);
       }
     } catch (error) {
       console.error('❌ Token validation error:', error);
       return false;
     }
-  };
+  }, []);
 
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = useCallback(async () => {
     try {
       setIsLoading(true);
       console.log('🔐 Checking authentication status using sessionService...');
@@ -348,13 +290,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } finally {
       setIsLoading(false);
-      if (__DEV__) {
-        console.log('🔐 Auth check completed:', { isAuthenticated: !!user });
-      }
     }
-  };
+  }, []);
 
-  const loginAsReviewer = async (): Promise<boolean> => {
+  const loginAsReviewer = useCallback(async (): Promise<boolean> => {
     try {
       setIsLoading(true);
       const mockJwt = buildMockJWT();
@@ -380,17 +319,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const loginWithCredentials = async (username: string, password: string): Promise<boolean> => {
-    const usernameTrimmed = username.trim().toLowerCase();
-    if (usernameTrimmed === MOCK_REVIEWER_EMAIL && password === MOCK_REVIEWER_PASSWORD) {
-      return loginAsReviewer();
-    }
-    return loginWithAzure();
-  };
-
-  const loginWithAzure = async (): Promise<boolean> => {
+  const loginWithAzure = useCallback(async (): Promise<boolean> => {
     try {
       setIsLoading(true);
       
@@ -491,9 +422,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       console.log('🔐 Azure AD login process completed');
     }
-  };
+  }, []);
 
-  const logout = async (): Promise<void> => {
+  const loginWithCredentials = useCallback(async (username: string, password: string): Promise<boolean> => {
+    const usernameTrimmed = username.trim().toLowerCase();
+    if (usernameTrimmed === MOCK_REVIEWER_EMAIL && password === MOCK_REVIEWER_PASSWORD) {
+      return loginAsReviewer();
+    }
+    return loginWithAzure();
+  }, [loginAsReviewer, loginWithAzure]);
+
+  const logout = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true);
       
@@ -542,9 +481,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  // Memoize the context value to prevent unnecessary re-renders
+  // Handle app state changes (background/foreground) - after checkAuthStatus is defined
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (__DEV__) console.log('🔐 App state changed:', nextAppState);
+      if (nextAppState === 'active' && !isAuthenticated) {
+        checkAuthStatus();
+      }
+    };
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription?.remove();
+  }, [isAuthenticated, checkAuthStatus]);
+
+  // Memoize the context value so consumers only re-render when user/isLoading/isAuthenticated or callbacks change
   const value: AuthContextType = useMemo(() => ({
     user,
     isLoading,
@@ -554,7 +505,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     checkAuthStatus,
     validateToken
-  }), [user, isLoading, isAuthenticated]);
+  }), [user, isLoading, isAuthenticated, loginWithAzure, loginWithCredentials, logout, checkAuthStatus, validateToken]);
 
   // Don't render children until initialization is complete
   if (!isInitialized) {

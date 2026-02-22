@@ -675,36 +675,27 @@ const appointmentsApi = {
    * @returns {Promise<Object>} Response with update result
    */
   updateRiskAssessmentMasterStatus: async (orderId: number, status: string) => {
-    try {
-      console.log(`Updating risk assessment master status - Order ID: ${orderId}, Status: ${status}`);
-      
-      const response = await transportClient.put(
-        'risk-assessment.update-status',
-        '/api/risk-assessment-master/update-status',
-        { orderId, status }
-      );
-      
-      if (response) {
-        console.log('✅ Risk assessment master status updated successfully');
-        return {
-          success: true,
-          data: response,
-          message: 'Risk assessment master status updated successfully'
-        };
-      } else {
-        console.error('❌ Failed to update risk assessment master status:', response);
-        return {
-          success: false,
-          message: 'Failed to update risk assessment master status'
-        };
-      }
-    } catch (error: any) {
-      console.error('Error updating risk assessment master status:', error);
-      return { 
-        success: false, 
-        message: error.message || 'An error occurred while updating risk assessment master status' 
-      };
-    }
+    // Temporarily disabled: /api/risk-assessment-master/update-status
+    // try {
+    //   console.log(`Updating risk assessment master status - Order ID: ${orderId}, Status: ${status}`);
+    //   const response = await transportClient.put(
+    //     'risk-assessment.update-status',
+    //     '/api/risk-assessment-master/update-status',
+    //     { orderId, status }
+    //   );
+    //   if (response) {
+    //     console.log('✅ Risk assessment master status updated successfully');
+    //     return { success: true, data: response, message: 'Risk assessment master status updated successfully' };
+    //   } else {
+    //     console.error('❌ Failed to update risk assessment master status:', response);
+    //     return { success: false, message: 'Failed to update risk assessment master status' };
+    //   }
+    // } catch (error: any) {
+    //   console.error('Error updating risk assessment master status:', error);
+    //   return { success: false, message: error.message || 'An error occurred while updating risk assessment master status' };
+    // }
+    console.log(`[Skipped] Risk assessment master update-status - Order ID: ${orderId}, Status: ${status}`);
+    return { success: true, data: null, message: 'Update-status call disabled' };
   },
 
   /**
@@ -1207,9 +1198,14 @@ const appointmentsApi = {
       }
     } catch (error: any) {
       console.error('Error submitting risk assessment for QA:', error);
-      return { 
-        success: false, 
-        message: error.message || 'An error occurred while submitting for QA review' 
+      const data = error.response?.data;
+      const serverMessage =
+        (typeof data?.error === 'object' && data?.error?.message) ||
+        data?.message ||
+        (typeof data?.error === 'string' ? data.error : null);
+      return {
+        success: false,
+        message: serverMessage || error.message || 'An error occurred while submitting for QA review',
       };
     }
   }

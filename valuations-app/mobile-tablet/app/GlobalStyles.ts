@@ -926,20 +926,17 @@ export const itemsSummaryStyles = StyleSheet.create({
     gap: 8,
   },
   addButton: {
-    backgroundColor: '#4a90e2',
-    flexDirection: 'row',
-    alignItems: 'center',
+    height: 48,
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    backgroundColor: '#4a90e2',
     flex: 1,
   },
+  addButtonContent: {
+    height: 48,
+  },
   addButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 6,
     fontSize: 14,
+    fontWeight: '600',
   },
   syncButton: {
     height: 48,

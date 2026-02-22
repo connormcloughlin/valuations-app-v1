@@ -901,16 +901,7 @@ export default function PredefinedItemsList({
         setItemPhotos(prev => ({ ...prev, [currentPhotoItemId]: photos }));
         
         Alert.alert('Success', 'Photo saved successfully!');
-      }
-      
-      setShowCamera(false);
-      // If we're adding another photo, reopen gallery
-      // Otherwise clear currentPhotoItemId
-      if (addingAnotherPhoto) {
-        setShowPhotoGallery(true);
-        setAddingAnotherPhoto(false);
-      } else {
-        setCurrentPhotoItemId(null);
+        // Keep Add Photo modal open so user can take more or choose from gallery
       }
     } catch (err) {
       console.error('Error taking photo:', err);
@@ -924,58 +915,50 @@ export default function PredefinedItemsList({
         allowsEditing: false,
         aspect: undefined,
         quality: 1.0, // Full quality for high-value art
-        mediaTypes: ImagePicker.MediaTypeOptions.Images
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true
       });
       
-      if (!result.canceled && currentPhotoItemId) {
-        const photoUri = result.assets[0].uri;
-        
-        // Save photo using media service
-        const mediaFile = await mediaService.savePhoto(
-          photoUri, 
-          'riskAssessmentItem', 
-          Number(currentPhotoItemId),
-          {
-            category: 'predefined-item',
-            timestamp: new Date().toISOString(),
-            source: 'gallery'
-          }
-        );
-
-        // Update the item to indicate it has a photo - use same pattern as ItemComponents.tsx
+      if (!result.canceled && result.assets?.length && currentPhotoItemId) {
         const itemToUpdate = items.find(i => String(i.id) === currentPhotoItemId);
+        for (const asset of result.assets) {
+          await mediaService.savePhoto(
+            asset.uri,
+            'riskAssessmentItem',
+            Number(currentPhotoItemId),
+            {
+              category: 'predefined-item',
+              timestamp: new Date().toISOString(),
+              source: 'gallery'
+            }
+          );
+        }
+
+        // Update the item to indicate it has a photo (once)
         if (itemToUpdate) {
-          // Get existing SQLite record to preserve all fields
           const { getAllRiskAssessmentItems } = await getDbUtils();
           const existingItems = await getAllRiskAssessmentItems();
-          
-          // Handle both temp IDs (negative) and real IDs (positive)
           let existingItem;
           const itemId = String(itemToUpdate.id);
           if (itemId.startsWith('custom-new-') || itemId.startsWith('duplicate-')) {
-            // Find by negative temp ID
             const tempId = -Math.abs(Number(itemId.replace('custom-new-', '').replace('duplicate-', '')));
             existingItem = existingItems.find(dbItem => dbItem.riskassessmentitemid === tempId);
           } else {
-            // Find by positive real ID
-            existingItem = existingItems.find(dbItem => 
+            existingItem = existingItems.find(dbItem =>
               String(dbItem.riskassessmentitemid) === itemId
             );
           }
 
           if (existingItem) {
             const updated: any = {
-              ...existingItem,  // Preserve all existing database fields
+              ...existingItem,
               hasphoto: 1,
               pending_sync: 1,
               issynced: 0,
               dateupdated: new Date().toISOString()
             };
-            
             const { updateRiskAssessmentItem } = await getDbUtils();
             await updateRiskAssessmentItem(updated);
-            
-            // Only update pending changes count for real IDs (not temporary ones)
             if (!itemId.startsWith('custom-new-') && !itemId.startsWith('duplicate-')) {
               const count = await riskAssessmentSyncService.getPendingChangesCount();
               setPendingChangesCount(count.total);
@@ -983,21 +966,12 @@ export default function PredefinedItemsList({
           }
         }
 
-        // Reload photos for this item (silent)
         const photos = await mediaService.getPhotosForEntity('riskAssessmentItem', Number(currentPhotoItemId));
         setItemPhotos(prev => ({ ...prev, [currentPhotoItemId]: photos }));
-        
-        Alert.alert('Success', 'Photo saved successfully!');
-      }
-      
-      setShowCamera(false);
-      // If we're adding another photo, reopen gallery
-      // Otherwise clear currentPhotoItemId
-      if (addingAnotherPhoto) {
-        setShowPhotoGallery(true);
-        setAddingAnotherPhoto(false);
-      } else {
-        setCurrentPhotoItemId(null);
+
+        const count = result.assets.length;
+        Alert.alert('Success', count === 1 ? 'Photo saved successfully!' : `${count} photos saved successfully!`);
+        // Keep Add Photo modal open so user can add more
       }
     } catch (err) {
       console.error('Error selecting photo:', err);

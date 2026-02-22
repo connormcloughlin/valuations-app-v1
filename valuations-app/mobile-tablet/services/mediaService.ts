@@ -3,6 +3,7 @@ import * as MediaLibrary from 'expo-media-library';
 import {
   insertMediaFile,
   getMediaFilesByEntity,
+  getMediaFileById,
   updateMediaFile,
   deleteMediaFile,
   MediaFile,
@@ -167,35 +168,14 @@ class MediaService {
   }
 
   /**
-   * Delete a photo (soft delete locally, hard delete from backend)
+   * Delete a photo: soft-delete in SQLite only (IsDeleted = 1, pending_sync = 1).
+   * Backend delete happens when the user taps "Sync Changes" (syncDeletedMediaFiles).
    */
   async deletePhoto(mediaID: number): Promise<void> {
     try {
-      console.log('🗑️ MediaService: Starting delete process for media ID:', mediaID);
-      
-      // Get the media file to check if it has a BackendMediaID
-      const mediaFiles = await getMediaFilesByEntity('riskAssessmentItem', 0, true); // Get all to find the specific one
-      const mediaFile = mediaFiles.find(f => f.MediaID === mediaID);
-      
+      console.log('🗑️ MediaService: Soft-deleting media ID:', mediaID, '(backend delete on Sync)');
+      const mediaFile = await getMediaFileById(mediaID);
       if (mediaFile) {
-        const backendMediaID = (mediaFile as any).BackendMediaID;
-        
-        // If it has a backend ID, delete from backend first
-        if (backendMediaID) {
-          try {
-            console.log('🗑️ MediaService: Deleting from backend with ID:', backendMediaID);
-            const deleteResult = await api.deleteMedia(backendMediaID);
-            if (deleteResult.success) {
-              console.log('✅ MediaService: Successfully deleted from backend');
-            } else {
-              console.warn('⚠️ MediaService: Backend delete failed, but continuing with local delete:', deleteResult.message);
-            }
-          } catch (backendError) {
-            console.warn('⚠️ MediaService: Backend delete failed, but continuing with local delete:', backendError);
-          }
-        }
-        
-        // Clear from image cache if it exists
         try {
           const hybridImageService = await import('./hybridImageService');
           await hybridImageService.default.clearImageCache();
@@ -203,16 +183,9 @@ class MediaService {
         } catch (cacheError) {
           console.warn('⚠️ MediaService: Failed to clear hybrid image cache:', cacheError);
         }
-        
-        // Also clear any processed images from the PhotoGalleryModal state
-        // This will be handled by the UI refresh, but we can log it
-        console.log('🗑️ MediaService: Image should be removed from UI on next refresh');
       }
-      
-      // Soft delete from local database
       await deleteMediaFile(mediaID);
-      console.log('✅ MediaService: Successfully deleted photo locally:', mediaID);
-      
+      console.log('✅ MediaService: Photo marked for deletion locally; sync to remove from backend.');
     } catch (error) {
       console.error('❌ MediaService: Error deleting photo:', error);
       throw error;
@@ -248,30 +221,31 @@ class MediaService {
           if (mediaFile.LocalPath) {
             const fileInfo = await FileSystem.getInfoAsync(mediaFile.LocalPath);
             if (fileInfo.exists) {
-              // Read the file as base64
               const base64Data = await FileSystem.readAsStringAsync(mediaFile.LocalPath, {
                 encoding: FileSystem.EncodingType.Base64
               });
-
-              // Upload via API
+              // Upload via API using JSON + base64 (Option B per API guide; avoids multipart issues on RN)
               const uploadResult = await api.uploadMedia({
                 fileName: mediaFile.FileName,
                 fileType: mediaFile.FileType,
                 entityName: mediaFile.EntityName,
                 entityID: mediaFile.EntityID,
-                base64Data: base64Data,
+                base64Data,
                 metadata: mediaFile.Metadata
               });
 
-              if (uploadResult.success && uploadResult.data.blobUrl) {
-                // Update the media file with the blob URL
+              const blobUrl = uploadResult.data?.blobUrl ?? uploadResult.data?.mediaFile?.blobURL;
+              if (uploadResult.success && (blobUrl || uploadResult.data)) {
+                const backendMediaID = uploadResult.data?.mediaFile?.mediaID ?? uploadResult.data?.mediaID ?? uploadResult.data?.id;
+                const backendId = typeof backendMediaID === 'number' ? backendMediaID : undefined;
                 await updateMediaFile({
                   ...mediaFile,
-                  BlobURL: uploadResult.data.blobUrl,
+                  BlobURL: blobUrl || mediaFile.BlobURL,
+                  BackendMediaID: backendId ?? mediaFile.BackendMediaID,
                   pending_sync: 0
                 });
                 uploaded++;
-                console.log('Successfully uploaded:', mediaFile.FileName);
+                console.log('Successfully uploaded:', mediaFile.FileName, backendId != null ? `(BackendMediaID: ${backendId})` : '');
               } else {
                 errors.push({
                   mediaID: mediaFile.MediaID,
@@ -356,7 +330,8 @@ class MediaService {
           );
 
           if (downloadResult.status === 200) {
-            // Create or update media record
+            const backendId = serverMediaFile.mediaID ?? serverMediaFile.MediaID ?? serverMediaFile.mediaId;
+            const backendMediaID = typeof backendId === 'number' ? backendId : undefined;
             const mediaFile: MediaFile = {
               MediaID: existingFile?.MediaID,
               FileName: serverMediaFile.FileName,
@@ -369,7 +344,8 @@ class MediaService {
               IsDeleted: serverMediaFile.IsDeleted ? 1 : 0,
               Metadata: serverMediaFile.Metadata,
               LocalPath: localPath,
-              pending_sync: 0
+              pending_sync: 0,
+              BackendMediaID: backendMediaID ?? existingFile?.BackendMediaID
             };
 
             if (existingFile) {
@@ -382,7 +358,7 @@ class MediaService {
             }
 
             downloadedFiles.push(mediaFile);
-            console.log('Downloaded:', serverMediaFile.FileName);
+            console.log('Downloaded:', serverMediaFile.FileName, backendMediaID != null ? `(BackendMediaID: ${backendMediaID})` : '');
           }
         } catch (error) {
           console.error('Error downloading file:', serverMediaFile.FileName, error);

@@ -195,13 +195,14 @@ async function checkpointWal(): Promise<void> {
 let lastCheckpointTime = 0;
 const CHECKPOINT_INTERVAL = 5 * 60 * 1000; // Checkpoint every 5 minutes
 
-// Detect if an error indicates the native DB was released (stale reference)
+// Detect if an error indicates the native DB was released or invalid (stale/null handle)
 function isReleasedOrInvalidDbError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
   return (
     msg.includes('already released') ||
     msg.includes('Cannot use shared object') ||
-    (msg.includes('prepareAsync') && msg.includes('Integer'))
+    msg.includes('NullPointerException') ||
+    (msg.includes('prepareAsync') && (msg.includes('Integer') || msg.includes('rejected')))
   );
 }
 
@@ -1135,7 +1136,7 @@ export async function updateMediaFile(m: MediaFile) {
       UPDATE media_files SET
         FileName = ?, FileType = ?, BlobURL = ?, EntityName = ?, EntityID = ?,
         UploadedAt = ?, UploadedBy = ?, IsDeleted = ?, Metadata = ?, LocalPath = ?,
-        pending_sync = ?
+        pending_sync = ?, BackendMediaID = ?
       WHERE MediaID = ?
     `;
 
@@ -1151,6 +1152,7 @@ export async function updateMediaFile(m: MediaFile) {
       m.Metadata || null,
       m.LocalPath || null,
       m.pending_sync ?? 1,
+      m.BackendMediaID ?? null,
       m.MediaID
     ];
 
@@ -1162,18 +1164,36 @@ export async function updateMediaFile(m: MediaFile) {
   }
 }
 
+const DB_LOCKED_RETRY_MS = 100;
+const DB_LOCKED_MAX_RETRIES = 5;
+
+function isDatabaseLockedError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('database is locked') || msg.includes('SQLITE_BUSY') || msg.includes('finalizeAsync');
+}
+
 export async function deleteMediaFile(mediaID: number) {
-  try {
-    // Soft delete - just mark as deleted
-    await runSql(
-      'UPDATE media_files SET IsDeleted = 1, pending_sync = 1 WHERE MediaID = ?',
-      [mediaID]
-    );
-    console.log('Soft deleted media file:', mediaID);
-  } catch (error) {
-    console.error('Error deleting media file:', error);
-    throw error;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= DB_LOCKED_MAX_RETRIES; attempt++) {
+    try {
+      await runSql(
+        'UPDATE media_files SET IsDeleted = 1, pending_sync = 1 WHERE MediaID = ?',
+        [mediaID]
+      );
+      console.log('Soft deleted media file:', mediaID);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < DB_LOCKED_MAX_RETRIES && isDatabaseLockedError(error)) {
+        await new Promise((r) => setTimeout(r, DB_LOCKED_RETRY_MS * (attempt + 1)));
+        continue;
+      }
+      console.error('Error deleting media file:', error);
+      throw error;
+    }
   }
+  console.error('Error deleting media file:', lastError);
+  throw lastError;
 }
 
 export async function hardDeleteMediaFile(mediaID: number) {

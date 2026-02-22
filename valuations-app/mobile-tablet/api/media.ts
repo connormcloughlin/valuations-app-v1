@@ -17,7 +17,22 @@ function handleApiError(error: any): ApiResponse {
   return { success: false, message: error.message || 'Unknown error occurred' };
 }
 
-function buildFormData(mediaData: {
+/**
+ * Map file type to API fileType (photo | signature | document).
+ */
+function toBackendFileType(fileType: string, fileName: string): string {
+  if (fileType.includes('image')) return 'photo';
+  if (fileType.includes('pdf') || fileType.includes('document')) return 'document';
+  if (fileName.toLowerCase().includes('signature')) return 'signature';
+  return 'photo';
+}
+
+/**
+ * Upload media using JSON body with base64 (Option B per API guide).
+ * API expects base64 in one of: data, base64Data, base64, fileData.
+ * Content-Type: application/json.
+ */
+function buildJsonUploadBody(mediaData: {
   fileName: string;
   fileType: string;
   entityName: string;
@@ -26,24 +41,19 @@ function buildFormData(mediaData: {
   metadata?: string;
   deviceId?: string;
   userId?: string;
-}): FormData {
-  const formData = new FormData();
-  formData.append('file', {
-    uri: `data:${mediaData.fileType};base64,${mediaData.base64Data}`,
-    type: mediaData.fileType,
-    name: mediaData.fileName
-  } as any);
-  formData.append('entityName', mediaData.entityName);
-  formData.append('entityId', mediaData.entityID.toString());
-  let backendFileType = 'photo';
-  if (mediaData.fileType.includes('image')) backendFileType = 'photo';
-  else if (mediaData.fileType.includes('pdf') || mediaData.fileType.includes('document')) backendFileType = 'document';
-  else if (mediaData.fileName.toLowerCase().includes('signature')) backendFileType = 'signature';
-  formData.append('fileType', backendFileType);
-  formData.append('deviceId', mediaData.deviceId || 'mobile-device');
-  formData.append('userId', mediaData.userId || 'mobile-user');
-  if (mediaData.metadata) formData.append('metadata', mediaData.metadata);
-  return formData;
+}): Record<string, unknown> {
+  const fileType = toBackendFileType(mediaData.fileType, mediaData.fileName);
+  const body: Record<string, unknown> = {
+    entityName: mediaData.entityName,
+    entityId: mediaData.entityID,
+    fileType,
+    deviceId: mediaData.deviceId || 'mobile-device',
+    userId: mediaData.userId || 'mobile-user',
+    fileName: mediaData.fileName,
+    data: mediaData.base64Data,
+  };
+  if (mediaData.metadata) body.metadata = mediaData.metadata;
+  return body;
 }
 
 export async function uploadMedia(mediaData: {
@@ -51,14 +61,21 @@ export async function uploadMedia(mediaData: {
   fileType: string;
   entityName: string;
   entityID: number;
-  base64Data: string;
+  base64Data?: string;
+  localFileUri?: string;
   metadata?: string;
   deviceId?: string;
   userId?: string;
 }): Promise<ApiResponse> {
   try {
-    const formData = buildFormData(mediaData);
-    const data = await transportClient.post('sync.media.upload', '/sync/media/upload', formData);
+    if (!mediaData.base64Data) {
+      return { success: false, message: 'Media upload requires base64Data (use JSON upload)', status: 400 };
+    }
+    const body = buildJsonUploadBody({
+      ...mediaData,
+      base64Data: mediaData.base64Data,
+    });
+    const data = await transportClient.post('sync.media.upload', '/sync/media/upload', body);
     return { success: true, data, status: 200 };
   } catch (error) {
     console.error('Error uploading media to sync API:', error);
@@ -76,12 +93,16 @@ export async function getMediaForEntity(entityName: string, entityID: number): P
   }
 }
 
-export async function deleteMedia(mediaID: number): Promise<ApiResponse> {
+/**
+ * Delete media via sync API. Uses the backend media ID (from BackendMediaID in SQLite).
+ * The backend expects the server-assigned media ID, not the local device MediaID.
+ */
+export async function deleteMedia(backendMediaID: number): Promise<ApiResponse> {
   try {
-    const data = await transportClient.delete('media.delete', `/media/${mediaID}`);
+    const data = await transportClient.delete('sync.media.delete', `/sync/media/${backendMediaID}`);
     return { success: true, data, status: 200 };
   } catch (error) {
-    console.error('Error deleting media from backend:', error);
+    console.error('Error deleting media from sync API:', error);
     return handleApiError(error);
   }
 }
@@ -116,16 +137,23 @@ export async function uploadMediaBatch(mediaFiles: Array<{
   uploadedBy?: string;
 }>): Promise<ApiResponse> {
   try {
-    const results: Array<{ success: boolean; data?: any; status?: number; message?: string; originalMediaID?: number }> = [];
+    const results: Array<{ success: boolean; data?: any; status?: number; message?: string; originalMediaID?: number; backendMediaID?: number }> = [];
     for (const mediaFile of mediaFiles) {
       try {
-        const formData = buildFormData({
-          ...mediaFile,
+        const body = buildJsonUploadBody({
+          fileName: mediaFile.fileName,
+          fileType: mediaFile.fileType,
+          entityName: mediaFile.entityName,
+          entityID: mediaFile.entityID,
+          base64Data: mediaFile.base64Data,
+          metadata: mediaFile.metadata,
           deviceId: 'mobile-device',
           userId: mediaFile.uploadedBy || 'mobile-user'
         });
-        const data = await transportClient.post('sync.media.upload', '/sync/media/upload', formData);
-        results.push({ success: true, data, status: 200, originalMediaID: mediaFile.mediaID });
+        const data = await transportClient.post('sync.media.upload', '/sync/media/upload', body);
+        const backendMediaID = data?.mediaFile?.mediaID ?? data?.mediaID ?? data?.id;
+        const id = typeof backendMediaID === 'number' ? backendMediaID : undefined;
+        results.push({ success: true, data, status: 200, originalMediaID: mediaFile.mediaID, backendMediaID: id });
       } catch (error: any) {
         results.push({
           success: false,

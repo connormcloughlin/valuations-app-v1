@@ -25,8 +25,7 @@ const LoginScreen = memo(function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [currentStep, setCurrentStep] = useState<LoginStep>('idle');
-  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
-  
+
   // Monitor re-renders for performance debugging
   const { renderCount } = useRenderCount('LoginScreen', __DEV__);
 
@@ -37,19 +36,15 @@ const LoginScreen = memo(function LoginScreen() {
     'Completing login...'
   ];
 
-  // Monitor app state changes during login
+  // Only react to app state when we need to (e.g. returning from Azure login in browser).
+  // Avoid setState on every app state change to prevent unnecessary re-renders.
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      console.log('🔐 App state changed during login:', nextAppState);
-      setAppState(nextAppState);
-      
-      // If app comes back to foreground during login, check if we're still in process
-      if (nextAppState === 'active' && currentStep !== 'idle' && currentStep !== 'success') {
-        console.log('🔐 App returned to foreground, checking login status...');
-        // You might want to check authentication status here
+      if (nextAppState !== 'active') return;
+      if (currentStep !== 'idle' && currentStep !== 'success' && __DEV__) {
+        console.log('🔐 App returned to foreground during login');
       }
     };
-
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription?.remove();
   }, [currentStep]);

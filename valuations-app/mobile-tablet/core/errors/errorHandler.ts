@@ -28,34 +28,51 @@ export function handleApiError(
   endpointId?: string,
   cachedData?: any
 ): ErrorHandlerResult {
-  console.error('API Error:', error);
-  
+  const status = error.response?.status;
+  const url = error.config?.url ?? error.request?.responseURL ?? 'unknown';
+  const method = error.config?.method?.toUpperCase() ?? 'GET';
+  const responseData = error.response?.data;
+  const errorMessage =
+    (typeof responseData?.error === 'object' && responseData?.error?.message) ||
+    responseData?.message ||
+    (typeof responseData?.error === 'string' ? responseData.error : null) ||
+    error.message ||
+    'Unknown error';
+
+  if (error.response && endpointId) {
+    const emptyResult = evaluateEmptyResponse(
+      endpointId,
+      error.response.status,
+      responseData,
+      errorMessage
+    );
+    if (emptyResult.treatAsEmpty) {
+      console.log(`📦 Treating ${status} as empty result for ${endpointId}: ${emptyResult.reason}`);
+      return {
+        success: true,
+        data: [],
+        status: 204,
+        message: errorMessage,
+        treatAsEmpty: true
+      };
+    }
+  }
+
+  // Log as error only when not treating as empty
+  console.error(
+    `API Error: ${status ?? 'no status'} ${method} ${url}${endpointId ? ` (${endpointId})` : ''} - ${errorMessage}`
+  );
+  if (__DEV__ && responseData && typeof responseData === 'object') {
+    console.warn('API Error response data:', JSON.stringify(responseData).slice(0, 300));
+  }
+
   if (error.response) {
-    const status = error.response.status;
-    const errorMessage = error.response.data?.message || error.message || '';
-    const responseData = error.response.data;
+    const statusCode = error.response.status;
+    const msg = error.response.data?.message || error.message || '';
+    const data = error.response.data;
     
-    // Check if this should be treated as an empty result
     if (endpointId) {
-      const emptyResult = evaluateEmptyResponse(
-        endpointId,
-        status,
-        responseData,
-        errorMessage
-      );
-      
-      if (emptyResult.treatAsEmpty) {
-        console.log(`📦 Treating ${status} as empty result for ${endpointId}: ${emptyResult.reason}`);
-        
-        return {
-          success: true,
-          data: [],
-          status: 204, // Treat as No Content
-          message: errorMessage,
-          treatAsEmpty: true
-        };
-      }
-      
+      const emptyResult = evaluateEmptyResponse(endpointId, statusCode, data, msg);
       if (emptyResult.shouldLogWarning) {
         console.warn(`⚠️ ${endpointId}: ${emptyResult.reason}`);
       }
@@ -64,8 +81,8 @@ export function handleApiError(
     // Server responded with a status code outside the 2xx range
     return {
       success: false,
-      status: status,
-      message: errorMessage || `Server error: ${status}`,
+      status: statusCode,
+      message: msg || `Server error: ${statusCode}`,
       data: null
     };
   } else if (error.request) {

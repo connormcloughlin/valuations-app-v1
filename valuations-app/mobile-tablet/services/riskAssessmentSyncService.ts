@@ -1027,23 +1027,23 @@ const riskAssessmentSyncService = {
         return { success: true, deleted: 0 };
       }
 
-      // Send deletion requests to backend
+      // Send deletion requests via sync API (backend expects BackendMediaID)
       const deletionPromises = deletedMediaFiles.map(async (mediaFile) => {
         try {
           const backendMediaID = (mediaFile as any).BackendMediaID;
-          if (backendMediaID) {
-            console.log(`🗑️ Deleting media file ${backendMediaID} from backend`);
-            const deleteResult = await api.deleteMedia(backendMediaID);
-            if (deleteResult.success) {
-              console.log(`✅ Successfully deleted media file ${backendMediaID} from backend`);
-              return { success: true, mediaID: mediaFile.MediaID };
-            } else {
-              console.error(`❌ Failed to delete media file ${backendMediaID}:`, deleteResult.message);
-              return { success: false, mediaID: mediaFile.MediaID, error: deleteResult.message };
-            }
-          } else {
-            console.log(`⚠️ No BackendMediaID for media file ${mediaFile.MediaID}, skipping backend deletion`);
+          const localMediaID = mediaFile.MediaID;
+          if (backendMediaID == null) {
+            console.log(`⚠️ No BackendMediaID for media file ${localMediaID}, skipping backend deletion`);
             return { success: true, mediaID: mediaFile.MediaID };
+          }
+          console.log(`🗑️ Deleting media from backend: BackendMediaID=${backendMediaID} (local MediaID=${localMediaID})`);
+          const deleteResult = await api.deleteMedia(backendMediaID);
+          if (deleteResult.success) {
+            console.log(`✅ Deleted media BackendMediaID ${backendMediaID} from backend via sync`);
+            return { success: true, mediaID: mediaFile.MediaID };
+          } else {
+            console.error(`❌ Failed to delete media BackendMediaID ${backendMediaID}:`, deleteResult.message);
+            return { success: false, mediaID: mediaFile.MediaID, error: deleteResult.message };
           }
         } catch (error) {
           console.error(`❌ Error deleting media file ${mediaFile.MediaID}:`, error);
@@ -1101,13 +1101,12 @@ const riskAssessmentSyncService = {
         uploadedBy?: string;
       }> = [];
 
-      // Read file data for each media file
+      // Read each file as base64 for JSON upload (Option B per API: Content-Type application/json, base64 in "data")
       for (const mediaFile of mediaFiles) {
         try {
           if (mediaFile.LocalPath) {
             const fileInfo = await FileSystem.getInfoAsync(mediaFile.LocalPath);
             if (fileInfo.exists) {
-              // Read the file as base64
               const base64Data = await FileSystem.readAsStringAsync(mediaFile.LocalPath, {
                 encoding: FileSystem.EncodingType.Base64
               });
@@ -1117,13 +1116,12 @@ const riskAssessmentSyncService = {
                 fileType: mediaFile.FileType,
                 entityName: mediaFile.EntityName,
                 entityID: mediaFile.EntityID,
-                base64Data: base64Data,
+                base64Data,
                 metadata: mediaFile.Metadata,
                 uploadedAt: mediaFile.UploadedAt,
                 uploadedBy: mediaFile.UploadedBy
               };
 
-              // Only add mediaID if it exists
               if (mediaFile.MediaID !== undefined) {
                 mediaFileData.mediaID = mediaFile.MediaID;
               }
@@ -1157,18 +1155,21 @@ const riskAssessmentSyncService = {
             if (uploadResult.success && uploadResult.data) {
             console.log('Media batch upload successful:', uploadResult.data);
             
-            // Update local media files with server URLs
+            // Update local media files with BackendMediaID and server URL so backend delete works later
             if (uploadResult.data.results) {
               for (const result of uploadResult.data.results) {
-                if (result.success && result.mediaID) {
-                  const localMediaFile = mediaFiles.find(mf => mf.MediaID === result.mediaID);
+                if (result.success && result.originalMediaID != null) {
+                  const localMediaFile = mediaFiles.find(mf => mf.MediaID === result.originalMediaID);
                   if (localMediaFile) {
+                    const blobUrl = result.data?.mediaFile?.blobURL ?? result.data?.blobUrl ?? result.blobUrl;
+                    const newBackendId = result.backendMediaID ?? localMediaFile.BackendMediaID;
                     await updateMediaFile({
                       ...localMediaFile,
-                      BlobURL: result.blobUrl || localMediaFile.BlobURL,
+                      BlobURL: blobUrl || localMediaFile.BlobURL,
+                      BackendMediaID: newBackendId ?? localMediaFile.BackendMediaID,
                       pending_sync: 0
                     });
-                    console.log(`Updated local media file ${localMediaFile.FileName} with server URL`);
+                    console.log(`✅ Media synced: local MediaID ${localMediaFile.MediaID} → BackendMediaID ${newBackendId ?? 'unchanged'} (${localMediaFile.FileName})`);
                   }
                 }
               }
@@ -1219,18 +1220,21 @@ const riskAssessmentSyncService = {
         if (uploadResult.success && uploadResult.data) {
           console.log('Media batch upload successful:', uploadResult.data);
           
-          // Update local media files with server URLs
+          // Update local media files with BackendMediaID and server URL so backend delete works later
           if (uploadResult.data.results) {
             for (const result of uploadResult.data.results) {
-              if (result.success && result.mediaID) {
-                const localMediaFile = mediaFiles.find(mf => mf.MediaID === result.mediaID);
+              if (result.success && result.originalMediaID != null) {
+                const localMediaFile = mediaFiles.find(mf => mf.MediaID === result.originalMediaID);
                 if (localMediaFile) {
+                  const blobUrl = result.data?.mediaFile?.blobURL ?? result.data?.blobUrl ?? result.blobUrl;
                   await updateMediaFile({
                     ...localMediaFile,
-                    BlobURL: result.blobUrl || localMediaFile.BlobURL,
+                    BlobURL: blobUrl || localMediaFile.BlobURL,
+                    BackendMediaID: result.backendMediaID ?? localMediaFile.BackendMediaID,
                     pending_sync: 0
                   });
-                  console.log(`Updated local media file ${localMediaFile.FileName} with server URL`);
+                  const newBackendId = result.backendMediaID ?? localMediaFile.BackendMediaID;
+                  console.log(`✅ Media synced: local MediaID ${localMediaFile.MediaID} → BackendMediaID ${newBackendId ?? 'unchanged'} (${localMediaFile.FileName})`);
                 }
               }
             }

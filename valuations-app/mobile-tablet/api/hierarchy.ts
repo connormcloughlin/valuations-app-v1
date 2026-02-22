@@ -96,13 +96,17 @@ export async function getOrderCategoryFieldConfigurations(orderId: string): Prom
   }
   try {
     const data = await transportClient.get('config.order.categories', `/mobile/config/order/${orderId}/categories/complete`);
-    if (data?.success) {
+    // API returns { success, data: { categories } }; transport returns that or [] when 404 treated as empty
+    const normalized = Array.isArray(data)
+      ? { success: true, data: { categories: data }, status: 200 }
+      : data;
+    if (normalized?.success) {
       try {
-        await storeData(cacheKey, data, 4 * 60 * 60 * 1000);
+        await storeData(cacheKey, normalized, 4 * 60 * 60 * 1000);
       } catch (storageError) {
         console.error('Error caching field config data:', storageError);
       }
-      return data;
+      return normalized;
     }
     throw new Error('Invalid response format from field config API');
   } catch (error) {

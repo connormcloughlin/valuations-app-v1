@@ -204,13 +204,17 @@ Completed on ${survey.completionDate}
                   [{ text: 'OK' }]
                 );
               }
-            } catch (error) {
+            } catch (error: any) {
               console.error('❌ Error completing survey:', error);
-              Alert.alert(
-                'Error',
-                'An error occurred while completing the survey. Please try again.',
-                [{ text: 'OK' }]
-              );
+              const serverMessage =
+                error?.response?.data?.error?.message ??
+                error?.response?.data?.message ??
+                error?.message;
+              const displayMessage =
+                typeof serverMessage === 'string' && serverMessage !== 'Request failed with status code 400'
+                  ? serverMessage
+                  : 'An error occurred while completing the survey. Please try again.';
+              Alert.alert('Error', displayMessage, [{ text: 'OK' }]);
             } finally {
               setCompleting(false);
             }

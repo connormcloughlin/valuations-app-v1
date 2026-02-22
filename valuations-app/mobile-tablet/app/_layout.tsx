@@ -192,10 +192,7 @@ export default function RootLayout() {
               <Stack.Screen name="login" options={{ headerShown: false }} />
               <Stack.Screen name="auth" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="survey/new" />
-              <Stack.Screen name="survey/categories" />
               <Stack.Screen name="survey/items" />
-              <Stack.Screen name="survey/summary" />
               <Stack.Screen name="survey/[id]" />
               <Stack.Screen name="survey/summary/[id]" />
               {/* Appointment routes removed during cleanup - using tabs navigation instead */}

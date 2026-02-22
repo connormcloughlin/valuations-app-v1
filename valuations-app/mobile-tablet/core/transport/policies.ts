@@ -153,6 +153,11 @@ export const policies = new Map<string, TransportPolicy>([
     retry: { attempts: 1, strategy: 'fixed' }, // Don't retry uploads aggressively
     interpretEmptyPolicyKey: 'media_empty'
   }],
+  ['sync.media.delete', {
+    timeoutMs: 15000,
+    retry: { attempts: 1, strategy: 'fixed' },
+    interpretEmptyPolicyKey: 'sync_empty'
+  }],
 
   // Mobile composite endpoints
   ['mobile.hierarchy', {

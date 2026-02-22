@@ -93,6 +93,19 @@ const getBundleIdentifier = () => {
   }
 };
 
+// URL scheme per environment so auth callbacks route to the correct app when multiple builds are installed
+const getScheme = () => {
+  switch (appEnv) {
+    case 'staging':
+      return 'valuations-app-staging';
+    case 'production':
+      return 'valuations-app';
+    case 'development':
+    default:
+      return 'valuations-app-dev';
+  }
+};
+
 module.exports = {
   "expo": {
     "name": getAppName(),
@@ -100,12 +113,13 @@ module.exports = {
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "valuations-app",
+    "scheme": getScheme(),
     "userInterfaceStyle": "light",
     "extra": {
       "eas": {
         "projectId": "fe1dee59-ac56-4ef1-82cd-b04aabd1bebc"
       },
+      appScheme: getScheme(),
       azureMobileClientId: process.env.AZURE_MOBILE_CLIENT_ID,
       azureTenantId: process.env.AZURE_TENANT_ID,
       azureApiClientId: process.env.AZURE_API_CLIENT_ID,

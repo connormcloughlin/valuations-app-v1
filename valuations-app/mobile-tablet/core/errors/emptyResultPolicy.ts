@@ -93,6 +93,14 @@ export const EMPTY_RESULT_POLICIES: Record<string, EmptyResultPolicy> = {
     treatEmptyArray: false,
     reason: 'Complete category configuration should be available'
   },
+
+  // Order-level category config - 404 means no risk assessments for this order (valid for new/empty orders)
+  'config.order.categories': {
+    treatStatus: [204],
+    treat404: true,
+    treatEmptyArray: true,
+    reason: 'No risk assessments found for this order - treat as empty and use hierarchy/fallback'
+  },
   
   'config.field-options': {
     treatStatus: [204],
@@ -113,6 +121,13 @@ export const EMPTY_RESULT_POLICIES: Record<string, EmptyResultPolicy> = {
     treat404: false,
     treatEmptyArray: false,
     reason: 'Category fields should be available for valid categories'
+  },
+
+  'sync.media.delete': {
+    treatStatus: [204],
+    treat404: false,
+    treatEmptyArray: false,
+    reason: 'Sync media delete - 204 success; 400 Invalid media ID is a real error'
   }
 };
 
