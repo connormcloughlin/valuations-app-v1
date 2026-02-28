@@ -353,6 +353,7 @@ export default function ItemsScreen() {
               selectedanswer: item.selectedanswer || '',
               rank: item.rank || 0, // Include rank field from database
               itemtype: item.itemtype || 0, // Include itemtype field from database
+              excludefromreport: item.excludefromreport ?? 0, // 0 = not excluded, 1 = excluded (for checkbox)
             };
           
           // Only log items with issues for debugging

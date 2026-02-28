@@ -331,6 +331,7 @@ const riskAssessmentSyncService = {
             longitude: item.longitude,
             notes: item.notes,
             isDeleted: item.isDeleted ? true : false,
+            excludefromreport: item.excludefromreport ? true : false,
             _localId: item.riskassessmentitemid
           } as any;
 
@@ -394,14 +395,16 @@ const riskAssessmentSyncService = {
                 console.log(`🗑️ Deleted local record with ID ${updatedItem._localId}`);
                 
                 // Insert new record with backend ID
+                const excludefromreport = updatedItem.excludefromreport ?? (updatedItem as any).ExcludeFromReport;
                 await runSql(`
                   INSERT INTO risk_assessment_items (
                     riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
                     commaseparatedlist, selectedanswer, qty, price, description, model, location,
                     assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
                     dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
-                    synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid,
+                    excludefromreport
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                   updatedItem.riskassessmentitemid, updatedItem.riskassessmentcategoryid, updatedItem.itemprompt,
                   updatedItem.itemtype, updatedItem.rank, updatedItem.commaseparatedlist, updatedItem.selectedanswer,
@@ -411,13 +414,15 @@ const riskAssessmentSyncService = {
                   updatedItem.syncversion || 1, updatedItem.deviceid, updatedItem.syncstatus, updatedItem.synctimestamp,
                   updatedItem.hasphoto, updatedItem.latitude, updatedItem.longitude, updatedItem.notes,
                   0, // pending_sync = 0
-                  updatedItem.appointmentid || null
+                  updatedItem.appointmentid || null,
+                  excludefromreport ? 1 : 0
                 ]);
                 console.log(`✅ Inserted new record with backend ID ${updatedItem.riskassessmentitemid}`);
               } else {
                 console.log(`🔄 Updating existing item: ${updatedItem.riskassessmentitemid}`);
                 
                 // For existing items, just update normally
+                const excludefromreport = updatedItem.excludefromreport ?? (updatedItem as any).ExcludeFromReport;
               await updateRiskAssessmentItem({
                 riskassessmentitemid: updatedItem.riskassessmentitemid,
                 riskassessmentcategoryid: updatedItem.riskassessmentcategoryid,
@@ -446,6 +451,7 @@ const riskAssessmentSyncService = {
                 latitude: updatedItem.latitude,
                 longitude: updatedItem.longitude,
                 notes: updatedItem.notes,
+                excludefromreport: excludefromreport ? 1 : 0,
                   pending_sync: 0,
                   appointmentid: updatedItem.appointmentid
               });
@@ -745,6 +751,7 @@ const riskAssessmentSyncService = {
             longitude: item.longitude,
             notes: item.notes,
             isDeleted: item.isDeleted ? true : false,
+            excludefromreport: item.excludefromreport ? true : false,
             // Keep local ID for tracking response mapping
             _localId: item.riskassessmentitemid
           } as any; // Use any to allow deleting appointmentid
@@ -878,14 +885,16 @@ const riskAssessmentSyncService = {
                 console.log(`🗑️ Deleted local record with ID ${updatedItem._localId}`);
                 
                 // Insert new record with backend ID
+                const excludefromreportInsert = updatedItem.excludefromreport ?? (updatedItem as any).ExcludeFromReport;
                 await runSql(`
                   INSERT INTO risk_assessment_items (
                     riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
                     commaseparatedlist, selectedanswer, qty, price, description, model, location,
                     assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
                     dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
-                    synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid,
+                    excludefromreport
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                   updatedItem.riskassessmentitemid, updatedItem.riskassessmentcategoryid, updatedItem.itemprompt,
                   updatedItem.itemtype, updatedItem.rank, updatedItem.commaseparatedlist, updatedItem.selectedanswer,
@@ -895,13 +904,15 @@ const riskAssessmentSyncService = {
                   updatedItem.syncversion || 1, updatedItem.deviceid, updatedItem.syncstatus, updatedItem.synctimestamp,
                   updatedItem.hasphoto, updatedItem.latitude, updatedItem.longitude, updatedItem.notes,
                   0, // pending_sync = 0
-                  updatedItem.appointmentid || null
+                  updatedItem.appointmentid || null,
+                  excludefromreportInsert ? 1 : 0
                 ]);
                 console.log(`✅ Inserted new record with backend ID ${updatedItem.riskassessmentitemid}`);
               } else {
                 console.log(`🔄 Updating existing item: ${updatedItem.riskassessmentitemid}`);
                 
                 // For existing items, just update normally
+                const excludefromreportUpdate = updatedItem.excludefromreport ?? (updatedItem as any).ExcludeFromReport;
                 await updateRiskAssessmentItem({
                   riskassessmentitemid: updatedItem.riskassessmentitemid,
                   riskassessmentcategoryid: updatedItem.riskassessmentcategoryid,
@@ -930,9 +941,10 @@ const riskAssessmentSyncService = {
                   latitude: updatedItem.latitude,
                   longitude: updatedItem.longitude,
                   notes: updatedItem.notes,
+                  excludefromreport: excludefromreportUpdate ? 1 : 0,
                   pending_sync: 0,
                   appointmentid: updatedItem.appointmentid
-                });
+              });
                 console.log(`✅ Updated existing item ${updatedItem.riskassessmentitemid}`);
               }
             } catch (error) {

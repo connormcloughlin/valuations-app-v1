@@ -539,9 +539,10 @@ export default function PredefinedItemsList({
     }));
 
     // Debounced auto-save to prevent excessive saves and accordion collapse
-    // For dropdowns we avoid immediate auto-save here and rely on explicit blur or batch save to prevent stale reads
+    // For dropdowns and checkbox we save immediately so sync sends the correct value
     const isDropdownField = fieldName === 'selectedanswer';
-    if (!isDropdownField) {
+    const isCheckboxField = fieldName === 'excludefromreport';
+    if (!isDropdownField && !isCheckboxField) {
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
@@ -579,6 +580,8 @@ export default function PredefinedItemsList({
       String(dbItem.riskassessmentitemid) === String(item.id)
     );
 
+    const excludefromreportVal = (v: unknown) => (v === true || v === 'true' || v === '1') ? 1 : 0;
+
     if (existingItem) {
       // Update existing item
       const updated: any = {
@@ -591,6 +594,7 @@ export default function PredefinedItemsList({
         model: changes.model ?? existingItem.model ?? '',
         location: changes.room ?? existingItem.location ?? '',
         notes: changes.notes ?? existingItem.notes ?? '',
+        excludefromreport: excludefromreportVal(changes.excludefromreport ?? existingItem.excludefromreport),
         pending_sync: 1,
       };
       console.log('🔄 [autoSaveItem] updateRiskAssessmentItem called with:', updated);
@@ -643,6 +647,7 @@ export default function PredefinedItemsList({
         latitude: 0,
         longitude: 0,
         notes: changes.notes ?? item.notes ?? '',
+        excludefromreport: excludefromreportVal(changes.excludefromreport ?? (item as any).excludefromreport),
         pending_sync: 1,
         appointmentid: undefined
       };
@@ -663,7 +668,8 @@ export default function PredefinedItemsList({
             description: changes.description ?? prevItem.description ?? '',
             model: changes.model ?? prevItem.model ?? '',
             room: changes.room ?? prevItem.room ?? '',
-            notes: changes.notes ?? prevItem.notes ?? ''
+            notes: changes.notes ?? prevItem.notes ?? '',
+            ...(changes.excludefromreport !== undefined && { excludefromreport: excludefromreportVal(changes.excludefromreport) })
           } : prevItem
         )
       );
@@ -681,7 +687,8 @@ export default function PredefinedItemsList({
             description: changes.description ?? prevItem.description ?? '',
             model: changes.model ?? prevItem.model ?? '',
             room: changes.room ?? prevItem.room ?? '',
-            notes: changes.notes ?? prevItem.notes ?? ''
+            notes: changes.notes ?? prevItem.notes ?? '',
+            ...(changes.excludefromreport !== undefined && { excludefromreport: excludefromreportVal(changes.excludefromreport) })
           } : prevItem
         )
       );
@@ -1780,7 +1787,8 @@ export default function PredefinedItemsList({
               });
             }
             return item.selectedanswer || '';
-          default: return '';
+          default:
+            return (item as any)[fieldName] ?? '';
         }
       };
       

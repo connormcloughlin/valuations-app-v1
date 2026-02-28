@@ -50,7 +50,8 @@ export const RiskAssessmentItemSchema = z.object({
   notes: z.string().optional(),
   pending_sync: z.number().int().min(0).max(1).optional(),
   appointmentid: z.string().optional(),
-  isDeleted: z.number().int().min(0).max(1).optional()
+  isDeleted: z.number().int().min(0).max(1).optional(),
+  excludefromreport: z.number().int().min(0).max(1).optional()
 });
 
 // Risk Assessment Category schema

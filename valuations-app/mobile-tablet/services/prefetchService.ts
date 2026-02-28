@@ -508,7 +508,8 @@ class PrefetchService {
         latitude: Number(item.latitude) || 0,
         longitude: Number(item.longitude) || 0,
         notes: item.notes || '',
-        appointmentid: this.currentStats?.appointmentId || ''
+        appointmentid: this.currentStats?.appointmentId || '',
+        excludefromreport: (item.excludeFromReport ?? item.ExcludeFromReport) ? 1 : 0
       };
     });
     

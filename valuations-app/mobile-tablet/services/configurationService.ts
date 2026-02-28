@@ -191,6 +191,11 @@ class ConfigurationService {
             fieldType = 'textarea';
           }
         }
+        // Normalize known dynamic field types to lowercase for renderer
+        const normalizedTypes = ['checkbox', 'date', 'percentage', 'email', 'phone'];
+        if (normalizedTypes.includes((fieldType || '').toLowerCase())) {
+          fieldType = (fieldType || '').toLowerCase();
+        }
         
         console.log(`🔧 Field "${backendFieldName}": Final fieldType="${fieldType}"`);
         console.log(`🔧 Field "${backendFieldName}": Has dropdownOptions=${field.dropdownOptions ? field.dropdownOptions.length : 0} options`);
@@ -566,6 +571,11 @@ class ConfigurationService {
           } else if (uiFieldName === 'notes') {
             fieldType = 'textarea';
           }
+        }
+        // Normalize known dynamic field types to lowercase for renderer
+        const normalizedTypes = ['checkbox', 'date', 'percentage', 'email', 'phone'];
+        if (normalizedTypes.includes((fieldType || '').toLowerCase())) {
+          fieldType = (fieldType || '').toLowerCase();
         }
 
         return {

@@ -26,6 +26,14 @@ export class ValidationService {
         return this.validateNumber(field, value);
       case 'dropdown':
         return this.validateDropdown(field, value);
+      case 'percentage':
+        return this.validatePercentage(field, value);
+      case 'email':
+        return this.validateEmail(field, value);
+      case 'phone':
+        return this.validatePhone(field, value);
+      case 'date':
+        return this.validateDate(field, value);
       default:
         return null;
     }
@@ -139,6 +147,88 @@ export class ValidationService {
       };
     }
 
+    return null;
+  }
+
+  /**
+   * Validate percentage fields (0-100)
+   */
+  private static validatePercentage(field: FieldConfiguration, value: any): FieldValidationError | null {
+    const stringValue = String(value).trim();
+    if (stringValue === '') return null;
+
+    const numValue = Number(stringValue);
+    if (isNaN(numValue)) {
+      return {
+        fieldName: field.item_fields,
+        message: `${field.field_label} must be a valid number`
+      };
+    }
+    if (numValue < 0 || numValue > 100) {
+      return {
+        fieldName: field.item_fields,
+        message: `${field.field_label} must be between 0 and 100`
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Validate email fields (simple format: contains @)
+   */
+  private static validateEmail(field: FieldConfiguration, value: any): FieldValidationError | null {
+    const stringValue = String(value).trim();
+    if (stringValue === '') return null;
+
+    const hasAt = stringValue.includes('@');
+    const hasDot = /\./.test(stringValue);
+    if (!hasAt || !hasDot) {
+      return {
+        fieldName: field.item_fields,
+        message: `${field.field_label} must be a valid email address`
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Validate phone fields (non-empty when required; optional format)
+   */
+  private static validatePhone(field: FieldConfiguration, value: any): FieldValidationError | null {
+    const stringValue = String(value).trim();
+    if (stringValue === '') return null;
+
+    const digitsOnly = stringValue.replace(/\D/g, '');
+    if (digitsOnly.length < 6) {
+      return {
+        fieldName: field.item_fields,
+        message: `${field.field_label} must be at least 6 digits`
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Validate date fields (basic format YYYY-MM-DD when provided)
+   */
+  private static validateDate(field: FieldConfiguration, value: any): FieldValidationError | null {
+    const stringValue = String(value).trim();
+    if (stringValue === '') return null;
+
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!isoDateRegex.test(stringValue)) {
+      return {
+        fieldName: field.item_fields,
+        message: `${field.field_label} should be in YYYY-MM-DD format`
+      };
+    }
+    const date = new Date(stringValue);
+    if (isNaN(date.getTime())) {
+      return {
+        fieldName: field.item_fields,
+        message: `${field.field_label} must be a valid date`
+      };
+    }
     return null;
   }
 

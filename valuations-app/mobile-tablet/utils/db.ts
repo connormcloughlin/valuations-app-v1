@@ -348,7 +348,8 @@ export async function createTables() {
         notes TEXT,
         pending_sync INTEGER DEFAULT 0,
         appointmentid TEXT,
-        isDeleted INTEGER DEFAULT 0
+        isDeleted INTEGER DEFAULT 0,
+        excludefromreport INTEGER DEFAULT 0
       );
     `);
     
@@ -525,6 +526,15 @@ export async function migrateDatabase() {
       console.log('ℹ️ appointmentid column already exists');
     }
 
+    const hasExcludeFromReport = tableInfo.some(col => col.name === 'excludefromreport');
+    if (!hasExcludeFromReport) {
+      console.log('🔄 Adding excludefromreport column to risk_assessment_items...');
+      await db.execAsync('ALTER TABLE risk_assessment_items ADD COLUMN excludefromreport INTEGER DEFAULT 0');
+      console.log('✅ excludefromreport column added');
+    } else {
+      console.log('ℹ️ excludefromreport column already exists');
+    }
+
     // Check if BackendMediaID column exists in media_files table
     const mediaTableInfo = await db.getAllAsync("PRAGMA table_info(media_files)") as Array<{ name: string }>;
     const hasBackendMediaId = mediaTableInfo.some(col => col.name === 'BackendMediaID');
@@ -611,6 +621,7 @@ export interface RiskAssessmentItem {
   pending_sync?: number;
   appointmentid?: string;
   isDeleted?: number;
+  excludefromreport?: number;
 }
 
 export interface MediaFile {
@@ -749,8 +760,9 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
         commaseparatedlist, selectedanswer, qty, price, description, model, location,
         assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
         dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
-        synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid,
+        excludefromreport
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     // Respect explicitly set pending_sync value, otherwise determine based on issynced
@@ -785,7 +797,8 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
       i.longitude || 0,
       i.notes || '',
       pendingSync,
-      i.appointmentid || null
+      i.appointmentid || null,
+      i.excludefromreport ? 1 : 0
     ];
 
     await runSql(sql, params);
@@ -1261,6 +1274,16 @@ export async function migrateDb() {
     if (!db) {
       throw new Error('Database not initialized');
     }
+
+    const tableInfo = await db.getAllAsync("PRAGMA table_info(risk_assessment_items)") as Array<{ name: string }>;
+    const hasExcludeFromReport = tableInfo.some(col => col.name === 'excludefromreport');
+    if (!hasExcludeFromReport) {
+      console.log('🔄 Adding excludefromreport column to risk_assessment_items...');
+      await db.execAsync('ALTER TABLE risk_assessment_items ADD COLUMN excludefromreport INTEGER DEFAULT 0');
+      console.log('✅ excludefromreport column added');
+    } else {
+      console.log('ℹ️ excludefromreport column already exists');
+    }
     
     // Check if BackendMediaID column exists in media_files table
     const mediaTableInfo = await db.getAllAsync("PRAGMA table_info(media_files)") as Array<{ name: string }>;
@@ -1529,8 +1552,9 @@ export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]
               commaseparatedlist, selectedanswer, qty, price, description, model, location,
               assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
               dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
-              synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid,
+              excludefromreport
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
           
           try {
@@ -1566,7 +1590,8 @@ export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]
                 item.longitude || 0,
                 item.notes || '',
                 pendingSync,
-                item.appointmentid || null
+                item.appointmentid || null,
+                item.excludefromreport ? 1 : 0
               ]);
             }
           } finally {

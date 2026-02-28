@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Modal, ScrollView, Dimensions, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Modal, ScrollView, Dimensions, Alert, Switch } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { FieldConfiguration, DropdownOption, FieldValidationError } from '../../../../types/dynamicUI';
@@ -187,6 +187,16 @@ export default function DynamicFieldRenderer({
         return renderCurrencyField();
       case 'location_group':
         return renderLocationGroupField();
+      case 'checkbox':
+        return renderCheckboxField();
+      case 'date':
+        return renderDateField();
+      case 'percentage':
+        return renderPercentageField();
+      case 'email':
+        return renderEmailField();
+      case 'phone':
+        return renderPhoneField();
       default:
         console.log(`🎨 No match for field_type: "${field.field_type}" - using default text field`);
         return renderTextField();
@@ -261,6 +271,81 @@ export default function DynamicFieldRenderer({
           <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
         </TouchableOpacity>
       )}
+    </View>
+  );
+
+  const renderCheckboxField = () => {
+    const checked = value === true || value === 'true' || value === '1' || value === 1;
+    return (
+      <View style={dynamicFieldRendererStyles.inputContainer}>
+        <Switch
+          value={checked}
+          onValueChange={(newValue) => onChange(fieldName, newValue ? 'true' : 'false')}
+          trackColor={{ false: '#ccc', true: '#4a90e2' }}
+          thumbColor="#fff"
+        />
+      </View>
+    );
+  };
+
+  const renderDateField = () => (
+    <View style={dynamicFieldRendererStyles.inputContainer}>
+      <TextInput
+        style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
+        value={value || ''}
+        onChangeText={(text) => onChange(fieldName, text)}
+        onBlur={onBlur}
+        placeholder={field.placeholder || field.field_label || 'YYYY-MM-DD'}
+        placeholderTextColor="#95a5a6"
+        {...(dataAttributes || {})}
+      />
+    </View>
+  );
+
+  const renderPercentageField = () => (
+    <View style={dynamicFieldRendererStyles.inputContainer}>
+      <TextInput
+        style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
+        value={value ? String(value) : ''}
+        onChangeText={(text) => onChange(fieldName, text)}
+        onBlur={onBlur}
+        placeholder={field.placeholder || field.field_label || '0-100'}
+        placeholderTextColor="#95a5a6"
+        keyboardType="numeric"
+        {...(dataAttributes || {})}
+      />
+    </View>
+  );
+
+  const renderEmailField = () => (
+    <View style={dynamicFieldRendererStyles.inputContainer}>
+      <TextInput
+        style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
+        value={value || ''}
+        onChangeText={(text) => onChange(fieldName, text)}
+        onBlur={onBlur}
+        placeholder={field.placeholder || field.field_label}
+        placeholderTextColor="#95a5a6"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+        {...(dataAttributes || {})}
+      />
+    </View>
+  );
+
+  const renderPhoneField = () => (
+    <View style={dynamicFieldRendererStyles.inputContainer}>
+      <TextInput
+        style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
+        value={value || ''}
+        onChangeText={(text) => onChange(fieldName, text)}
+        onBlur={onBlur}
+        placeholder={field.placeholder || field.field_label}
+        placeholderTextColor="#95a5a6"
+        keyboardType="phone-pad"
+        {...(dataAttributes || {})}
+      />
     </View>
   );
 

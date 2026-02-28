@@ -26,6 +26,7 @@ export interface Item {
   rank?: number; // Add rank property for item ordering
   itemtype?: number; // Add itemtype property for database compatibility
   qty?: number; // Add original database qty value for hasDataCaptured function
+  excludefromreport?: number; // 0 = not excluded, 1 = excluded (syncs to backend ExcludeFromReport)
 }
 
 // Define the API response type

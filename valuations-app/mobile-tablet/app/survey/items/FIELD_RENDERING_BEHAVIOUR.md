@@ -34,12 +34,13 @@ So field configurations are **not** fetched inside `DynamicFieldRenderer` or `Pr
 | ItemPrompt   | type              |
 
 - **Field type** is set as follows:
-  - If the API sends `fieldType`, it is used (with one override below).
+  - If the API sends `fieldType`, it is used (with overrides below).
   - **Photos:** `item_fields === 'photos'` is always forced to `field_type: 'photo'`.
   - If the API does **not** send `fieldType`, it is inferred by UI field name:
     - `quantity` → `number`
     - `price` → `currency`
     - `notes` → `textarea`
+  - **Normalization:** The types `checkbox`, `date`, `percentage`, `email`, and `phone` are normalized to lowercase so the renderer sees a single casing (e.g. `Checkbox` → `checkbox`).
   - Otherwise the type stays as from the API or defaults to `'text'`.
 - **Visibility:** `display_on_ui` is set from the API’s `isVisible`: `1` = visible, `0` = hidden.
 - **Dropdown options:** `dropdownOptions` are taken directly from the API (`field.dropdownOptions || []`). No extra fetching is done in `processFields`; options are expected in the category/order config response.
