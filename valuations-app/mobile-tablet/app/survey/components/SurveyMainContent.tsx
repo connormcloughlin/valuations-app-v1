@@ -413,6 +413,8 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
           address={survey.address}
           completedCategories={survey.completedCategories}
           totalCategories={survey.categories.length || 1} // Avoid division by zero
+          surveyorStatus={survey.surveyor_status}
+          surveyorDueDate={survey.surveyor_due_date}
         />
         
         <SurveyDetails

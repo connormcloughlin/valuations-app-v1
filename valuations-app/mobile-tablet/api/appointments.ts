@@ -334,6 +334,15 @@ const appointmentsApi = {
                              (orderDetails.dateModified ? orderDetails.dateModified : null);
           const orderDate = orderDetails.orderdate || null;
           const dateCompleted = orderDetails.dateCompleted || null;
+
+          // SLA fields: with-order often returns them in ordersList
+          const sla_status = appointmentData.sla_status ?? appointmentData.slaStatus ?? orderDetails.sla_status ?? orderDetails.slaStatus ?? null;
+          const sla_start_date = appointmentData.sla_start_date ?? appointmentData.slaStartDate ?? orderDetails.sla_start_date ?? orderDetails.slaStartDate ?? null;
+          const sla_due_date = appointmentData.sla_due_date ?? appointmentData.slaDueDate ?? orderDetails.sla_due_date ?? orderDetails.slaDueDate ?? null;
+          const surveyor_start_date = appointmentData.surveyor_start_date ?? appointmentData.surveyorStartDate ?? orderDetails.surveyor_start_date ?? orderDetails.surveyorStartDate ?? null;
+          const surveyor_due_date = appointmentData.surveyor_due_date ?? appointmentData.surveyorDueDate ?? orderDetails.surveyor_due_date ?? orderDetails.surveyorDueDate ?? null;
+          const surveyor_status = appointmentData.surveyor_status ?? appointmentData.surveyorStatus ?? orderDetails.surveyor_status ?? orderDetails.surveyorStatus ?? null;
+          const completed_at = appointmentData.completed_at ?? appointmentData.completedAt ?? orderDetails.completed_at ?? orderDetails.completedAt ?? null;
           
           // Update the appointment data with normalized fields
           appointmentData = {
@@ -370,6 +379,14 @@ const appointmentsApi = {
             sumInsured,
             insurer,
             broker,
+            // SLA fields (from top level or ordersList)
+            sla_status,
+            sla_start_date,
+            sla_due_date,
+            surveyor_start_date,
+            surveyor_due_date,
+            surveyor_status,
+            completed_at,
             // Preserve original data
             originalAppointment: appointmentData,
             originalOrdersList: orderDetails
@@ -715,11 +732,21 @@ const appointmentsApi = {
 
       // Check if we're online first
       const isOnline = connectionUtils.isConnected();
+      const statusLower = (status || '').toString().toLowerCase();
+      const isCompletedStatus = statusLower === 'completed';
       console.log(`Connection status before fetching appointments by list-view: ${isOnline ? 'Online' : 'Offline'}`);
-      
-      // If offline, get from storage and filter
-      // Note: Only incomplete appointments are cached, so requests for "Completed" status will return empty
-      if (!isOnline) {
+
+      // Completed appointments/orders are never cached in SQLite or offline storage - always require API
+      if (isCompletedStatus && !isOnline) {
+        return {
+          success: false,
+          message: 'Completed appointments are not stored offline. Please connect to the network to view completed appointments.'
+        };
+      }
+      if (isCompletedStatus) {
+        // Skip cache entirely for Completed - always fetch from server
+      } else if (!isOnline) {
+        // If offline, get from storage and filter (incomplete appointments only)
         const cachedResponse = await offlineStorage.getDataForKey('appointmentsByListView');
         if (cachedResponse && cachedResponse.data) {
           console.log(`Using cached list-view appointments (offline - incomplete only)`);
@@ -852,7 +879,16 @@ const appointmentsApi = {
         // Use consistent ID field with index as suffix to ensure uniqueness
         const baseId = appointment.AppointmentID?.toString() || String(index + 1);
         const id = `${baseId}`;
-        
+
+        // SLA fields: support both snake_case and camelCase from API
+        const sla_status = appointment.sla_status ?? appointment.slaStatus ?? null;
+        const sla_start_date = appointment.sla_start_date ?? appointment.slaStartDate ?? null;
+        const sla_due_date = appointment.sla_due_date ?? appointment.slaDueDate ?? null;
+        const surveyor_start_date = appointment.surveyor_start_date ?? appointment.surveyorStartDate ?? null;
+        const surveyor_due_date = appointment.surveyor_due_date ?? appointment.surveyorDueDate ?? null;
+        const surveyor_status = appointment.surveyor_status ?? appointment.surveyorStatus ?? null;
+        const completed_at = appointment.completed_at ?? appointment.completedAt ?? null;
+
         // Map fields directly from the flat API response structure
         return {
           id: id,
@@ -872,7 +908,15 @@ const appointmentsApi = {
           status: appointment.Invite_Status || 'Unknown',
           Start_Time: appointment.Start_Time,
           location: appointment.Location || 'No address provided',
-          fullAddress: appointment.Location || 'No address provided'
+          fullAddress: appointment.Location || 'No address provided',
+          // SLA fields from list-view (Epic 2)
+          sla_status,
+          sla_start_date,
+          sla_due_date,
+          surveyor_start_date,
+          surveyor_due_date,
+          surveyor_status,
+          completed_at
         };
       });
       
@@ -897,10 +941,12 @@ const appointmentsApi = {
         timestamp: new Date().toISOString()
       };
       
-      // Only cache if there are incomplete appointments
-      if (incompleteAppointments.length > 0) {
+      // Only cache incomplete appointments; never cache when loading Completed list
+      if (!isCompletedStatus && incompleteAppointments.length > 0) {
         await offlineStorage.storeDataForKey('appointmentsByListView', responseToStore);
         console.log(`Cached ${incompleteAppointments.length} incomplete list-view appointments (excluded ${processedAppointments.length - incompleteAppointments.length} completed)`);
+      } else if (isCompletedStatus) {
+        console.log('Completed list-view response not cached (completed appointments never stored in SQLite/offline)');
       } else {
         console.log(`No incomplete appointments to cache for list-view (all ${processedAppointments.length} are completed)`);
       }

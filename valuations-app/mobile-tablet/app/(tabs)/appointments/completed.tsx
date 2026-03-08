@@ -9,6 +9,7 @@ import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { completedAppointmentsStyles, colors } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { SurveyorFilterIndicator } from '../../../components/SurveyorFilterIndicator';
+import { SlaStatusBadge } from '../../../components/sla/SlaStatusBadge';
 import { formatDateForSA } from '../../../utils/dateUtils';
 
 // Extend the API's Appointment type with any additional fields we need
@@ -168,9 +169,17 @@ export default function CompletedAppointmentsScreen() {
             <MaterialCommunityIcons name="file-document-outline" size={16} color={colors.gray[500]} style={completedAppointmentsStyles.detailIcon} />
             <Text style={completedAppointmentsStyles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
           </View>
+
+          <View style={completedAppointmentsStyles.detailRow}>
+            <SlaStatusBadge
+              surveyorStatus={item.surveyor_status ?? item.surveyorStatus}
+              surveyorDueDate={item.surveyor_due_date ?? item.surveyorDueDate}
+              compact={false}
+            />
+          </View>
         </View>
-        
-        <Button 
+
+        <Button
           mode="outlined" 
           onPress={() => navigateToSummary(item.id)} 
           style={completedAppointmentsStyles.viewButton}

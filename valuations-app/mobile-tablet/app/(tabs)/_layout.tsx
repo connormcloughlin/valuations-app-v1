@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Slot } from 'expo-router';
 import { AppLayout, TabConfig } from '../../components/layout';
+import { useAuth } from '../../context/AuthContext';
+import { getWorkflowTasks } from '../../api/workflowTasks';
 
-// Define the tab configuration
-const tabs: TabConfig[] = [
+// Base tab configuration
+const baseTabs: TabConfig[] = [
   {
     name: 'dashboard',
     title: 'Dashboard',
@@ -11,10 +13,10 @@ const tabs: TabConfig[] = [
     path: '/(tabs)'
   },
   {
-    name: 'valuations',
-    title: 'Valuations',
+    name: 'tasks',
+    title: 'Tasks',
     icon: 'clipboard-list',
-    path: '/(tabs)/valuations'
+    path: '/(tabs)/tasks'
   },
   {
     name: 'survey',
@@ -31,6 +33,29 @@ const tabs: TabConfig[] = [
 ];
 
 export default function TabLayout() {
+  const { user, isAuthenticated } = useAuth();
+  const [taskCount, setTaskCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) {
+      setTaskCount(0);
+      return;
+    }
+    getWorkflowTasks(user.id, 1, 1, undefined, 'claimed, in_progress')
+      .then((res) => {
+        if (res.success && res.pagination != null) {
+          setTaskCount(res.pagination.totalCount ?? 0);
+        }
+      })
+      .catch(() => setTaskCount(0));
+  }, [isAuthenticated, user?.id]);
+
+  const tabs: TabConfig[] = baseTabs.map((tab) =>
+    tab.path === '/(tabs)/tasks'
+      ? { ...tab, badge: taskCount > 0 ? taskCount : undefined }
+      : tab
+  );
+
   return (
     <AppLayout
       title="Qantam"

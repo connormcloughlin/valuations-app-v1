@@ -10,6 +10,8 @@ import { PrefetchProgressIndicator } from '../../../components/PrefetchProgressI
 import { appointmentDetailsStyles } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { formatDateTimeForSA } from '../../../utils/dateUtils';
+import { SurveyorSlaCard } from '../../../components/sla/SurveyorSlaCard';
+import { FullSlaCard } from '../../../components/sla/FullSlaCard';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../../types/api';
@@ -65,6 +67,14 @@ interface Appointment {
   ordersList?: any;
   originalAppointment?: any;
   originalOrder?: any;
+  // SLA fields (Epic 2)
+  sla_status?: string | null;
+  sla_start_date?: string | null;
+  sla_due_date?: string | null;
+  surveyor_start_date?: string | null;
+  surveyor_due_date?: string | null;
+  surveyor_status?: string | null;
+  completed_at?: string | null;
 }
 
 export default function AppointmentDetails() {
@@ -132,7 +142,15 @@ export default function AppointmentDetails() {
           dateModified: response.data.dateModified,
           ordersList: response.data.ordersList,
           originalAppointment: response.data.originalAppointment,
-          originalOrder: response.data.originalOrder
+          originalOrder: response.data.originalOrder,
+          // SLA fields: with-order returns them in ordersList when not at top level
+          sla_status: response.data.sla_status ?? response.data.slaStatus ?? response.data.ordersList?.sla_status ?? response.data.ordersList?.slaStatus ?? null,
+          sla_start_date: response.data.sla_start_date ?? response.data.slaStartDate ?? response.data.ordersList?.sla_start_date ?? response.data.ordersList?.slaStartDate ?? null,
+          sla_due_date: response.data.sla_due_date ?? response.data.slaDueDate ?? response.data.ordersList?.sla_due_date ?? response.data.ordersList?.slaDueDate ?? null,
+          surveyor_start_date: response.data.surveyor_start_date ?? response.data.surveyorStartDate ?? response.data.ordersList?.surveyor_start_date ?? response.data.ordersList?.surveyorStartDate ?? null,
+          surveyor_due_date: response.data.surveyor_due_date ?? response.data.surveyorDueDate ?? response.data.ordersList?.surveyor_due_date ?? response.data.ordersList?.surveyorDueDate ?? null,
+          surveyor_status: response.data.surveyor_status ?? response.data.surveyorStatus ?? response.data.ordersList?.surveyor_status ?? response.data.ordersList?.surveyorStatus ?? null,
+          completed_at: response.data.completed_at ?? response.data.completedAt ?? response.data.ordersList?.completed_at ?? response.data.ordersList?.completedAt ?? null
         };
         setAppointment(appointmentData);
       } else {
@@ -150,24 +168,29 @@ export default function AppointmentDetails() {
     fetchAppointmentDetails();
   }, [id]);
   
-  // Start prefetch when appointment data is loaded AND user is authenticated
+  // Start prefetch when appointment data is loaded AND user is authenticated (never for Completed - do not load into SQLite)
   useEffect(() => {
-    if (appointment && isAuthenticated && user) {
-      console.log(`🔐 User authenticated, starting prefetch for appointment ${appointment.id}, order ${appointment.orderNumber}`);
-      
-      const startPrefetch = async () => {
-        try {
-          const result = await prefetchService.startAppointmentPrefetch(appointment.id, appointment.orderNumber);
-          console.log(`🔍 APPOINTMENT DETAILS - Prefetch result:`, result);
-        } catch (error) {
-          console.error(`❌ APPOINTMENT DETAILS - Prefetch error:`, error);
-        }
-      };
-      
-      startPrefetch();
-    } else if (appointment && !isAuthenticated) {
-      console.log(`⏳ Waiting for authentication before starting prefetch for appointment ${appointment.id}`);
+    if (!appointment || !isAuthenticated || !user) {
+      if (appointment && !isAuthenticated) {
+        console.log(`⏳ Waiting for authentication before starting prefetch for appointment ${appointment.id}`);
+      }
+      return;
     }
+    const status = (appointment.Invite_Status || appointment.inviteStatus || appointment.status || '').toString().toLowerCase();
+    if (status === 'completed') {
+      console.log(`⏭️ Skipping prefetch for completed appointment ${appointment.id} (completed appointments are not loaded into SQLite)`);
+      return;
+    }
+    console.log(`🔐 User authenticated, starting prefetch for appointment ${appointment.id}, order ${appointment.orderNumber}`);
+    const startPrefetch = async () => {
+      try {
+        const result = await prefetchService.startAppointmentPrefetch(appointment.id, appointment.orderNumber);
+        console.log(`🔍 APPOINTMENT DETAILS - Prefetch result:`, result);
+      } catch (error) {
+        console.error(`❌ APPOINTMENT DETAILS - Prefetch error:`, error);
+      }
+    };
+    startPrefetch();
   }, [appointment, isAuthenticated, user]);
   
   const startSurvey = () => {
@@ -329,6 +352,21 @@ export default function AppointmentDetails() {
               </Card.Content>
             </Card>
           </View>
+
+          {/* Surveyor SLA (5-day segment) */}
+          <SurveyorSlaCard
+            surveyorStatus={appointment.surveyor_status}
+            surveyorDueDate={appointment.surveyor_due_date}
+            surveyorStartDate={appointment.surveyor_start_date}
+          />
+
+          {/* Full order SLA (10 days) - optional context */}
+          <FullSlaCard
+            slaStatus={appointment.sla_status}
+            slaDueDate={appointment.sla_due_date}
+            slaStartDate={appointment.sla_start_date}
+            completedAt={appointment.completed_at}
+          />
           
           {/* Location */}
           <View style={appointmentDetailsStyles.mapContainer}>

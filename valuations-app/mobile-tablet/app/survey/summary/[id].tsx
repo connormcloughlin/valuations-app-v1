@@ -15,6 +15,7 @@ import SurveySummaryActions from './components/SurveySummaryActions';
 
 // Import custom hook
 import { useSurveySummaryData } from './hooks/useSurveySummaryData';
+import * as db from '../../../utils/db';
 
 // Define tabs for survey summary navigation
 const surveyTabs: TabConfig[] = [
@@ -161,6 +162,12 @@ Completed on ${survey.completionDate}
                   const riskAssessmentUpdateResponse = await appointmentsApi.default.updateRiskAssessmentMasterStatus(orderId, 'RISK_ASSESSMENT_COMPLETED');
                   
                   if (appointmentResponse.success && riskAssessmentUpdateResponse.success) {
+                    // Clear all SQLite data for this order now that it has been submitted for QA
+                    try {
+                      await db.deleteAllDataForOrder(orderId);
+                    } catch (dbError) {
+                      console.warn('Failed to clear local SQLite data for order:', dbError);
+                    }
                     response = { success: true };
                     successMessage = 'The survey has been successfully submitted for QA review and marked as Complete.';
                   } else {

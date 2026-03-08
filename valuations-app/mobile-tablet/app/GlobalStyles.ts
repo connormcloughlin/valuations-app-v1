@@ -1292,7 +1292,27 @@ export const bottomNavigationStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     textAlign: 'center',
-  }
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#e74c3c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  tabIconWrap: {
+    position: 'relative',
+  },
+  tabBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
 }); 
 
 export const connectionStatusStyles = StyleSheet.create({
@@ -3016,6 +3036,205 @@ export const completedAppointmentsStyles = StyleSheet.create({
   paginationInfo: {
     fontSize: 14,
     color: '#7f8c8d',
+  },
+});
+
+export const tasksTabStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f6fa',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  filterStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginBottom: 8,
+    gap: 8,
+  },
+  filterChip: {
+    marginRight: 8,
+  },
+  filterChipSelected: {
+    backgroundColor: '#4a90e2',
+  },
+  filterChipSelectedText: {
+    color: '#fff',
+  },
+  listContainer: {
+    padding: 16,
+    paddingTop: 0,
+    paddingBottom: 100,
+  },
+  taskCard: {
+    marginBottom: 14,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    overflow: 'hidden',
+  },
+  taskCardBorder: {
+    borderLeftWidth: 4,
+  },
+  cardContent: {
+    padding: 16,
+  },
+  taskHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  taskIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  taskTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#2c3e50',
+    flex: 1,
+  },
+  statusChip: {
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusChipCompleted: {
+    backgroundColor: '#27ae60',
+  },
+  statusChipPending: {
+    backgroundColor: '#f39c12',
+  },
+  statusChipText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  detailIcon: {
+    marginRight: 10,
+  },
+  detailText: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    flex: 1,
+  },
+  notesPreview: {
+    fontSize: 13,
+    color: '#95a5a6',
+    fontStyle: 'italic',
+    marginTop: 4,
+    marginLeft: 26,
+  },
+  viewButton: {
+    marginTop: 14,
+    borderColor: '#4a90e2',
+    borderRadius: 8,
+  },
+  buttonLabel: {
+    color: '#4a90e2',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  paginationInfo: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    fontWeight: '500',
+  },
+});
+
+export const taskDetailStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f6fa',
+    padding: 16,
+  },
+  section: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  label: {
+    fontSize: 13,
+    color: '#7f8c8d',
+    flex: 0.4,
+  },
+  value: {
+    fontSize: 14,
+    color: '#2c3e50',
+    flex: 0.6,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
+  valueMultiline: {
+    textAlign: 'left',
+    marginTop: 4,
   },
 });
 

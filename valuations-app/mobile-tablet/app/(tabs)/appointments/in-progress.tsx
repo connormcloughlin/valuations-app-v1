@@ -9,6 +9,7 @@ import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { appointmentsInProgressStyles, colors } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { SurveyorFilterIndicator } from '../../../components/SurveyorFilterIndicator';
+import { SlaStatusBadge } from '../../../components/sla/SlaStatusBadge';
 import { formatDateForSA } from '../../../utils/dateUtils';
 
 // Extend the API's Appointment type with any additional fields we need
@@ -216,6 +217,14 @@ export default function InProgressAppointmentsScreen() {
               <Text style={appointmentsInProgressStyles.detailText}>Sum Insured: {formatCurrency(item.sumInsured)}</Text>
             </View>
           )}
+
+          <View style={appointmentsInProgressStyles.detailRow}>
+            <SlaStatusBadge
+              surveyorStatus={item.surveyor_status ?? item.surveyorStatus}
+              surveyorDueDate={item.surveyor_due_date ?? item.surveyorDueDate}
+              compact={false}
+            />
+          </View>
         </View>
         
         <Button 

@@ -89,7 +89,16 @@ export const AppointmentSchema = z.object({
   originalOrdersList: z.any().optional(),
   
   // Sync fields
-  pending_sync: z.number().int().min(0).max(1).optional()
+  pending_sync: z.number().int().min(0).max(1).optional(),
+
+  // SLA fields (Epic 2 - from list-view and with-order)
+  sla_status: z.string().optional().nullable(),
+  sla_start_date: z.string().optional().nullable(),
+  sla_due_date: z.string().optional().nullable(),
+  surveyor_start_date: z.string().optional().nullable(),
+  surveyor_due_date: z.string().optional().nullable(),
+  surveyor_status: z.string().optional().nullable(),
+  completed_at: z.string().optional().nullable()
 });
 
 // Appointment list schema (for API responses)

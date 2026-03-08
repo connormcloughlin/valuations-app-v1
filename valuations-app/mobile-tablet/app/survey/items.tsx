@@ -149,10 +149,10 @@ export default function ItemsScreen() {
       path: '/(tabs)'
     },
     {
-      name: 'valuations',
-      title: 'Valuations',
+      name: 'tasks',
+      title: 'Tasks',
       icon: 'clipboard-list',
-      path: '/(tabs)/valuations'
+      path: '/(tabs)/tasks'
     },
     {
       name: 'survey',

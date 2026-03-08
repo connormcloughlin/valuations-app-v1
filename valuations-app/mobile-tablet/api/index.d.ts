@@ -64,6 +64,14 @@ export interface Appointment {
   ordersList?: any;
   originalAppointment?: any;
   originalOrder?: any;
+  // SLA fields (Epic 2)
+  sla_status?: string | null;
+  sla_start_date?: string | null;
+  sla_due_date?: string | null;
+  surveyor_start_date?: string | null;
+  surveyor_due_date?: string | null;
+  surveyor_status?: string | null;
+  completed_at?: string | null;
 }
 
 // API client interface

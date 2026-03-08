@@ -717,6 +717,68 @@ export async function deleteAppointment(appointmentID: number | string): Promise
   }
 }
 
+/**
+ * Delete all SQLite records for a given order/appointment when submitted for QA.
+ * Removes: appointments (by orderID), risk_assessment_master (by orderId), risk_assessment_items
+ * (by appointment), and associated media_files.
+ */
+export async function deleteAllDataForOrder(orderId: number): Promise<void> {
+  try {
+    const database = await ensureDbReady();
+
+    await database.withTransactionAsync(async () => {
+      // 1. Get all appointment IDs for this order
+      const appointments = await database.getAllAsync(
+        'SELECT appointmentID FROM appointments WHERE orderID = ?',
+        [orderId]
+      ) as Array<{ appointmentID: number }>;
+
+      for (const row of appointments) {
+        const aptId = row.appointmentID;
+        // Delete media for this appointment
+        await database.runAsync(
+          'DELETE FROM media_files WHERE EntityName = ? AND EntityID = ?',
+          ['appointment', aptId]
+        );
+        // Get risk assessment item IDs for this appointment
+        const items = await database.getAllAsync(
+          'SELECT riskassessmentitemid FROM risk_assessment_items WHERE appointmentid = ?',
+          [aptId.toString()]
+        ) as Array<{ riskassessmentitemid: number }>;
+        if (items.length > 0) {
+          const itemIds = items.map((i) => i.riskassessmentitemid);
+          const placeholders = itemIds.map(() => '?').join(',');
+          await database.runAsync(
+            `DELETE FROM media_files WHERE EntityName = ? AND EntityID IN (${placeholders})`,
+            ['risk_assessment_item', ...itemIds]
+          );
+        }
+        // Delete risk assessment items for this appointment
+        await database.runAsync(
+          'DELETE FROM risk_assessment_items WHERE appointmentid = ?',
+          [aptId.toString()]
+        );
+      }
+
+      // 2. Delete appointments for this order
+      const aptResult = await database.runAsync('DELETE FROM appointments WHERE orderID = ?', [orderId]);
+      console.log(`🗑️ Deleted ${aptResult.changes} appointment(s) for order ${orderId}`);
+
+      // 3. Delete risk assessment master for this order (riskassessmentid = orderId)
+      const masterResult = await database.runAsync(
+        'DELETE FROM risk_assessment_master WHERE riskassessmentid = ?',
+        [orderId]
+      );
+      console.log(`🗑️ Deleted ${masterResult.changes} risk_assessment_master for order ${orderId}`);
+    });
+
+    console.log(`✅ Deleted all SQLite data for order ${orderId}`);
+  } catch (error) {
+    console.error(`Error deleting SQLite data for order ${orderId}:`, error);
+    throw error;
+  }
+}
+
 // --- CRUD for Risk Assessment Master ---
 export async function insertRiskAssessmentMaster(r: RiskAssessmentMaster) {
   await runSql(

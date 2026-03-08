@@ -37,6 +37,11 @@ export interface Survey {
   completedCategories: number;
   appointmentId?: string;
   status?: string;
+  // SLA fields (from appointment with-order / list-view)
+  surveyor_status?: string | null;
+  surveyor_due_date?: string | null;
+  sla_status?: string | null;
+  sla_due_date?: string | null;
 }
 
 // Context
@@ -172,24 +177,35 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       
       if (response && response.success && response.data) {
         const appointment = response.data;
-        
+        const ordersList = appointment.ordersList || {};
+        // SLA can be at top level or nested in ordersList (with-order response)
+        const surveyor_status = appointment.surveyor_status ?? appointment.surveyorStatus ?? ordersList.surveyor_status ?? ordersList.surveyorStatus ?? null;
+        const surveyor_due_date = appointment.surveyor_due_date ?? appointment.surveyorDueDate ?? ordersList.surveyor_due_date ?? ordersList.surveyorDueDate ?? null;
+        const sla_status = appointment.sla_status ?? appointment.slaStatus ?? ordersList.sla_status ?? ordersList.slaStatus ?? null;
+        const sla_due_date = appointment.sla_due_date ?? appointment.slaDueDate ?? ordersList.sla_due_date ?? ordersList.slaDueDate ?? null;
+
         // Map appointment data to Survey interface using the same pattern as appointment details
         const surveyData: Survey = {
           id: surveyId,
           address: String(appointment.address || appointment.location || appointment.property_address || 'No address provided'),
-          client: String(appointment.client || appointment.clientName || appointment.customer_name || 'Unknown client'),
+          client: String(appointment.client || appointment.clientName || appointment.customer_name || ordersList.clientsName || ordersList.client || 'Unknown client'),
           date: appointment.startTime || appointment.date || appointment.appointment_date || new Date().toISOString(),
-          policyNo: String(appointment.policyNo || appointment.policyNumber || 'N/A'),
-          sumInsured: String(appointment.sumInsured || 'Not specified'),
-          orderNumber: String(appointment.orderNumber || appointment.orderID || appointment.order_id || 'Unknown'),
+          policyNo: String(appointment.policyNo || appointment.policyNumber || ordersList.policy || 'N/A'),
+          sumInsured: String(appointment.sumInsured ?? ordersList.sumInsured ?? 'Not specified'),
+          orderNumber: String(appointment.orderNumber || appointment.orderID || appointment.order_id || ordersList.orderid || 'Unknown'),
           lastEdited: appointment.lastEdited || appointment.lastModified || appointment.dateModified || new Date().toISOString().split('T')[0],
-          broker: String(appointment.broker || 'Not specified'),
+          broker: String(appointment.broker || ordersList.broker || 'Not specified'),
           appointmentId: String(appointment.appointmentID || appointment.appointmentId || appointment.id || surveyId),
           status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
           // Categories load on-demand through component interactions
           categories: [],
           totalValue: 0,
-          completedCategories: 0
+          completedCategories: 0,
+          // SLA fields (from top level or ordersList)
+          surveyor_status,
+          surveyor_due_date,
+          sla_status,
+          sla_due_date
         };
         
         setSurvey(surveyData);

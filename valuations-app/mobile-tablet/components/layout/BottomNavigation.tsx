@@ -17,6 +17,8 @@ export type TabConfig = {
   title: string;
   icon: 'view-dashboard' | 'clipboard-list' | 'note-text' | 'account' | 'calendar-clock' | 'plus-circle';
   path: string;
+  /** Optional badge count (e.g. number of tasks assigned) */
+  badge?: number;
 };
 
 interface BottomNavigationProps {
@@ -58,6 +60,7 @@ export default function BottomNavigation({
           label={tab.title}
           active={isActive(tab.path)}
           onPress={() => router.push(tab.path as any)}
+          badge={tab.badge}
         />
       ))}
     </View>
@@ -70,9 +73,10 @@ interface TabButtonProps {
   label: string;
   active: boolean;
   onPress: () => void;
+  badge?: number;
 }
 
-function TabButton({ icon, label, active, onPress }: TabButtonProps) {
+function TabButton({ icon, label, active, onPress, badge }: TabButtonProps) {
   // Animation values
   const scale = useSharedValue(1);
   const opacity = useSharedValue(active ? 1 : 0);
@@ -124,11 +128,20 @@ function TabButton({ icon, label, active, onPress }: TabButtonProps) {
     >
       <Animated.View style={[bottomNavigationStyles.tabButtonContainer, animatedColorStyle]}>
         <Animated.View style={animatedIconStyle}>
-          <MaterialCommunityIcons
-            name={icon}
-            size={25}
-            color={getIconColor()}
-          />
+          <View style={bottomNavigationStyles.tabIconWrap}>
+            <MaterialCommunityIcons
+              name={icon}
+              size={25}
+              color={getIconColor()}
+            />
+            {badge != null && badge > 0 && (
+              <View style={bottomNavigationStyles.tabBadge}>
+                <Text style={bottomNavigationStyles.tabBadgeText} numberOfLines={1}>
+                  {badge > 99 ? '99+' : badge}
+                </Text>
+              </View>
+            )}
+          </View>
         </Animated.View>
         
         <Animated.View style={[bottomNavigationStyles.labelContainer, animatedLabelStyle]}>

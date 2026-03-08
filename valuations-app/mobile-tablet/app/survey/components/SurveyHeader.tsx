@@ -5,14 +5,20 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Import GlobalStyles constants
 import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
+import { SlaStatusBadge } from '../../../components/sla/SlaStatusBadge';
+import { formatDateForSA } from '../../../utils/dateUtils';
 
 interface SurveyHeaderProps {
   address: string;
   completedCategories: number;
   totalCategories: number;
+  /** Surveyor SLA status (from appointment). Optional; when provided, badge is shown below progress bar. */
+  surveyorStatus?: string | null;
+  /** Surveyor segment due date (ISO). Optional. */
+  surveyorDueDate?: string | null;
 }
 
-export default function SurveyHeader({ address, completedCategories, totalCategories }: SurveyHeaderProps) {
+export default function SurveyHeader({ address, completedCategories, totalCategories, surveyorStatus, surveyorDueDate }: SurveyHeaderProps) {
   const progress = Math.floor((completedCategories / totalCategories) * 100);
 
   return (
@@ -34,6 +40,18 @@ export default function SurveyHeader({ address, completedCategories, totalCatego
           <Text style={styles.progressDetails}>
             {completedCategories} of {totalCategories} categories completed
           </Text>
+          <View style={styles.slaBadgeContainer}>
+            <View style={styles.slaRow}>
+              <SlaStatusBadge
+                surveyorStatus={surveyorStatus}
+                surveyorDueDate={surveyorDueDate}
+                compact={true}
+              />
+              <Text style={styles.surveyorDueLabel}>
+                Surveyor due date: {surveyorDueDate ? formatDateForSA(surveyorDueDate) : '—'}
+              </Text>
+            </View>
+          </View>
         </View>
       </Card.Content>
     </Card>
@@ -89,5 +107,18 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.xs,
     textAlign: 'right',
+  },
+  slaBadgeContainer: {
+    marginTop: spacing.sm,
+  },
+  slaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  surveyorDueLabel: {
+    fontSize: typography.sm,
+    color: colors.textSecondary,
   },
 }); 

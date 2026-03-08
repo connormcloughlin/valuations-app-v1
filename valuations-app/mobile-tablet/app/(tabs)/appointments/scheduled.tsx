@@ -9,6 +9,7 @@ import type { Appointment as ApiAppointment } from '../../../api/index.d';
 import { scheduledAppointmentsStyles, colors } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { SurveyorFilterIndicator } from '../../../components/SurveyorFilterIndicator';
+import { SlaStatusBadge } from '../../../components/sla/SlaStatusBadge';
 import { formatDateForSA, formatTimeForSA } from '../../../utils/dateUtils';
 
 // Extend the API's Appointment type with any additional fields we need
@@ -185,6 +186,13 @@ export default function ScheduledAppointmentsScreen() {
             <View style={scheduledAppointmentsStyles.detailRow}>
               <MaterialCommunityIcons name="file-document-outline" size={16} color={colors.gray[500]} style={scheduledAppointmentsStyles.detailIcon} />
               <Text style={scheduledAppointmentsStyles.detailText}>Order: {item.orderNumber || 'Unknown'}</Text>
+            </View>
+            <View style={scheduledAppointmentsStyles.detailRow}>
+              <SlaStatusBadge
+                surveyorStatus={item.surveyor_status ?? item.surveyorStatus}
+                surveyorDueDate={item.surveyor_due_date ?? item.surveyorDueDate}
+                compact={false}
+              />
             </View>
           </View>
         </Card.Content>
