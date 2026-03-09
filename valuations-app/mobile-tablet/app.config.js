@@ -60,12 +60,12 @@ const appEnv = process.env.APP_ENV || 'development';
 const getPackageName = () => {
   switch (appEnv) {
     case 'staging':
-      return 'com.anonymous.qantamvaluationsmobiletablet.staging';
+      return 'com.qantam.valuationsmobiletablet.staging';
     case 'production':
-      return 'com.anonymous.qantamvaluationsmobiletablet';
+      return 'com.qantam.valuationsmobiletablet.production';
     case 'development':
     default:
-      return 'com.anonymous.qantamvaluationsmobiletablet.dev';
+      return 'com.qantam.valuationsmobiletablet.development';
   }
 };
 
@@ -84,12 +84,12 @@ const getAppName = () => {
 const getBundleIdentifier = () => {
   switch (appEnv) {
     case 'staging':
-      return 'com.anonymous.qantamvaluationsmobiletablet.staging';
+      return 'com.qantam.valuationsmobiletablet.staging';
     case 'production':
-      return 'com.anonymous.qantamvaluationsmobiletablet';
+      return 'com.qantam.valuationsmobiletablet.production';
     case 'development':
     default:
-      return 'com.anonymous.qantamvaluationsmobiletablet.dev';
+      return 'com.qantam.valuationsmobiletablet.development';
   }
 };
 
