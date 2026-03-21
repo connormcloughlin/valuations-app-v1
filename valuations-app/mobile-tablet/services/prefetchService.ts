@@ -777,7 +777,8 @@ class PrefetchService {
           groupingStrategy TEXT,
           locationTemplates TEXT,
           summary TEXT,
-          lastUpdated TEXT
+          lastUpdated TEXT,
+          itemFieldConfigs TEXT
         )
       `);
       
@@ -790,12 +791,28 @@ class PrefetchService {
         const fields = categoryConfig.fields || [];
         const groupingStrategy = categoryConfig.groupingStrategy;
         const locationTemplates = categoryConfig.locationTemplates || [];
+
+        // Build per-item field config map (Option B: only items with fields; support alternate API shapes)
+        const itemFieldConfigsMap: Record<string, any[]> = {};
+        const categoryItems = categoryConfig.items ?? categoryConfig.templateItems ?? categoryConfig.riskTemplateItems ?? [];
+        for (const item of categoryItems) {
+          const itemFields = item.fields ?? item.fieldConfig ?? item.effectiveFields ?? [];
+          if (Array.isArray(itemFields) && itemFields.length > 0) {
+            const key = String(item.itemPrompt ?? item.item_prompt ?? item.name ?? '').toLowerCase().trim();
+            if (key) {
+              itemFieldConfigsMap[key] = itemFields;
+            }
+          }
+        }
+        const itemFieldConfigsJson = Object.keys(itemFieldConfigsMap).length > 0
+          ? JSON.stringify(itemFieldConfigsMap)
+          : null;
         
         await runSql(`
           INSERT INTO category_configurations (
             categoryId, categoryName, sectionName, templateName, categoryRank, isActive,
-            fields, groupingStrategy, locationTemplates, summary, lastUpdated
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            fields, groupingStrategy, locationTemplates, summary, lastUpdated, itemFieldConfigs
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           category.categoryId,
           category.categoryName,
@@ -807,13 +824,80 @@ class PrefetchService {
           groupingStrategy ? JSON.stringify(groupingStrategy) : null,
           JSON.stringify(locationTemplates),
           JSON.stringify(categoryConfig.summary),
-          new Date().toISOString()
+          new Date().toISOString(),
+          itemFieldConfigsJson
         ]);
       }
       
       console.log(`✅ SQLITE - Successfully stored ${configData.categories.length} category configurations`);
     } catch (error) {
       console.error('❌ SQLITE - Error storing category configurations:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Persist order config to SQLite (upsert). Does not delete existing rows.
+   * Use when order config is fetched so getCategoryConfiguration reads per-category
+   * config with itemFieldConfigs from SQLite.
+   */
+  async storeOrderCategoryConfigurationsInSQLite(configData: { categories: any[] }): Promise<void> {
+    if (!configData?.categories?.length) {
+      console.log('📦 SQLITE - No categories in order config, skipping store');
+      return;
+    }
+    try {
+      const { runSql, waitForDatabase } = await import('../utils/db');
+      await waitForDatabase();
+
+      for (const categoryConfig of configData.categories) {
+        const category = categoryConfig.category;
+        if (!category?.categoryId) continue;
+
+        const fields = categoryConfig.fields || [];
+        const groupingStrategy = categoryConfig.groupingStrategy;
+        const locationTemplates = categoryConfig.locationTemplates || [];
+
+        const itemFieldConfigsMap: Record<string, any[]> = {};
+        const categoryItems = categoryConfig.items ?? categoryConfig.templateItems ?? categoryConfig.riskTemplateItems ?? [];
+        for (const item of categoryItems) {
+          const itemFields = item.fields ?? item.fieldConfig ?? item.effectiveFields ?? [];
+          if (Array.isArray(itemFields) && itemFields.length > 0) {
+            const key = String(item.itemPrompt ?? item.item_prompt ?? item.name ?? '').toLowerCase().trim();
+            if (key) {
+              itemFieldConfigsMap[key] = itemFields;
+            }
+          }
+        }
+        const itemFieldConfigsJson = Object.keys(itemFieldConfigsMap).length > 0
+          ? JSON.stringify(itemFieldConfigsMap)
+          : null;
+
+        await runSql(
+          `INSERT OR REPLACE INTO category_configurations (
+            categoryId, categoryName, sectionName, templateName, categoryRank, isActive,
+            fields, groupingStrategy, locationTemplates, summary, lastUpdated, itemFieldConfigs
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            category.categoryId,
+            category.categoryName,
+            category.sectionName,
+            category.templateName,
+            category.categoryRank,
+            category.isActive ? 1 : 0,
+            JSON.stringify(fields),
+            groupingStrategy ? JSON.stringify(groupingStrategy) : null,
+            JSON.stringify(locationTemplates),
+            JSON.stringify(categoryConfig.summary),
+            new Date().toISOString(),
+            itemFieldConfigsJson
+          ]
+        );
+      }
+
+      console.log(`✅ SQLITE - Upserted ${configData.categories.length} category configs from order`);
+    } catch (error) {
+      console.error('❌ SQLITE - Error storing order category configurations:', error);
       throw error;
     }
   }
@@ -848,7 +932,8 @@ class PrefetchService {
         fields: JSON.parse(config.fields || '[]'),
         groupingStrategy: config.groupingStrategy ? JSON.parse(config.groupingStrategy) : null,
         locationTemplates: JSON.parse(config.locationTemplates || '[]'),
-        summary: JSON.parse(config.summary || '{}')
+        summary: JSON.parse(config.summary || '{}'),
+        itemFieldConfigs: JSON.parse(config.itemFieldConfigs || '{}')
       }));
       
       console.log(`📦 SQLITE - Retrieved ${categories.length} category configurations from database`);
@@ -891,7 +976,8 @@ class PrefetchService {
         fields: JSON.parse(config.fields || '[]'),
         groupingStrategy: config.groupingStrategy ? JSON.parse(config.groupingStrategy) : null,
         locationTemplates: JSON.parse(config.locationTemplates || '[]'),
-        summary: JSON.parse(config.summary || '{}')
+        summary: JSON.parse(config.summary || '{}'),
+        itemFieldConfigs: JSON.parse(config.itemFieldConfigs || '{}')
       };
       
       console.log(`📦 SQLITE - Found category configuration for ID ${categoryId}: ${categoryConfig.category.categoryName}`);

@@ -28,21 +28,33 @@ class ConfigurationService {
     try {
       console.log(`🔄 ConfigurationService: Fetching complete configuration for category ${categoryId}`);
       
-      // First, try to get from SQLite (app startup loaded data)
+      // First, try to get from SQLite (app startup or order config)
       const prefetchService = await import('./prefetchService');
       
       // Safety check: ensure category configurations are loaded
       await prefetchService.default.ensureCategoryConfigurationsLoaded();
       
-      const sqliteConfig = await prefetchService.default.getCategoryConfigurationByIdFromSQLite(categoryId);
+      let sqliteConfig = await prefetchService.default.getCategoryConfigurationByIdFromSQLite(categoryId);
+      // Order config may be stored under riskTemplateCategoryId (e.g. 140) while route uses risk assessment categoryId (e.g. 1460107)
+      if (!sqliteConfig && riskTemplateCategoryId != null && riskTemplateCategoryId !== categoryId) {
+        sqliteConfig = await prefetchService.default.getCategoryConfigurationByIdFromSQLite(riskTemplateCategoryId);
+        if (sqliteConfig) {
+          console.log(`✅ Using SQLite category configuration (resolved by riskTemplateCategoryId ${riskTemplateCategoryId})`);
+        }
+      }
       
       if (sqliteConfig) {
-        console.log('✅ Using SQLite category configuration (loaded on app startup)');
+        if (!riskTemplateCategoryId || riskTemplateCategoryId === categoryId) {
+          console.log('✅ Using SQLite category configuration (loaded on app startup or from order)');
+        }
         return this.convertPrefetchedConfigToCategoryConfiguration(sqliteConfig);
       }
       
       // Fallback to cache - this includes pre-cached data from order endpoint
-      const cachedConfig = await this.getCachedConfiguration(categoryId);
+      let cachedConfig = await this.getCachedConfiguration(categoryId);
+      if (!cachedConfig && riskTemplateCategoryId != null && riskTemplateCategoryId !== categoryId) {
+        cachedConfig = await this.getCachedConfiguration(riskTemplateCategoryId);
+      }
       if (cachedConfig && !this.isCacheExpired(cachedConfig)) {
         console.log('✅ Using cached category configuration (includes pre-cached data from order endpoint)');
         return cachedConfig;
@@ -67,7 +79,8 @@ class ConfigurationService {
         return cachedConfig;
       }
 
-      // Only proceed with individual API calls if we have no cached data at all
+      // Fallback: category endpoint only when SQLite and cache both miss (e.g. category not in any loaded order).
+      // In order context, config is read from SQLite after storeOrderCategoryConfigurationsInSQLite.
       console.log('🔄 No cached data available, proceeding with individual API calls');
       
       let finalRiskTemplateCategoryId = riskTemplateCategoryId;
@@ -153,68 +166,10 @@ class ConfigurationService {
       const completeConfig = configResponse.data;
       console.log('📝 Complete config data from backend:', JSON.stringify(completeConfig, null, 2));
 
-      // Map backend field names to UI field names
-      const fieldNameMapping: { [key: string]: string } = {
-        'Description': 'description',
-        'Model': 'model', 
-        'Qty': 'quantity',
-        'Price': 'price',
-        'Location': 'room',
-        'Notes': 'notes',
-        'HasPhoto': 'photos',
-        'ItemPrompt': 'type'
-      };
-
       // Map backend data structure to our expected format
-      const mappedFields: FieldConfiguration[] = completeConfig.fields.map((field: any) => {
-        const backendFieldName = field.fieldName || field.fieldLabel || '';
-        const uiFieldName = fieldNameMapping[backendFieldName] || backendFieldName.toLowerCase();
-        
-        console.log(`🔧 Field mapping: "${backendFieldName}" -> "${uiFieldName}"`);
-        
-        // Use backend field type if provided, with special handling for photos
-        let fieldType = field.fieldType || 'text';
-        console.log(`🔧 Field "${backendFieldName}": Backend fieldType="${field.fieldType}"`);
-        
-        if (uiFieldName === 'photos') {
-          fieldType = 'photo'; // Special handling for photo fields
-          console.log(`🔧 Field "${backendFieldName}": Overriding to "photo" for photos field`);
-        }
-        // If backend doesn't provide fieldType, infer from field name
-        else if (!field.fieldType) {
-          console.log(`🔧 Field "${backendFieldName}": No fieldType from backend, inferring...`);
-          if (uiFieldName === 'quantity') {
-            fieldType = 'number';
-          } else if (uiFieldName === 'price') {
-            fieldType = 'currency';
-          } else if (uiFieldName === 'notes') {
-            fieldType = 'textarea';
-          }
-        }
-        // Normalize known dynamic field types to lowercase for renderer
-        const normalizedTypes = ['checkbox', 'date', 'percentage', 'email', 'phone'];
-        if (normalizedTypes.includes((fieldType || '').toLowerCase())) {
-          fieldType = (fieldType || '').toLowerCase();
-        }
-        
-        console.log(`🔧 Field "${backendFieldName}": Final fieldType="${fieldType}"`);
-        console.log(`🔧 Field "${backendFieldName}": Has dropdownOptions=${field.dropdownOptions ? field.dropdownOptions.length : 0} options`);
-        console.log(`🔧 Field "${backendFieldName}": isVisible=${field.isVisible}`);
-        console.log('🔧 Raw field from backend:', JSON.stringify(field, null, 2));
-
-        return {
-          riskfieldid: parseInt(field.riskfieldid) || 0,
-          riskTemplateCategoryID: finalRiskTemplateCategoryId,
-          item_fields: uiFieldName,
-          field_label: field.fieldLabel || field.fieldName || '',
-          display_on_ui: field.isVisible ? 1 : 0, // Use isVisible from new API
-          field_type: fieldType,
-          is_required: field.isRequired || false,
-          placeholder: field.placeholder || '',
-          validation_rules: field.validationRules || null,
-          display_order: field.displayOrder || 0,
-          dropdownOptions: field.dropdownOptions || []
-        };
+      const mappedFields: FieldConfiguration[] = this.mapRawFields(completeConfig.fields, finalRiskTemplateCategoryId);
+      mappedFields.forEach(field => {
+        console.log(`🔧 Field mapping: item_fields="${field.item_fields}", field_type="${field.field_type}", display_on_ui=${field.display_on_ui}`);
       });
 
       console.log('🔧 Mapped fields:', JSON.stringify(mappedFields, null, 2));
@@ -236,15 +191,19 @@ class ConfigurationService {
         display_order: completeConfig.groupingStrategy.display_order
       } : undefined;
       
+      // Build per-item field config map from live API response (Option B rule; support alternate shapes)
+      const liveItems = completeConfig.items ?? completeConfig.templateItems ?? completeConfig.riskTemplateItems ?? [];
+      const liveItemFieldConfigs = this.buildItemFieldConfigs(liveItems, finalRiskTemplateCategoryId);
+
       // Process and enhance the configuration
       const categoryConfig: CategoryConfiguration = {
-        categoryId: finalRiskTemplateCategoryId, // Use the RiskTemplateCategoryID as the categoryId
+        categoryId: finalRiskTemplateCategoryId,
         categoryName: completeConfig.category.categoryName,
         fields: await this.processFields(mappedFields),
         groupingStrategy: groupingStrategy,
-        locationTemplate: undefined, // TODO: Process locationTemplates when needed
-        // Parse the strategy config for easier use
-        parsedStrategyConfig: completeConfig.groupingStrategy?.strategy_config
+        locationTemplate: undefined,
+        parsedStrategyConfig: completeConfig.groupingStrategy?.strategy_config,
+        ...(Object.keys(liveItemFieldConfigs).length > 0 ? { itemFieldConfigs: liveItemFieldConfigs } : {})
       };
 
       // Cache the result (use original categoryId for cache key)
@@ -360,14 +319,30 @@ class ConfigurationService {
       if (parsed.data) {
         console.log(`📦 Found pre-cached configuration for category ${categoryId} from order endpoint`);
         const categoryConfig = parsed.data;
-        
-        // Convert the order endpoint format to our expected CategoryConfiguration format
+        const catId = categoryConfig.category?.categoryId || categoryId;
+
+        const mappedFields = this.mapRawFields(categoryConfig.fields || [], catId);
+        const liveItems = categoryConfig.items ?? categoryConfig.templateItems ?? categoryConfig.riskTemplateItems ?? [];
+        const itemFieldConfigs = this.buildItemFieldConfigs(liveItems, catId);
+
+        const groupingStrategy = categoryConfig.groupingStrategy ? {
+          grouping_strategy_id: categoryConfig.groupingStrategy.grouping_strategy_id,
+          RiskTemplateCategoryID: catId,
+          strategy_type: categoryConfig.groupingStrategy.strategy_type,
+          strategy_name: categoryConfig.groupingStrategy.strategy_name,
+          strategy_config: categoryConfig.groupingStrategy.strategy_config,
+          is_active: categoryConfig.groupingStrategy.is_active,
+          display_order: categoryConfig.groupingStrategy.display_order
+        } : undefined;
+
         return {
-          categoryId: categoryConfig.category?.categoryId || categoryId,
+          categoryId: catId,
           categoryName: categoryConfig.category?.categoryName || 'Unknown Category',
-          fields: categoryConfig.fields || [],
-          groupingStrategy: categoryConfig.groupingStrategy || null,
-          locationTemplate: categoryConfig.locationTemplate || null
+          fields: mappedFields.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)),
+          groupingStrategy: groupingStrategy ?? undefined,
+          locationTemplate: categoryConfig.locationTemplates?.[0] || categoryConfig.locationTemplate || undefined,
+          parsedStrategyConfig: categoryConfig.groupingStrategy?.strategy_config,
+          ...(Object.keys(itemFieldConfigs).length > 0 ? { itemFieldConfigs } : {})
         };
       }
       
@@ -425,7 +400,11 @@ class ConfigurationService {
         if (categoryId) {
           const cacheKey = `${this.cachePrefix}${categoryId}`;
           const cacheData = {
-            data: categoryConfig,
+            data: {
+              ...categoryConfig,
+              // Preserve items array so per-item field configs survive cache round-trip
+              items: categoryConfig.items || []
+            },
             timestamp: Date.now(),
             orderId: orderId
           };
@@ -532,66 +511,100 @@ class ConfigurationService {
   }
 
   /**
+   * Shared helper: map a raw backend fields array to FieldConfiguration[], applying
+   * field-name mapping, type inference and type normalisation.
+   */
+  private mapRawFields(rawFields: any[], categoryId: number): FieldConfiguration[] {
+    const fieldNameMapping: { [key: string]: string } = {
+      'Description': 'description',
+      'Model': 'model',
+      'Qty': 'quantity',
+      'Price': 'price',
+      'Location': 'room',
+      'Notes': 'notes',
+      'HasPhoto': 'photos',
+      'ItemPrompt': 'type'
+    };
+
+    return rawFields.map((field: any) => {
+      const backendFieldName = field.fieldName || field.fieldLabel || '';
+      const uiFieldName = fieldNameMapping[backendFieldName] || backendFieldName.toLowerCase();
+
+      let fieldType = field.fieldType || 'text';
+
+      if (uiFieldName === 'photos') {
+        fieldType = 'photo';
+      } else if (!field.fieldType) {
+        if (uiFieldName === 'quantity') {
+          fieldType = 'number';
+        } else if (uiFieldName === 'price') {
+          fieldType = 'currency';
+        } else if (uiFieldName === 'notes') {
+          fieldType = 'textarea';
+        }
+      }
+      const normalizedTypes = ['checkbox', 'date', 'percentage', 'email', 'phone'];
+      if (normalizedTypes.includes((fieldType || '').toLowerCase())) {
+        fieldType = (fieldType || '').toLowerCase();
+      }
+
+      // Support both camelCase and snake_case; only hide when explicitly false/0
+      const isVisible = field.isVisible ?? field.is_visible;
+      const displayOnUi = (isVisible === false || isVisible === 0) ? 0 : 1;
+
+      return {
+        riskfieldid: parseInt(field.riskfieldid) || 0,
+        riskTemplateCategoryID: categoryId,
+        item_fields: uiFieldName,
+        field_label: field.fieldLabel || field.fieldName || '',
+        display_on_ui: displayOnUi,
+        field_type: fieldType,
+        is_required: field.isRequired || false,
+        placeholder: field.placeholder || '',
+        validation_rules: field.validationRules || null,
+        display_order: field.displayOrder || 0,
+        dropdownOptions: field.dropdownOptions || []
+      } as FieldConfiguration;
+    });
+  }
+
+  /**
+   * Build a per-item field config map from a raw items array (Option B rule:
+   * only items that carry a `fields` property need an entry).
+   */
+  private buildItemFieldConfigs(
+    rawItems: any[],
+    categoryId: number
+  ): Record<string, FieldConfiguration[]> {
+    const itemFieldConfigs: Record<string, FieldConfiguration[]> = {};
+    for (const item of rawItems) {
+      const itemFields = item.fields ?? item.fieldConfig ?? item.effectiveFields ?? [];
+      if (Array.isArray(itemFields) && itemFields.length > 0) {
+        const key = String(item.itemPrompt ?? item.item_prompt ?? item.name ?? '').toLowerCase().trim();
+        if (key) {
+          itemFieldConfigs[key] = this.mapRawFields(itemFields, categoryId);
+        }
+      }
+    }
+    return itemFieldConfigs;
+  }
+
+  /**
    * Convert prefetched category configuration to CategoryConfiguration format
    */
   private convertPrefetchedConfigToCategoryConfiguration(prefetchedConfig: any): CategoryConfiguration {
     try {
       const category = prefetchedConfig.category;
       const fields = prefetchedConfig.fields || [];
-      
-      // Map backend field names to UI field names
-      const fieldNameMapping: { [key: string]: string } = {
-        'Description': 'description',
-        'Model': 'model', 
-        'Qty': 'quantity',
-        'Price': 'price',
-        'Location': 'room',
-        'Notes': 'notes',
-        'HasPhoto': 'photos',
-        'ItemPrompt': 'type'
-      };
 
-      // Map backend data structure to our expected format
-      const mappedFields: FieldConfiguration[] = fields.map((field: any) => {
-        const backendFieldName = field.fieldName || field.fieldLabel || '';
-        const uiFieldName = fieldNameMapping[backendFieldName] || backendFieldName.toLowerCase();
-        
-        // Use backend field type if provided, with special handling for photos
-        let fieldType = field.fieldType || 'text';
-        
-        if (uiFieldName === 'photos') {
-          fieldType = 'photo'; // Special handling for photo fields
-        }
-        // If backend doesn't provide fieldType, infer from field name
-        else if (!field.fieldType) {
-          if (uiFieldName === 'quantity') {
-            fieldType = 'number';
-          } else if (uiFieldName === 'price') {
-            fieldType = 'currency';
-          } else if (uiFieldName === 'notes') {
-            fieldType = 'textarea';
-          }
-        }
-        // Normalize known dynamic field types to lowercase for renderer
-        const normalizedTypes = ['checkbox', 'date', 'percentage', 'email', 'phone'];
-        if (normalizedTypes.includes((fieldType || '').toLowerCase())) {
-          fieldType = (fieldType || '').toLowerCase();
-        }
+      const mappedFields = this.mapRawFields(fields, category.categoryId);
 
-        return {
-          riskfieldid: parseInt(field.riskfieldid) || 0,
-          riskTemplateCategoryID: category.categoryId,
-          item_fields: uiFieldName,
-          field_label: field.fieldLabel || field.fieldName || '',
-          display_on_ui: field.isVisible ? 1 : 0,
-          field_type: fieldType,
-          is_required: field.isRequired || false,
-          placeholder: field.placeholder || '',
-          validation_rules: field.validationRules || null,
-          display_order: field.displayOrder || 0,
-          dropdownOptions: field.dropdownOptions || []
-        };
-      });
+      // Map per-item overrides that were stored as a keyed JSON object
+      const rawItemFieldConfigs: Record<string, any[]> = prefetchedConfig.itemFieldConfigs || {};
+      const itemFieldConfigs: Record<string, FieldConfiguration[]> = {};
+      for (const [prompt, rawFields] of Object.entries(rawItemFieldConfigs)) {
+        itemFieldConfigs[prompt] = this.mapRawFields(rawFields, category.categoryId);
+      }
 
       // Process grouping strategy from the prefetched config
       const groupingStrategy = prefetchedConfig.groupingStrategy ? {
@@ -610,7 +623,8 @@ class ConfigurationService {
         fields: mappedFields.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)),
         groupingStrategy: groupingStrategy,
         locationTemplate: prefetchedConfig.locationTemplates?.[0] || undefined,
-        parsedStrategyConfig: prefetchedConfig.groupingStrategy?.strategy_config
+        parsedStrategyConfig: prefetchedConfig.groupingStrategy?.strategy_config,
+        ...(Object.keys(itemFieldConfigs).length > 0 ? { itemFieldConfigs } : {})
       };
     } catch (error) {
       console.error('Error converting prefetched config to CategoryConfiguration:', error);

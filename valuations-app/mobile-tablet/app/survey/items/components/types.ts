@@ -60,6 +60,7 @@ export interface PredefinedItemsListProps {
   fromCache: boolean;
   fieldConfig?: any[]; // Legacy field configuration for backwards compatibility
   dynamicFieldConfig?: import('../../../../types/dynamicUI').FieldConfiguration[]; // New dynamic field configuration
+  categoryConfig?: import('../../../../types/dynamicUI').CategoryConfiguration; // Full config including per-item overrides
   useCustomFields?: boolean; // Whether to use custom field configuration
   groupingStrategy?: import('../../../../types/dynamicUI').GroupingStrategy; // Grouping strategy configuration
   assessmentType?: string; // Assessment type to determine default quantity behavior

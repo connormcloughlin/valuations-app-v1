@@ -383,7 +383,8 @@ export async function createTables() {
         groupingStrategy TEXT,
         locationTemplates TEXT,
         summary TEXT,
-        lastUpdated TEXT
+        lastUpdated TEXT,
+        itemFieldConfigs TEXT
       );
     `);
     
@@ -533,6 +534,17 @@ export async function migrateDatabase() {
       console.log('✅ excludefromreport column added');
     } else {
       console.log('ℹ️ excludefromreport column already exists');
+    }
+
+    // Migrate category_configurations table
+    const catTableInfo = await db.getAllAsync("PRAGMA table_info(category_configurations)") as Array<{ name: string }>;
+    const hasItemFieldConfigs = catTableInfo.some(col => col.name === 'itemFieldConfigs');
+    if (!hasItemFieldConfigs) {
+      console.log('🔄 Adding itemFieldConfigs column to category_configurations...');
+      await db.execAsync('ALTER TABLE category_configurations ADD COLUMN itemFieldConfigs TEXT');
+      console.log('✅ itemFieldConfigs column added');
+    } else {
+      console.log('ℹ️ itemFieldConfigs column already exists');
     }
 
     // Check if BackendMediaID column exists in media_files table

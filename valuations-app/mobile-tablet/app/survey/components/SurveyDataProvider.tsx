@@ -292,9 +292,11 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       if (fieldConfigResponse?.success && fieldConfigResponse?.data?.categories) {
         console.log(`🚀 Pre-loading field configurations for ${fieldConfigResponse.data.categories.length} categories`);
         
-        // Store field configurations in a format that can be used by ConfigurationService
         const configurationService = await import('../../../services/configurationService');
         await configurationService.default.cacheOrderFieldConfigurations(orderNumber, fieldConfigResponse.data);
+
+        const prefetchService = await import('../../../services/prefetchService');
+        await prefetchService.default.storeOrderCategoryConfigurationsInSQLite(fieldConfigResponse.data);
       }
       
       if (!compositeResponse?.success || !compositeResponse?.data?.assessmentMasters) {

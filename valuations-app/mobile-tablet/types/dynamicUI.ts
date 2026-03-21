@@ -55,6 +55,8 @@ export interface CategoryConfiguration {
   locationTemplate?: LocationTemplate;
   parsedLocations?: string[]; // Parsed from locations_json
   parsedStrategyConfig?: any; // Parsed from strategy_config
+  // Per-item effective field configs, keyed by normalised itemPrompt (lowercase + trimmed)
+  itemFieldConfigs?: Record<string, FieldConfiguration[]>;
 }
 
 export interface TemplateConfiguration {

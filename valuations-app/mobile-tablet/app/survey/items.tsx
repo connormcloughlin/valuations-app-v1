@@ -9,7 +9,7 @@ import { logNavigation } from '../../utils/logger';
 import ConnectionStatus from '../../components/ConnectionStatus';
 import connectionUtils from '../../utils/connectionUtils';
 import { AppLayout, TabConfig } from '../../components/layout';
-import { FieldConfiguration, GroupingStrategy } from '../../types/dynamicUI';
+import { FieldConfiguration, GroupingStrategy, CategoryConfiguration } from '../../types/dynamicUI';
 import { surveyItemsStyles } from '../GlobalStyles';
 
 // Import components
@@ -100,6 +100,7 @@ export default function ItemsScreen() {
   // Field visibility configuration
   const [fieldConfig, setFieldConfig] = useState<any[]>([]);
   const [dynamicFieldConfig, setDynamicFieldConfig] = useState<FieldConfiguration[]>([]);
+  const [categoryConfig, setCategoryConfig] = useState<CategoryConfiguration | undefined>(undefined);
   const [useCustomFields, setUseCustomFields] = useState(false);
   const [groupingStrategy, setGroupingStrategy] = useState<GroupingStrategy | undefined>(undefined);
   const [fieldConfigLoading, setFieldConfigLoading] = useState(false);
@@ -200,6 +201,7 @@ export default function ItemsScreen() {
       console.log('🔧 Setting fieldConfig state with visible fields:', visibleFields.length);
       setFieldConfig(visibleFields); // Legacy support
       setDynamicFieldConfig(visibleFields); // New dynamic field configuration
+      setCategoryConfig(categoryConfig); // Full config including per-item overrides
       setUseCustomFields(true); // Use dynamic fields with legacy UI layout
       
       // Store grouping strategy
@@ -561,6 +563,7 @@ export default function ItemsScreen() {
             fromCache={fromCache}
             fieldConfig={fieldConfig} // Legacy support
             dynamicFieldConfig={dynamicFieldConfig} // New dynamic field configuration
+            categoryConfig={categoryConfig} // Full config with per-item overrides
             useCustomFields={useCustomFields}
             groupingStrategy={groupingStrategy} // Pass grouping strategy configuration
             assessmentType={assessmentType} // Pass assessment type for quantity defaulting

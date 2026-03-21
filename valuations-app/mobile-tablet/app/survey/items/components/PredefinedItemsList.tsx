@@ -30,6 +30,7 @@ export default function PredefinedItemsList({
   fromCache, 
   fieldConfig = [],
   dynamicFieldConfig = [],
+  categoryConfig,
   useCustomFields = false,
   groupingStrategy,
   assessmentType,
@@ -1616,6 +1617,15 @@ export default function PredefinedItemsList({
     const item = items.find(i => String(i.id) === itemId);
     if (!item) return null;
 
+    // Per-item field config lookup (Option B fallback rule)
+    const itemPromptKey = (item.type || '').toLowerCase().trim();
+    const itemLevelFields = categoryConfig?.itemFieldConfigs?.[itemPromptKey];
+    const effectiveFieldConfig = itemLevelFields ?? dynamicFieldConfig;
+    if (__DEV__ && itemPromptKey) {
+      const source = itemLevelFields ? 'per-item' : 'category';
+      console.log(`🔧 Field config for "${itemPromptKey}": using ${source} config (visible: ${effectiveFieldConfig.filter(f => f.display_on_ui === 1).map(f => f.item_fields).join(', ')})`);
+    }
+
     const itemErrors = validationErrors[itemId] || [];
     
     // Determine which fields are being used for grouping and should be excluded from editing
@@ -1690,7 +1700,7 @@ export default function PredefinedItemsList({
     const groupingFields = getGroupingFields();
 
     // Get visible fields, exclude grouping fields, and sort by display_order
-    const visibleFieldsBeforeGroupingFilter = dynamicFieldConfig
+    const visibleFieldsBeforeGroupingFilter = effectiveFieldConfig
       .filter(field => field.display_on_ui === 1);
     
     const visibleFields = visibleFieldsBeforeGroupingFilter
@@ -1706,10 +1716,10 @@ export default function PredefinedItemsList({
     const itemsWithCommaList = items.filter(item => item.commaseparatedlist);
     
     // Debug: Check if rank field is in dynamic field config
-    const rankField = dynamicFieldConfig?.find(field => field.item_fields === 'rank');
+    const rankField = effectiveFieldConfig?.find(field => field.item_fields === 'rank');
     if (__DEV__) {
       console.log('🔍 Rank field in dynamic config:', rankField);
-      console.log('🔍 All dynamic field config fields:', dynamicFieldConfig?.map(f => f.item_fields));
+      console.log('🔍 All dynamic field config fields:', effectiveFieldConfig?.map(f => f.item_fields));
     }
 
     const renderField = (field: any) => {
@@ -1943,7 +1953,7 @@ export default function PredefinedItemsList({
         ))}
       </>
     );
-  }, [dynamicFieldConfig, validationErrors, handleEdit, items, itemPhotos, handleViewPhotos, autoSaveItem, groupingStrategy, getDefaultQuantity]);
+  }, [dynamicFieldConfig, categoryConfig, validationErrors, handleEdit, items, itemPhotos, handleViewPhotos, autoSaveItem, groupingStrategy, getDefaultQuantity]);
 
   // Helper function to check if a field should be visible
   const isFieldVisible = useCallback((fieldName: string) => {
