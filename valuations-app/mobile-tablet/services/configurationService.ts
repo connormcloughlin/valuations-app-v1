@@ -4,6 +4,7 @@ import connectionUtils from '../utils/connectionUtils';
 import transportClient from '../core/transport/transportClient';
 import {
   CategoryConfiguration,
+  CategoryLayoutMode,
   FieldConfiguration,
   DropdownOption,
   GroupingStrategy,
@@ -180,16 +181,11 @@ class ConfigurationService {
         console.log(`  - Field "${field.item_fields}": ${field.display_on_ui === 1 ? 'VISIBLE' : 'HIDDEN'}`);
       });
 
-      // Process grouping strategy from the new API response
-      const groupingStrategy = completeConfig.groupingStrategy ? {
-        grouping_strategy_id: completeConfig.groupingStrategy.grouping_strategy_id,
-        RiskTemplateCategoryID: finalRiskTemplateCategoryId,
-        strategy_type: completeConfig.groupingStrategy.strategy_type,
-        strategy_name: completeConfig.groupingStrategy.strategy_name,
-        strategy_config: completeConfig.groupingStrategy.strategy_config, // Keep as object - no need to stringify
-        is_active: completeConfig.groupingStrategy.is_active,
-        display_order: completeConfig.groupingStrategy.display_order
-      } : undefined;
+      // Process grouping strategy (unwrap { "0": {...} } / array; parse string strategy_config)
+      const rawGsLive = this.normalizeRawGroupingStrategy(completeConfig.groupingStrategy);
+      const groupingStrategy = rawGsLive
+        ? this.mapToGroupingStrategy(rawGsLive, finalRiskTemplateCategoryId)
+        : undefined;
       
       // Build per-item field config map from live API response (Option B rule; support alternate shapes)
       const liveItems = completeConfig.items ?? completeConfig.templateItems ?? completeConfig.riskTemplateItems ?? [];
@@ -202,8 +198,11 @@ class ConfigurationService {
         fields: await this.processFields(mappedFields),
         groupingStrategy: groupingStrategy,
         locationTemplate: undefined,
-        parsedStrategyConfig: completeConfig.groupingStrategy?.strategy_config,
-        ...(Object.keys(liveItemFieldConfigs).length > 0 ? { itemFieldConfigs: liveItemFieldConfigs } : {})
+        parsedStrategyConfig: rawGsLive
+          ? this.parseStrategyConfigField(rawGsLive.strategy_config)
+          : undefined,
+        ...(Object.keys(liveItemFieldConfigs).length > 0 ? { itemFieldConfigs: liveItemFieldConfigs } : {}),
+        ...this.extractCategoryLayoutMeta(completeConfig.category, completeConfig)
       };
 
       // Cache the result (use original categoryId for cache key)
@@ -325,15 +324,10 @@ class ConfigurationService {
         const liveItems = categoryConfig.items ?? categoryConfig.templateItems ?? categoryConfig.riskTemplateItems ?? [];
         const itemFieldConfigs = this.buildItemFieldConfigs(liveItems, catId);
 
-        const groupingStrategy = categoryConfig.groupingStrategy ? {
-          grouping_strategy_id: categoryConfig.groupingStrategy.grouping_strategy_id,
-          RiskTemplateCategoryID: catId,
-          strategy_type: categoryConfig.groupingStrategy.strategy_type,
-          strategy_name: categoryConfig.groupingStrategy.strategy_name,
-          strategy_config: categoryConfig.groupingStrategy.strategy_config,
-          is_active: categoryConfig.groupingStrategy.is_active,
-          display_order: categoryConfig.groupingStrategy.display_order
-        } : undefined;
+        const rawGsCache = this.normalizeRawGroupingStrategy(categoryConfig.groupingStrategy);
+        const groupingStrategy = rawGsCache
+          ? this.mapToGroupingStrategy(rawGsCache, catId)
+          : undefined;
 
         return {
           categoryId: catId,
@@ -341,8 +335,11 @@ class ConfigurationService {
           fields: mappedFields.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)),
           groupingStrategy: groupingStrategy ?? undefined,
           locationTemplate: categoryConfig.locationTemplates?.[0] || categoryConfig.locationTemplate || undefined,
-          parsedStrategyConfig: categoryConfig.groupingStrategy?.strategy_config,
-          ...(Object.keys(itemFieldConfigs).length > 0 ? { itemFieldConfigs } : {})
+          parsedStrategyConfig: rawGsCache
+            ? this.parseStrategyConfigField(rawGsCache.strategy_config)
+            : undefined,
+          ...(Object.keys(itemFieldConfigs).length > 0 ? { itemFieldConfigs } : {}),
+          ...this.extractCategoryLayoutMeta(categoryConfig.category, categoryConfig)
         };
       }
       
@@ -547,6 +544,22 @@ class ConfigurationService {
       if (normalizedTypes.includes((fieldType || '').toLowerCase())) {
         fieldType = (fieldType || '').toLowerCase();
       }
+      if (['multiselect', 'multi_select', 'multiselect_dropdown'].includes((fieldType || '').toLowerCase())) {
+        fieldType = 'multiselect';
+      }
+
+      let vr = field.validationRules ?? field.validation_rules;
+      if (typeof vr === 'string') {
+        try {
+          vr = JSON.parse(vr);
+        } catch {
+          /* keep string */
+        }
+      }
+      const allowsMultiple =
+        !!(field.allowsMultipleSelection ??
+          field.allows_multiple_selection ??
+          (vr && typeof vr === 'object' && (vr.allowMultiple === true || vr.multiSelect === true)));
 
       // Support both camelCase and snake_case; only hide when explicitly false/0
       const isVisible = field.isVisible ?? field.is_visible;
@@ -563,9 +576,96 @@ class ConfigurationService {
         placeholder: field.placeholder || '',
         validation_rules: field.validationRules || null,
         display_order: field.displayOrder || 0,
-        dropdownOptions: field.dropdownOptions || []
+        dropdownOptions: field.dropdownOptions || [],
+        ...(allowsMultiple || fieldType === 'multiselect' ? { allows_multiple_selection: true } : {})
       } as FieldConfiguration;
     });
+  }
+
+  /**
+   * Optional section title and layout mode from category or envelope (order / category API).
+   */
+  private extractCategoryLayoutMeta(
+    category: any,
+    envelope?: any
+  ): { sectionName?: string; layoutMode?: CategoryLayoutMode } {
+    const sectionCandidates = [
+      category?.sectionName,
+      category?.section_name,
+      category?.parentSectionName,
+      category?.parent_section_name,
+      envelope?.sectionName,
+      envelope?.section_name
+    ];
+    const sectionName = sectionCandidates.find(
+      (x): x is string => typeof x === 'string' && x.trim().length > 0
+    )?.trim();
+
+    const lm =
+      category?.layoutMode ??
+      category?.layout_mode ??
+      envelope?.layoutMode ??
+      envelope?.layout_mode;
+    let layoutMode: CategoryLayoutMode | undefined;
+    if (lm === 'inline_row' || lm === 'inline-row') {
+      layoutMode = 'inline_row';
+    }
+
+    const out: { sectionName?: string; layoutMode?: CategoryLayoutMode } = {};
+    if (sectionName) out.sectionName = sectionName;
+    if (layoutMode) out.layoutMode = layoutMode;
+    return out;
+  }
+
+  /**
+   * Unwrap order API quirks: groupingStrategy as { "0": {...} } or a single-element array.
+   */
+  private normalizeRawGroupingStrategy(raw: any): any | null {
+    if (raw == null) return null;
+    if (Array.isArray(raw)) {
+      return raw.length > 0 ? raw[0] : null;
+    }
+    if (typeof raw !== 'object') return null;
+    const keys = Object.keys(raw);
+    if (keys.length === 0) return null;
+    const allNumericKeys = keys.every(k => /^\d+$/.test(k));
+    if (allNumericKeys) {
+      const sorted = keys.sort((a, b) => Number(a) - Number(b));
+      return raw[sorted[0]];
+    }
+    return raw;
+  }
+
+  /**
+   * Parse strategy_config when API returns a JSON string.
+   */
+  private parseStrategyConfigField(strategyConfig: any): any {
+    if (strategyConfig == null) return undefined;
+    if (typeof strategyConfig === 'string') {
+      try {
+        return JSON.parse(strategyConfig);
+      } catch {
+        return strategyConfig;
+      }
+    }
+    return strategyConfig;
+  }
+
+  /**
+   * Map normalized raw grouping strategy to GroupingStrategy shape.
+   */
+  private mapToGroupingStrategy(raw: any, riskTemplateCategoryId: number): GroupingStrategy | undefined {
+    if (!raw || raw.strategy_type == null) return undefined;
+    const strategy_config = this.parseStrategyConfigField(raw.strategy_config);
+    return {
+      grouping_strategy_id: raw.grouping_strategy_id,
+      RiskTemplateCategoryID: riskTemplateCategoryId,
+      strategy_type: raw.strategy_type,
+      strategy_name: raw.strategy_name || '',
+      strategy_config: strategy_config ?? raw.strategy_config,
+      is_active: raw.is_active !== false,
+      display_order: raw.display_order ?? 0
+    };
   }
 
   /**
@@ -606,16 +706,10 @@ class ConfigurationService {
         itemFieldConfigs[prompt] = this.mapRawFields(rawFields, category.categoryId);
       }
 
-      // Process grouping strategy from the prefetched config
-      const groupingStrategy = prefetchedConfig.groupingStrategy ? {
-        grouping_strategy_id: prefetchedConfig.groupingStrategy.grouping_strategy_id,
-        RiskTemplateCategoryID: category.categoryId,
-        strategy_type: prefetchedConfig.groupingStrategy.strategy_type,
-        strategy_name: prefetchedConfig.groupingStrategy.strategy_name,
-        strategy_config: prefetchedConfig.groupingStrategy.strategy_config,
-        is_active: prefetchedConfig.groupingStrategy.is_active,
-        display_order: prefetchedConfig.groupingStrategy.display_order
-      } : undefined;
+      const rawGsPref = this.normalizeRawGroupingStrategy(prefetchedConfig.groupingStrategy);
+      const groupingStrategy = rawGsPref
+        ? this.mapToGroupingStrategy(rawGsPref, category.categoryId)
+        : undefined;
 
       return {
         categoryId: category.categoryId,
@@ -623,8 +717,11 @@ class ConfigurationService {
         fields: mappedFields.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)),
         groupingStrategy: groupingStrategy,
         locationTemplate: prefetchedConfig.locationTemplates?.[0] || undefined,
-        parsedStrategyConfig: prefetchedConfig.groupingStrategy?.strategy_config,
-        ...(Object.keys(itemFieldConfigs).length > 0 ? { itemFieldConfigs } : {})
+        parsedStrategyConfig: rawGsPref
+          ? this.parseStrategyConfigField(rawGsPref.strategy_config)
+          : undefined,
+        ...(Object.keys(itemFieldConfigs).length > 0 ? { itemFieldConfigs } : {}),
+        ...this.extractCategoryLayoutMeta(category, prefetchedConfig)
       };
     } catch (error) {
       console.error('Error converting prefetched config to CategoryConfiguration:', error);

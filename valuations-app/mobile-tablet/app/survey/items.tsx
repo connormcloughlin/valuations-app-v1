@@ -350,6 +350,7 @@ export default function ItemsScreen() {
               notes: item.notes || '',
               photo: undefined,
               commaseparatedlist: item.commaseparatedlist || '',
+              multiSelectAnswer: !!(item.multiSelectAnswer ?? item.multiselectanswer),
               // Add original database values for hasDataCaptured function
               qty: item.qty === null ? 0 : (item.qty || 0),
               selectedanswer: item.selectedanswer || '',
@@ -546,6 +547,7 @@ export default function ItemsScreen() {
   return (
     <AppLayout
       title={categoryTitle as string || 'Survey Items'}
+      subtitle={categoryConfig?.sectionName}
       tabs={surveyTabs}
     >
       <View style={surveyItemsStyles.container}>

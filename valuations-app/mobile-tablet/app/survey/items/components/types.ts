@@ -23,6 +23,8 @@ export interface Item {
   selection?: string;
   selectedanswer?: string;
   commaseparatedlist?: string;
+  /** Template/API: when true with commaseparatedlist, selectedanswer is multi-select (comma-separated) */
+  multiSelectAnswer?: boolean;
   rank?: number; // Add rank property for item ordering
   itemtype?: number; // Add itemtype property for database compatibility
   qty?: number; // Add original database qty value for hasDataCaptured function

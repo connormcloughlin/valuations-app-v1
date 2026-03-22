@@ -19,12 +19,14 @@ export interface FieldConfiguration {
   item_fields: string; // Field name like 'type', 'description', 'room'
   field_label: string; // Display label
   display_on_ui: number; // 1=visible, 0=hidden
-  field_type?: string; // 'text', 'number', 'dropdown', 'textarea', 'location_group'
+  field_type?: string; // 'text', 'number', 'dropdown', 'textarea', 'location_group', 'multiselect'
   is_required?: boolean;
   placeholder?: string;
   validation_rules?: any;
   display_order?: number;
   dropdownOptions?: DropdownOption[];
+  /** When true, selectedanswer (or dropdown) allows multiple values stored as comma-separated string */
+  allows_multiple_selection?: boolean;
 }
 
 export interface GroupingStrategy {
@@ -47,6 +49,8 @@ export interface LocationTemplate {
   is_active: boolean;
 }
 
+export type CategoryLayoutMode = 'default' | 'inline_row';
+
 export interface CategoryConfiguration {
   categoryId: number;
   categoryName: string;
@@ -57,6 +61,10 @@ export interface CategoryConfiguration {
   parsedStrategyConfig?: any; // Parsed from strategy_config
   // Per-item effective field configs, keyed by normalised itemPrompt (lowercase + trimmed)
   itemFieldConfigs?: Record<string, FieldConfiguration[]>;
+  /** Parent section label from API (e.g. MAIN BUILDING) — shown under category title in header */
+  sectionName?: string;
+  /** Denser row layout for multi-field templates (e.g. CONSTRUCTION qty | answer | notes) */
+  layoutMode?: CategoryLayoutMode;
 }
 
 export interface TemplateConfiguration {

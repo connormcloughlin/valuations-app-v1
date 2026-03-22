@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { Card, Divider, Button, TextInput as PaperTextInput, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { PredefinedItemsListProps, Item } from './types';
@@ -1703,15 +1703,35 @@ export default function PredefinedItemsList({
     const visibleFieldsBeforeGroupingFilter = effectiveFieldConfig
       .filter(field => field.display_on_ui === 1);
     
+    const visibleFieldTieRank = (itemFields: string) => {
+      switch (itemFields) {
+        case 'quantity':
+          return 0;
+        case 'selectedanswer':
+          return 1;
+        case 'notes':
+          return 2;
+        default:
+          return 10;
+      }
+    };
+
     const visibleFields = visibleFieldsBeforeGroupingFilter
       .filter(field => !groupingFields.includes(field.item_fields)) // Exclude grouping fields
-      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+      .sort((a, b) => {
+        const o = (a.display_order || 0) - (b.display_order || 0);
+        if (o !== 0) return o;
+        const ra = visibleFieldTieRank(a.item_fields);
+        const rb = visibleFieldTieRank(b.item_fields);
+        if (ra !== rb) return ra - rb;
+        return String(a.item_fields || '').localeCompare(String(b.item_fields || ''));
+      });
     
     if (__DEV__) {
       console.log('🔍 Visible fields being rendered:', visibleFields.map(f => f.item_fields));
       console.log('🔍 Grouping fields being excluded:', groupingFields);
     }
-    
+
     // Debug: Check items for commaseparatedlist values
     const itemsWithCommaList = items.filter(item => item.commaseparatedlist);
     
@@ -1722,90 +1742,242 @@ export default function PredefinedItemsList({
       console.log('🔍 All dynamic field config fields:', effectiveFieldConfig?.map(f => f.item_fields));
     }
 
-    const renderField = (field: any) => {
-      const fieldName = field.item_fields;
-      
-      // Process commaseparatedlist for selectedanswer field
-      if (fieldName === 'selectedanswer' && item.commaseparatedlist) {
-        if (__DEV__) console.log('🎯 Processing commaseparatedlist for selectedanswer field:', item.commaseparatedlist);
-        
-        // Parse the comma-separated list and create dropdown options
-        const commaSeparatedOptions = item.commaseparatedlist.split(',').map(option => option.trim()).filter(option => option.length > 0);
-        
-        if (commaSeparatedOptions.length > 0) {
-          // Create dropdown options from the comma-separated list and sort alphabetically
-          const dropdownOptions = commaSeparatedOptions
-            .map((option, index) => ({
-              option_value: option,
-              option_label: option,
-              is_active: true
-            }))
-            .sort((a, b) => (a.option_label || '').localeCompare(b.option_label || ''));
-          
-          // Create a new field configuration with the dropdown options
-          const enhancedField = {
-            ...field,
-            dropdownOptions: dropdownOptions,
-            field_type: 'dropdown' // Use dropdown to match InlineDropdown
-          };
-          
+    const getFieldValue = (name: string) => {
+      if (editData[name] !== undefined) return editData[name];
+      switch (name) {
+        case 'quantity':
+          return getDefaultQuantity(item);
+        case 'price':
+          return item.price && String(item.price) !== '0' ? String(item.price) : '';
+        case 'description':
+          return item.description || '';
+        case 'model':
+          return item.model || '';
+        case 'room':
+          return item.room || '';
+        case 'notes':
+          return item.notes || '';
+        case 'type':
+          return item.type || '';
+        case 'selectedanswer':
           if (__DEV__) {
-            console.log('🎯 Enhanced selectedanswer field with dropdown options:', {
-              originalFieldType: field.field_type,
-              enhancedFieldType: enhancedField.field_type,
-              dropdownOptionsCount: enhancedField.dropdownOptions.length,
-              dropdownOptions: enhancedField.dropdownOptions
+            console.log(`🔍 [getFieldValue] selectedanswer for item ${itemId}:`, {
+              itemSelectedAnswer: item.selectedanswer,
+              itemId: item.id,
+              itemType: typeof item.selectedanswer
             });
           }
-          
-          // Use the enhanced field for rendering
-          field = enhancedField;
-        }
+          return item.selectedanswer || '';
+        default:
+          return (item as any)[name] ?? '';
       }
-      
-      // Create a local copy of the field for rendering
-      let renderField = { ...field };
-      
-      // Debug logging for selectedanswer field
-      if (__DEV__ && fieldName === 'selectedanswer') {
-        console.log('🎯 Processing selectedanswer field for item:', item.id, {
-          hasCommaseparatedlist: !!item.commaseparatedlist,
-          commaseparatedlistValue: item.commaseparatedlist,
-          dropdownOptionsCount: field.dropdownOptions?.length || 0
+    };
+
+    const applySelectedAnswerEnhancements = (fieldIn: any) => {
+      let field = { ...fieldIn };
+      if (field.item_fields !== 'selectedanswer' || !item.commaseparatedlist) {
+        return field;
+      }
+      if (__DEV__) {
+        console.log('🎯 Processing commaseparatedlist for selectedanswer field:', item.commaseparatedlist);
+      }
+      const commaSeparatedOptions = item.commaseparatedlist
+        .split(',')
+        .map((option: string) => option.trim())
+        .filter((option: string) => option.length > 0);
+      if (commaSeparatedOptions.length === 0) return field;
+      const dropdownOptions = commaSeparatedOptions
+        .map((option: string) => ({
+          option_value: option,
+          option_label: option,
+          is_active: true
+        }))
+        .sort((a, b) => (a.option_label || '').localeCompare(b.option_label || ''));
+      const wantMulti =
+        field.allows_multiple_selection === true ||
+        (item as any).multiSelectAnswer === true ||
+        String((item as any).multiSelectSelectedAnswer || '').toLowerCase() === 'true';
+      const enhancedField = {
+        ...field,
+        dropdownOptions,
+        field_type: wantMulti ? 'multiselect' : 'dropdown',
+        ...(wantMulti ? { allows_multiple_selection: true } : {})
+      };
+      if (__DEV__) {
+        console.log('🎯 Enhanced selectedanswer field with dropdown options:', {
+          enhancedFieldType: enhancedField.field_type,
+          dropdownOptionsCount: enhancedField.dropdownOptions.length
         });
       }
-      
-      // Get current value with proper fallback to original item values
-      const getFieldValue = (fieldName: string) => {
-        if (editData[fieldName] !== undefined) return editData[fieldName];
-        
-        // Fallback to original item values
-        switch (fieldName) {
-          case 'quantity': return getDefaultQuantity(item);
-          case 'price': return (item.price && String(item.price) !== '0') ? String(item.price) : '';
-          case 'description': return item.description || '';
-          case 'model': return item.model || '';
-          case 'room': return item.room || '';
-          case 'notes': return item.notes || '';
-          case 'type': return item.type || '';
-          case 'selectedanswer': 
-            if (__DEV__) {
-              console.log(`🔍 [getFieldValue] selectedanswer for item ${itemId}:`, {
-                itemSelectedAnswer: item.selectedanswer,
-                itemId: item.id,
-                itemType: typeof item.selectedanswer
-              });
-            }
-            return item.selectedanswer || '';
-          default:
-            return (item as any)[fieldName] ?? '';
+      return enhancedField;
+    };
+
+    type LayoutCell =
+      | { kind: 'field'; field: any }
+      | { kind: 'answerWithNotes'; answerField: any; notesField: any };
+
+    const buildLayoutCells = (fields: any[]): LayoutCell[] => {
+      const cells: LayoutCell[] = [];
+      let i = 0;
+      while (i < fields.length) {
+        const f = fields[i];
+        const next = fields[i + 1];
+        if (f?.item_fields === 'selectedanswer' && next?.item_fields === 'notes') {
+          cells.push({ kind: 'answerWithNotes', answerField: f, notesField: next });
+          i += 2;
+        } else {
+          cells.push({ kind: 'field', field: f });
+          i += 1;
         }
-      };
-      
+      }
+      return cells;
+    };
+
+    const renderNotesCalloutInput = (
+      notesField: any,
+      notesError: FieldValidationError | undefined
+    ) => (
+      <View style={predefinedItemsListStyles.notesCalloutWrap}>
+        <View style={predefinedItemsListStyles.notesCalloutArrowRow}>
+          <View style={predefinedItemsListStyles.notesCalloutArrow} />
+        </View>
+        <View style={predefinedItemsListStyles.notesCalloutBox}>
+          <TextInput
+            multiline
+            placeholder={notesField.placeholder || 'Notes...'}
+            placeholderTextColor="#95a5a6"
+            value={String(getFieldValue('notes') ?? '')}
+            onChangeText={(t) => handleEdit(itemId, 'notes', t)}
+            onBlur={() => {
+              const v = getFieldValue('notes');
+              autoSaveItem(itemId, { notes: v });
+            }}
+            style={predefinedItemsListStyles.notesCalloutInput}
+          />
+          {notesError ? (
+            <Text style={{ color: '#e74c3c', fontSize: 12, marginTop: 4 }}>{notesError.message}</Text>
+          ) : null}
+        </View>
+      </View>
+    );
+
+    const renderAnswerWithNotesBundle = (answerFieldRaw: any, notesFieldRaw: any, bundleKey: string) => {
+      const answerField = applySelectedAnswerEnhancements({ ...answerFieldRaw });
+      const notesField = { ...notesFieldRaw };
+      const answerError = itemErrors.find(e => e.fieldName === 'selectedanswer');
+      const notesError = itemErrors.find(e => e.fieldName === 'notes');
+      const currentAnswer = getFieldValue('selectedanswer');
+
+      if (__DEV__) {
+        console.log('🎯 Processing selectedanswer field for item:', item.id, {
+          hasCommaseparatedlist: !!item.commaseparatedlist,
+          dropdownOptionsCount: answerField.dropdownOptions?.length || 0
+        });
+      }
+      if (__DEV__) {
+        console.log('🎯 Rendering selectedanswer field with:', {
+          fieldType: answerField.field_type,
+          currentValue: currentAnswer,
+          hasDropdownOptions: !!answerField.dropdownOptions?.length,
+          dropdownOptionsCount: answerField.dropdownOptions?.length || 0
+        });
+      }
+
+      return (
+        <View key={bundleKey} style={[predefinedItemsListStyles.dynamicFieldContainer, { flex: 1, minWidth: 0 }]}>
+          <View
+            style={[
+              predefinedItemsListStyles.dynamicFieldRowSideBySide,
+              predefinedItemsListStyles.dynamicFieldRowSideBySideMultiline
+            ]}
+          >
+            <Text style={predefinedItemsListStyles.dynamicFieldLabelLeft} numberOfLines={3}>
+              {answerField.field_label}:
+            </Text>
+            <View style={predefinedItemsListStyles.dynamicFieldControlWrap}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <DynamicFieldRenderer
+                    field={answerField}
+                    value={currentAnswer}
+                    onChange={(fn, value) => handleEdit(itemId, fn, value)}
+                    validationError={answerError}
+                    handwritingEnabled={false}
+                    onOpenHandwriting={() => {}}
+                    itemId={itemId}
+                    itemPhotos={itemPhotos}
+                    onTakePhoto={handleViewPhotos}
+                    hideLabel={true}
+                    onBlur={() => {}}
+                    dataAttributes={{
+                      'data-item-id': itemId,
+                      'data-field': 'selectedanswer'
+                    }}
+                  />
+                </View>
+                <MaterialCommunityIcons
+                  name="comment-text-outline"
+                  size={22}
+                  color="#7f8c8d"
+                  style={{ marginLeft: 4 }}
+                />
+              </View>
+              {renderNotesCalloutInput(notesField, notesError)}
+            </View>
+          </View>
+        </View>
+      );
+    };
+
+    const renderField = (fieldParam: any) => {
+      const field = applySelectedAnswerEnhancements({ ...fieldParam });
+      const fieldName = field.item_fields;
+
+      if (fieldName === 'notes') {
+        const notesError = itemErrors.find(e => e.fieldName === 'notes');
+        return (
+          <View key={fieldName} style={[predefinedItemsListStyles.dynamicFieldContainer, { flex: 1, minWidth: 0 }]}>
+            <View
+              style={[
+                predefinedItemsListStyles.dynamicFieldRowSideBySide,
+                predefinedItemsListStyles.dynamicFieldRowSideBySideMultiline
+              ]}
+            >
+              <Text style={predefinedItemsListStyles.dynamicFieldLabelLeft} numberOfLines={3}>
+                {field.field_label}:
+              </Text>
+              <View style={[predefinedItemsListStyles.dynamicFieldControlWrap, { flexDirection: 'row', alignItems: 'flex-start' }]}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={predefinedItemsListStyles.notesCalloutBox}>
+                    <TextInput
+                      multiline
+                      placeholder={field.placeholder || 'Notes...'}
+                      placeholderTextColor="#95a5a6"
+                      value={String(getFieldValue('notes') ?? '')}
+                      onChangeText={(t) => handleEdit(itemId, 'notes', t)}
+                      onBlur={() => {
+                        const v = getFieldValue('notes');
+                        autoSaveItem(itemId, { notes: v });
+                      }}
+                      style={predefinedItemsListStyles.notesCalloutInput}
+                    />
+                    {notesError ? (
+                      <Text style={{ color: '#e74c3c', fontSize: 12, marginTop: 4 }}>{notesError.message}</Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={predefinedItemsListStyles.notesStandaloneIconColumn}>
+                  <MaterialCommunityIcons name="comment-text-outline" size={22} color="#7f8c8d" />
+                </View>
+              </View>
+            </View>
+          </View>
+        );
+      }
+
       const currentValue = getFieldValue(fieldName);
       const fieldError = itemErrors.find(e => e.fieldName === fieldName);
-      
-      // Debug logging for selectedanswer field rendering
+
       if (__DEV__ && fieldName === 'selectedanswer') {
         console.log('🎯 Rendering selectedanswer field with:', {
           fieldType: field.field_type,
@@ -1814,73 +1986,65 @@ export default function PredefinedItemsList({
           dropdownOptionsCount: field.dropdownOptions?.length || 0
         });
       }
-      
+
+      // Without grouping only: show item prompt as bold title (web row header), no control.
+      // All other fields (grouped or not): label left, control right — matches web table columns.
+      const isItemPromptRow =
+        !groupingStrategy && (fieldName === 'type' || fieldName === 'ItemPrompt');
+
+      const isMultilineField = field.field_type === 'textarea';
+
+      const fieldControl = (
+        <DynamicFieldRenderer
+          field={field}
+          value={currentValue}
+          onChange={(fieldName, value) => handleEdit(itemId, fieldName, value)}
+          validationError={fieldError}
+          handwritingEnabled={false}
+          onOpenHandwriting={() => {}}
+          itemId={itemId}
+          itemPhotos={itemPhotos}
+          onTakePhoto={handleViewPhotos}
+          hideLabel={true}
+          onBlur={() => {
+            if (fieldName !== 'selectedanswer') {
+              const v = getFieldValue(fieldName);
+              autoSaveItem(itemId, { [fieldName]: v });
+            }
+          }}
+          dataAttributes={{
+            'data-item-id': itemId,
+            'data-field': fieldName
+          }}
+        />
+      );
+
       return (
         <View key={fieldName} style={[
           predefinedItemsListStyles.dynamicFieldContainer,
-          field.field_type === 'notes' ? { width: '100%' } : { flex: 1 }
+          { flex: 1, minWidth: 0 }
         ]}>
-          {/* When no grouping strategy, do not render field label for any field */}
-          {(!groupingStrategy) ? (
-            (fieldName === 'type' || fieldName === 'ItemPrompt') ? (
-              <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 6 }}>
-                {currentValue}
-              </Text>
-            ) : (
-              <DynamicFieldRenderer
-                field={renderField}
-                value={currentValue}
-                onChange={(fieldName, value) => handleEdit(itemId, fieldName, value)}
-                validationError={fieldError}
-                handwritingEnabled={false}
-                onOpenHandwriting={() => {}}
-                itemId={itemId}
-                itemPhotos={itemPhotos}
-                onTakePhoto={handleViewPhotos}
-                hideLabel={true}
-                // Avoid firing onBlur auto-save for dropdowns to prevent stale value saves
-                onBlur={() => {
-                  if (fieldName !== 'selectedanswer') {
-                    // Get the current value from the field to avoid stale state
-                    const currentValue = getFieldValue(fieldName);
-                    autoSaveItem(itemId, { [fieldName]: currentValue });
-                  }
-                }}
-                // Add data attributes for focus restoration
-                dataAttributes={{
-                  'data-item-id': itemId,
-                  'data-field': fieldName
-                }}
-              />
-            )
+          {isItemPromptRow ? (
+            <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 6 }}>
+              {currentValue}
+            </Text>
           ) : (
-            <>
-          <Text style={predefinedItemsListStyles.detailLabel}>{field.field_label}:</Text>
-          <DynamicFieldRenderer
-                field={renderField}
-            value={currentValue}
-            onChange={(fieldName, value) => handleEdit(itemId, fieldName, value)}
-            validationError={fieldError}
-            handwritingEnabled={false}
-            onOpenHandwriting={() => {}}
-            itemId={itemId}
-            itemPhotos={itemPhotos}
-            onTakePhoto={handleViewPhotos}
-            hideLabel={true}
-            onBlur={() => {
-              if (fieldName !== 'selectedanswer') {
-                // Get the current value from the field to avoid stale state
-                const currentValue = getFieldValue(fieldName);
-                autoSaveItem(itemId, { [fieldName]: currentValue });
-              }
-            }}
-            // Add data attributes for focus restoration
-            dataAttributes={{
-              'data-item-id': itemId,
-              'data-field': fieldName
-            }}
-          />
-            </>
+            <View
+              style={[
+                predefinedItemsListStyles.dynamicFieldRowSideBySide,
+                isMultilineField && predefinedItemsListStyles.dynamicFieldRowSideBySideMultiline
+              ]}
+            >
+              <Text
+                style={predefinedItemsListStyles.dynamicFieldLabelLeft}
+                numberOfLines={3}
+              >
+                {field.field_label}:
+              </Text>
+              <View style={predefinedItemsListStyles.dynamicFieldControlWrap}>
+                {fieldControl}
+              </View>
+            </View>
           )}
         </View>
       );
@@ -1888,67 +2052,46 @@ export default function PredefinedItemsList({
 
     const isNewItem = item.id.toString().startsWith('custom-new-');
 
-    // Group fields into rows for 2-column layout (except notes which is full width)
-    const fieldRows: any[][] = [];
-    let currentRow: any[] = [];
-    
-    visibleFields.forEach((field) => {
-      // Notes and textarea fields get their own full-width row
-      if (field.field_type === 'notes' || field.field_type === 'textarea') {
-        // If current row has content, push it first
-        if (currentRow.length > 0) {
-          fieldRows.push([...currentRow]);
-          currentRow = [];
-        }
-        // Add notes as a single-field row
-        fieldRows.push([field]);
-      } else {
-        // Add to current row
-        currentRow.push(field);
-        // If current row is full (2 fields), start a new row
-        if (currentRow.length === 2) {
-          fieldRows.push([...currentRow]);
-          currentRow = [];
-        }
-      }
-    });
-    
-    // Add any remaining fields in the current row
-    if (currentRow.length > 0) {
-      fieldRows.push(currentRow);
+    const newItemTypeBlock = isNewItem ? (
+      <View style={predefinedItemsListStyles.detailRow}>
+        <View style={[predefinedItemsListStyles.detailItem, { flex: 2 }]}>
+          <Text style={predefinedItemsListStyles.detailLabel}>Item Type (Required):</Text>
+          <PaperTextInput
+            value={editData.type ?? (item.type || '')}
+            onChangeText={(value) => handleEdit(itemId, 'type', value)}
+            onBlur={() => {
+              const currentValue = editData.type ?? (item.type || '');
+              autoSaveItem(itemId, { type: currentValue });
+            }}
+            style={[predefinedItemsListStyles.editInput, { borderColor: editData.type ? '#e0e0e0' : '#f44336' }]}
+            dense
+            placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
+            autoFocus={true}
+          />
+        </View>
+      </View>
+    ) : null;
+
+    const layoutCells = buildLayoutCells(visibleFields);
+    const fieldRows: LayoutCell[][] = [];
+    for (let i = 0; i < layoutCells.length; i += 2) {
+      fieldRows.push(layoutCells.slice(i, i + 2));
     }
 
     return (
       <>
-        {/* Show type field for new custom items */}
-        {isNewItem && (
-          <View style={predefinedItemsListStyles.detailRow}>
-            <View style={[predefinedItemsListStyles.detailItem, { flex: 2 }]}>
-              <Text style={predefinedItemsListStyles.detailLabel}>Item Type (Required):</Text>
-              <PaperTextInput
-                value={editData.type ?? (item.type || '')}
-                onChangeText={(value) => handleEdit(itemId, 'type', value)}
-                onBlur={() => {
-                  const currentValue = editData.type ?? (item.type || '');
-                  autoSaveItem(itemId, { type: currentValue });
-                }}
-                style={[predefinedItemsListStyles.editInput, { borderColor: editData.type ? '#e0e0e0' : '#f44336' }]}
-                dense
-                placeholder="Enter item type (e.g., 'Painting', 'Furniture', etc.)"
-                autoFocus={true}
-              />
-            </View>
-          </View>
-        )}
-        
-        {/* Render fields in order based on display_order */}
-        {fieldRows.map((rowFields, rowIndex) => (
-          <View key={rowIndex} style={[
-            rowFields.length === 1 && (rowFields[0].field_type === 'notes' || rowFields[0].field_type === 'textarea')
-              ? predefinedItemsListStyles.notesSection
-              : predefinedItemsListStyles.detailRow
-          ]}>
-            {rowFields.map(field => renderField(field))}
+        {newItemTypeBlock}
+        {fieldRows.map((rowCells, rowIndex) => (
+          <View key={rowIndex} style={predefinedItemsListStyles.detailRow}>
+            {rowCells.map((cell, cellIndex) =>
+              cell.kind === 'answerWithNotes'
+                ? renderAnswerWithNotesBundle(
+                    cell.answerField,
+                    cell.notesField,
+                    `ans-notes-${itemId}-${rowIndex}-${cellIndex}`
+                  )
+                : renderField(cell.field)
+            )}
           </View>
         ))}
       </>

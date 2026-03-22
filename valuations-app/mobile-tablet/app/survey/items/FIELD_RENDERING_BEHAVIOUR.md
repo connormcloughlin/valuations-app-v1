@@ -44,6 +44,24 @@ So field configurations are **not** fetched inside `DynamicFieldRenderer` or `Pr
   - Otherwise the type stays as from the API or defaults to `'text'`.
 - **Visibility:** `display_on_ui` is set from the API’s `isVisible`: `1` = visible, `0` = hidden.
 - **Dropdown options:** `dropdownOptions` are taken directly from the API (`field.dropdownOptions || []`). No extra fetching is done in `processFields`; options are expected in the category/order config response.
+- **Multi-select:** `fieldType` values `multiselect`, `multi_select`, or `multiselect_dropdown` are normalised to `multiselect`. Alternatively, `allowsMultipleSelection` / `allows_multiple_selection` or `validationRules` with `allowMultiple` / `multiSelect: true` sets `allows_multiple_selection` on the field (see §6).
+- **Category metadata:** `CategoryConfiguration` may include:
+  - **`sectionName`** — from `sectionName`, `section_name`, `parentSectionName`, or envelope-level section fields on the category/order payload; shown as the **header subtitle** on the items screen (`AppLayout` / `AppHeader`).
+  - **`layoutMode`** — Parsed from API for future use; list layout uses fixed **two-fields-per-row** pairing (§7).
+
+### 2.1 `groupingStrategy` normalisation (order API parity)
+
+The order/cached payload sometimes sends `groupingStrategy` in shapes the UI did not previously understand:
+
+- **Numeric keyed object:** e.g. `{ "0": { strategy_type, strategy_config, ... } }` — the service **unwraps** to the inner object (lowest numeric key first).
+- **Single-element array:** the first element is used.
+- **`strategy_config` as JSON string:** it is **parsed** to an object for `groupingStrategy.strategy_config` and for `parsedStrategyConfig`.
+
+This is applied in **`configurationService`** in:
+
+- Live category fetch → `CategoryConfiguration`
+- `getCachedConfiguration` (order pre-cache `parsed.data` shape)
+- `convertPrefetchedConfigToCategoryConfiguration`
 
 ---
 
@@ -80,9 +98,9 @@ The app decides whether the **field prompt** (Item Type / `type` / ItemPrompt) i
 ### 4.1 When there is **no** grouping strategy
 
 - In the dynamic field rows, the field with `item_fields === 'type'` or `'ItemPrompt'` is **never** rendered as an input. It is rendered as **display-only**: a bold `<Text>` showing the current value (`currentValue`). No `DynamicFieldRenderer` is used for that field.
-- All other fields in the rows are rendered as inputs via `DynamicFieldRenderer`.
+- **All other fields** use a **visible label** (`field.field_label` + `:`) and `DynamicFieldRenderer` with `hideLabel={true}`. Layout: label and control are in a **horizontal row** (label ~38% width on the left, control flexes on the right—web table parity) for **both grouped and non-grouped** templates; **notes/textarea** use **top-aligned** labels in that row. The only exception is the **non-grouped item prompt** row (`type` / `ItemPrompt`), which stays a **bold full-width title** with no side-by-side control.
 
-So with no grouping, the type prompt is display-only in the grid; other fields are inputs.
+So with no grouping, the type prompt is display-only in the grid; other fields are **labeled** inputs (web parity for flat templates such as Header Info).
 
 ### 4.2 When there **is** a grouping strategy
 
@@ -117,12 +135,12 @@ So “display only” is determined by: (1) no grouping → type/ItemPrompt in r
   2. These values are turned into **dropdown options** with `option_value` and `option_label` set to the same string, `is_active: true`, and sorted alphabetically by label.
   3. The field passed to `DynamicFieldRenderer` is **replaced** for that item with an **enhanced** field object: same as the original config but with:
      - `dropdownOptions` = these derived options
-     - `field_type` = `'dropdown'` (overriding whatever was in the config, so the control is a dropdown, not text).
+     - `field_type` = **`'multiselect'`** if any of: `field.allows_multiple_selection`, `item.multiSelectAnswer`, or `item.multiSelectSelectedAnswer === true` (string `"true"` accepted); otherwise **`'dropdown'`**.
 
 So:
 
-- If **no** `commaseparatedlist`**:** the `selectedanswer` field is rendered with whatever is in `dynamicFieldConfig` (e.g. text or dropdown if the API already provided `dropdownOptions`).
-- If **`commaseparatedlist` is present:** for that item only, `selectedanswer` is forced to be a **dropdown** whose options are exactly the comma-separated values. The stored value is still `item.selectedanswer` (one of those options or empty).
+- If **no** `commaseparatedlist`**:** the `selectedanswer` field is rendered with whatever is in `dynamicFieldConfig` (e.g. text, dropdown, or multiselect if the API already provided `dropdownOptions` and flags).
+- If **`commaseparatedlist` is present:** for that item only, `selectedanswer` uses those options as either a **single-select modal dropdown** or a **multi-select checkbox list** (comma-separated `selectedanswer` value), per the flags above.
 
 This only applies to the **`selectedanswer`** field; no other field type is driven by `commaseparatedlist` in this way.
 
@@ -141,10 +159,17 @@ This only applies to the **`selectedanswer`** field; no other field type is driv
 ### 6.2 Dropdown
 
 - **When:** `field_type === 'dropdown'`.
+- **If `allows_multiple_selection` is true** and `dropdownOptions` is non-empty: behaves like **§6.2b Multiselect** (checkbox list; value is comma-separated `option_value`s).
 - **If `dropdownOptions` is missing or empty:** Renders as a **text field** (same as `field_type === 'text'`).
 - **Otherwise:** Renders **ModalDropdown**: a touchable that opens a modal list of options (sorted alphabetically by `option_label`). Selection writes one `option_value` into the field value; `onChange(fieldName, value)` is called with that value.
 
 So a config with `field_type: 'dropdown'` but no options is effectively rendered as text.
+
+### 6.2b Multiselect
+
+- **When:** `field_type === 'multiselect'`, or `field_type === 'dropdown'` with `allows_multiple_selection` and options.
+- **If `dropdownOptions` is missing or empty:** Renders as a **text field**.
+- **Otherwise:** Renders a scrollable list of rows with checkboxes; toggling adds/removes `option_value` from the stored string, which is **comma-separated** (no spaces required; join uses `", "`). Same `onChange` / immediate save path as single-select `selectedanswer`.
 
 ### 6.3 Combobox / auto_suggest / auto_suggest_box
 
@@ -172,10 +197,11 @@ So a config with `field_type: 'dropdown'` but no options is effectively rendered
 
 ## 7. Layout of fields in the list (rows)
 
-- **PredefinedItemsList** groups the visible (and non-grouping) fields into **rows** for a 2-column layout.
-- **Notes and textarea:** Always get their own **full-width** row (one field per row).
-- **All other field types:** Filled left to right, two fields per row; when a row has two fields, the next field starts a new row.
-- So the order of fields (by `display_order`) and the rule “notes/textarea = full width” fully determine the layout.
+- Visible (non-grouping) fields are sorted by **`display_order`**, then a **tie-break** so **`quantity` → `selectedanswer` → `notes`** when orders match (so **SelectedAnswer + Notes** bundle below works), then alphabetical by `item_fields`.
+- **`selectedanswer` immediately followed by `notes`** in that list is rendered as one **bundle** (web-style): label for the answer field on the left; on the right, the answer control with a **comment icon**, then a **grey callout** under the control with a small **upward caret**, multiline **Notes…** input, and validation error under the box. **`notes` without an adjacent preceding `selectedanswer`** uses the same grey callout + **icon to the right** of the box.
+- They are chunked **two fields per row** (sequential pairs). Each cell is **label left | control right** (`dynamicFieldRowSideBySide`). **Notes/textarea** can share a row with another field (e.g. SelectedAnswer + Notes), matching a compact web-style grid.
+- A **trailing odd field** occupies a row alone and still grows with `flex: 1` (effectively half row width unless you add a full-width style later).
+- **`layoutMode` / `inline_row`** on `CategoryConfiguration` is still accepted from the API but **no longer changes** this list layout (pairing is always used).
 
 ---
 
@@ -197,11 +223,27 @@ So a config with `field_type: 'dropdown'` but no options is effectively rendered
 | **Config source** | Category config from ConfigurationService (order categories complete API or prefetch/SQLite); items screen passes `dynamicFieldConfig`. |
 | **Visibility** | Only fields with `display_on_ui === 1` are considered; then grouping fields are excluded for existing items. |
 | **Dropdown from API** | `field_type === 'dropdown'` + non-empty `dropdownOptions` → modal dropdown. No options → text field. |
-| **Comma-separated list** | Only for **`selectedanswer`**: if item has `commaseparatedlist`, options are parsed from it and the field is overridden to `field_type: 'dropdown'` with those options for that item. |
+| **Comma-separated list** | Only for **`selectedanswer`**: if item has `commaseparatedlist`, options are parsed from it; field becomes `dropdown` or `multiselect` per item/API flags; value stored in `selectedanswer` (comma-separated for multi). |
+| **Grouping strategy** | Normalised from `{ "0": {...} }`, arrays, and string `strategy_config` in **ConfigurationService**. |
+| **Header subtitle** | `categoryConfig.sectionName` when provided by API. |
+| **Field rows** | Two fields per row (sequential pairs); each field is label-left + control. |
+| **Multi-select answer** | `multiselect` type, `allows_multiple_selection`, or item `multiSelectAnswer` + `commaseparatedlist`. |
 | **Combobox / auto_suggest** | Same as dropdown: needs `dropdownOptions`; otherwise falls back to text. |
 | **Location group** | Needs `dropdownOptions`; otherwise falls back to text. |
 | **Unknown type** | Rendered as text. |
 | **Grouping** | By strategy type, one or two of `type` / `room` / `model` / `price` are excluded from the per-item form for existing items. |
-| **Field prompt display vs input** | No grouping → type/ItemPrompt in rows is display-only (bold text). Grouping + existing item → grouping field not in rows (value in group header). Grouping + new item → grouping field is input. New items always get a dedicated “Item Type (Required)” input row at the top. |
+| **Field prompt display vs input** | No grouping → type/ItemPrompt in rows is display-only (bold text); **other fields show labels**. Grouping + existing item → grouping field not in rows (value in group header). Grouping + new item → grouping field is input. New items always get a dedicated “Item Type (Required)” input row at the top. |
 
 This describes the full behaviour of how fields become dropdowns (or not), how the comma-delimited field is used, how visibility and grouping affect what is rendered, and how the field prompt is display-only vs input for new and existing entries.
+
+---
+
+## 10. QA checklist (web parity)
+
+| Path | What to verify |
+|------|----------------|
+| **CONSTRUCTION (~category 140)** | With order config that used to send `groupingStrategy: { "0": { ... } }`, accordions/group headers appear; `strategy_config` string parses; per-item Qty visibility follows `itemFieldConfigs`. |
+| **CONSTRUCTION grid** | Pairs follow `display_order` (e.g. Qty + SelectedAnswer, then Notes + …); notes can sit beside another field. |
+| **Flooring-style multi** | Item with `commaseparatedlist` + `multiSelectAnswer` (or field `allows_multiple_selection`) stores multiple selections as comma-separated `selectedanswer`; sync still works. |
+| **Header Info (~category 73)** | No grouping: item prompt bold; other fields **label left** in a **two-column** pair layout. |
+| **Section header** | When category payload includes `sectionName` / parent section fields, subtitle appears under the survey items title. |

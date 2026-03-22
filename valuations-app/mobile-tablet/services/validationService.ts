@@ -24,7 +24,12 @@ export class ValidationService {
     switch (field.field_type) {
       case 'number':
         return this.validateNumber(field, value);
+      case 'multiselect':
+        return this.validateMultiselect(field, value);
       case 'dropdown':
+        if (field.allows_multiple_selection) {
+          return this.validateMultiselect(field, value);
+        }
         return this.validateDropdown(field, value);
       case 'percentage':
         return this.validatePercentage(field, value);
@@ -145,6 +150,35 @@ export class ValidationService {
         fieldName: field.item_fields,
         message: `Please select a valid ${field.field_label}`
       };
+    }
+
+    return null;
+  }
+
+  /**
+   * Validate multiselect (comma-separated values must each exist in dropdownOptions)
+   */
+  private static validateMultiselect(field: FieldConfiguration, value: any): FieldValidationError | null {
+    if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
+      return null;
+    }
+
+    const validOptions = field.dropdownOptions
+      .filter(option => option.is_active !== false)
+      .map(option => option.option_value);
+
+    const parts = String(value)
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    for (const p of parts) {
+      if (!validOptions.includes(p)) {
+        return {
+          fieldName: field.item_fields,
+          message: `Please select valid ${field.field_label} options`
+        };
+      }
     }
 
     return null;

@@ -8,12 +8,15 @@ import { appHeaderStyles } from '../../app/GlobalStyles';
 
 interface AppHeaderProps {
   title?: string;
+  /** Shown under the title (e.g. parent section / MAIN BUILDING) */
+  subtitle?: string;
   showLogout?: boolean;
   onLogout?: () => void;
 }
 
 export default function AppHeader({ 
-  title = 'Qantam', 
+  title = 'Qantam',
+  subtitle,
   showLogout = true,
   onLogout 
 }: AppHeaderProps) {
@@ -38,6 +41,11 @@ export default function AppHeader({
     <View style={[appHeaderStyles.header, { paddingTop: insets.top }]}>
       <View style={appHeaderStyles.headerLeft}>
         <Text style={appHeaderStyles.headerTitle}>{title}</Text>
+        {subtitle ? (
+          <Text style={appHeaderStyles.headerSubtitle} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
       {showLogout && (
         <View style={appHeaderStyles.headerRight}>

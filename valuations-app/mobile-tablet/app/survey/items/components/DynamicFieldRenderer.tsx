@@ -127,6 +127,81 @@ function ModalDropdown({ value, onChange, field, hasError, onBlur, dataAttribute
   );
 }
 
+interface MultiselectAnswerProps {
+  value: any;
+  onChange: (fieldName: string, value: any) => void;
+  field: FieldConfiguration;
+  hasError: boolean;
+  onBlur?: () => void;
+  dataAttributes?: { [key: string]: string };
+}
+
+/** Multi-select selectedanswer (comma-separated), e.g. Flooring-style templates */
+function MultiselectAnswerField({
+  value,
+  onChange,
+  field,
+  hasError,
+  onBlur,
+  dataAttributes
+}: MultiselectAnswerProps) {
+  const options = [...(field.dropdownOptions || [])].sort((a, b) =>
+    (a.option_label || '').localeCompare(b.option_label || '')
+  );
+  const selected = new Set(
+    String(value || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+  );
+  const fname = field.item_fields;
+  const toggle = (optVal: string) => {
+    const next = new Set(selected);
+    if (next.has(optVal)) next.delete(optVal);
+    else next.add(optVal);
+    onChange(fname, Array.from(next).join(', '));
+    onBlur?.();
+  };
+  return (
+    <View
+      style={[
+        dynamicFieldRendererStyles.multiselectOuter,
+        hasError && dynamicFieldRendererStyles.inputError
+      ]}
+      {...(dataAttributes || {})}
+    >
+      <ScrollView
+        style={{ maxHeight: 220 }}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+      >
+        {options
+          .filter(o => o.is_active !== false)
+          .map(opt => {
+            const on = selected.has(opt.option_value);
+            return (
+              <TouchableOpacity
+                key={String(opt.option_value)}
+                style={[
+                  dynamicFieldRendererStyles.multiselectRow,
+                  on && dynamicFieldRendererStyles.multiselectRowSelected
+                ]}
+                onPress={() => toggle(opt.option_value)}
+              >
+                <MaterialCommunityIcons
+                  name={on ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                  size={22}
+                  color="#4a90e2"
+                />
+                <Text style={dynamicFieldRendererStyles.multiselectLabel}>{opt.option_label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+      </ScrollView>
+    </View>
+  );
+}
+
 export default function DynamicFieldRenderer({
   field,
   value,
@@ -170,6 +245,8 @@ export default function DynamicFieldRenderer({
     switch (field.field_type) {
       case 'photo':
         return renderPhotoField();
+      case 'multiselect':
+        return renderMultiselectField();
       case 'dropdown':
         return renderDropdownField();
       case 'combobox':
@@ -363,7 +440,26 @@ export default function DynamicFieldRenderer({
     />
   );
 
+  const renderMultiselectField = () => {
+    if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
+      return renderTextField();
+    }
+    return (
+      <MultiselectAnswerField
+        value={value}
+        onChange={onChange}
+        field={field}
+        hasError={hasError}
+        onBlur={onBlur}
+        dataAttributes={dataAttributes}
+      />
+    );
+  };
+
   const renderDropdownField = () => {
+    if (field.allows_multiple_selection && field.dropdownOptions && field.dropdownOptions.length > 0) {
+      return renderMultiselectField();
+    }
     if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
       return renderTextField();
     }

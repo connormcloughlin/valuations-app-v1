@@ -7,6 +7,7 @@ import { appLayoutStyles } from '../../app/GlobalStyles';
 interface AppLayoutProps {
   children: React.ReactNode;
   title?: string;
+  subtitle?: string;
   showHeader?: boolean;
   showBottomNav?: boolean;
   showLogout?: boolean;
@@ -18,6 +19,7 @@ interface AppLayoutProps {
 export default function AppLayout({
   children,
   title = 'Qantam',
+  subtitle,
   showHeader = true,
   showBottomNav = true,
   showLogout = true,
@@ -30,6 +32,7 @@ export default function AppLayout({
       {showHeader && (
         <AppHeader 
           title={title}
+          subtitle={subtitle}
           showLogout={showLogout}
           onLogout={onLogout}
         />

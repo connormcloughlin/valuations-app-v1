@@ -1242,6 +1242,12 @@ export const appHeaderStyles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2c3e50',
   },
+  headerSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#5d6d7e',
+    marginTop: 2,
+  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2906,6 +2912,32 @@ export const dynamicFieldRendererStyles = StyleSheet.create({
     fontSize: 14,
     color: '#2c3e50',
   },
+  multiselectOuter: {
+    width: '100%',
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    paddingVertical: 4,
+  },
+  multiselectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  multiselectRowSelected: {
+    backgroundColor: '#f0f7ff',
+  },
+  multiselectLabel: {
+    fontSize: 15,
+    color: '#2c3e50',
+    marginLeft: 8,
+    flex: 1,
+  },
 });
 
 export const completedAppointmentsStyles = StyleSheet.create({
@@ -3663,13 +3695,37 @@ export const predefinedItemsListStyles = StyleSheet.create({
 
   // Dynamic field styles
   dynamicFieldContainer: {
-    marginBottom: 12,
-    marginRight: 8,
+    marginBottom: 0,
+  },
+  /** Non-grouped templates: label beside control (web table row parity) */
+  dynamicFieldRowSideBySide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+  },
+  dynamicFieldRowSideBySideMultiline: {
+    alignItems: 'flex-start',
+  },
+  dynamicFieldLabelLeft: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#34495e',
+    width: '38%',
+    maxWidth: 160,
+    paddingRight: 10,
+    flexShrink: 0,
+  },
+  dynamicFieldControlWrap: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
   },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 12,
+    gap: 8,
   },
   detailItem: {
     flex: 1,
@@ -3698,6 +3754,48 @@ export const predefinedItemsListStyles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#e9ecef',
+  },
+
+  /** Web-style inline notes under SelectedAnswer (grey callout + caret) */
+  notesCalloutWrap: {
+    marginTop: 6,
+    width: '100%',
+  },
+  notesCalloutArrowRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingRight: 28,
+    marginBottom: -1,
+  },
+  notesCalloutArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderBottomWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#dfe3e8',
+  },
+  notesCalloutBox: {
+    backgroundColor: '#f4f6f8',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dfe3e8',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  notesCalloutInput: {
+    minHeight: 64,
+    fontSize: 15,
+    color: '#2c3e50',
+    textAlignVertical: 'top' as const,
+    padding: 0,
+  },
+  notesStandaloneIconColumn: {
+    justifyContent: 'flex-start',
+    paddingTop: 10,
+    paddingLeft: 6,
   },
 
   // Photo section styles
