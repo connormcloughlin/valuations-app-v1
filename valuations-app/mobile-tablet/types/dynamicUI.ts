@@ -19,7 +19,7 @@ export interface FieldConfiguration {
   item_fields: string; // Field name like 'type', 'description', 'room'
   field_label: string; // Display label
   display_on_ui: number; // 1=visible, 0=hidden
-  field_type?: string; // 'text', 'number', 'dropdown', 'textarea', 'location_group', 'multiselect'
+  field_type?: string; // 'text', 'number', 'dropdown', 'textarea', 'location_group', 'multiselect', 'radio_group'
   is_required?: boolean;
   placeholder?: string;
   validation_rules?: any;

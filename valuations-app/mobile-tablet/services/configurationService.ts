@@ -547,6 +547,19 @@ class ConfigurationService {
       if (['multiselect', 'multi_select', 'multiselect_dropdown'].includes((fieldType || '').toLowerCase())) {
         fieldType = 'multiselect';
       }
+      {
+        const tNorm = String(fieldType || '')
+          .toLowerCase()
+          .replace(/-/g, '_');
+        if (
+          tNorm === 'radio_group' ||
+          tNorm === 'radiogroup' ||
+          tNorm === 'radio' ||
+          field.fieldType === 'radioGroup'
+        ) {
+          fieldType = 'radio_group';
+        }
+      }
 
       let vr = field.validationRules ?? field.validation_rules;
       if (typeof vr === 'string') {

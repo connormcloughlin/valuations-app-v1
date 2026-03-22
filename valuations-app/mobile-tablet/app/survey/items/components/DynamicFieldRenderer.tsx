@@ -249,6 +249,8 @@ export default function DynamicFieldRenderer({
         return renderMultiselectField();
       case 'dropdown':
         return renderDropdownField();
+      case 'radio_group':
+        return renderRadioGroupField();
       case 'combobox':
         return renderComboboxField();
       case 'auto_suggest':
@@ -472,6 +474,63 @@ export default function DynamicFieldRenderer({
         onBlur={onBlur}
         dataAttributes={dataAttributes}
       />
+    );
+  };
+
+  const renderRadioGroupField = () => {
+    if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
+      return renderTextField();
+    }
+    const sortedOptions = [...field.dropdownOptions].sort((a, b) =>
+      (a.option_label || '').localeCompare(b.option_label || '')
+    );
+    const activeOptions = sortedOptions.filter(option => option.is_active !== false);
+    if (activeOptions.length === 0) {
+      return renderTextField();
+    }
+    return (
+      <View
+        style={[
+          dynamicFieldRendererStyles.radioGroupContainer,
+          hasError && dynamicFieldRendererStyles.inputError
+        ]}
+        {...(dataAttributes || {})}
+      >
+        {activeOptions.map((option, index) => {
+          const selected = String(value ?? '') === String(option.option_value);
+          const isLast = index === activeOptions.length - 1;
+          return (
+            <TouchableOpacity
+              key={String(option.option_value)}
+              style={[
+                dynamicFieldRendererStyles.radioGroupRow,
+                isLast && dynamicFieldRendererStyles.radioGroupRowLast,
+                selected && dynamicFieldRendererStyles.radioGroupRowSelected
+              ]}
+              onPress={() => {
+                onChange(fieldName, option.option_value);
+                onBlur?.();
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name={selected ? 'radiobox-marked' : 'radiobox-blank'}
+                size={22}
+                color={selected ? '#4a90e2' : '#95a5a6'}
+              />
+              <Text
+                style={[
+                  dynamicFieldRendererStyles.radioGroupLabel,
+                  selected && dynamicFieldRendererStyles.radioGroupLabelSelected
+                ]}
+                numberOfLines={4}
+              >
+                {option.option_label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     );
   };
 

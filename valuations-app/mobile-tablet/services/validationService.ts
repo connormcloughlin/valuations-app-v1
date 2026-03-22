@@ -31,6 +31,8 @@ export class ValidationService {
           return this.validateMultiselect(field, value);
         }
         return this.validateDropdown(field, value);
+      case 'radio_group':
+        return this.validateDropdown(field, value);
       case 'percentage':
         return this.validatePercentage(field, value);
       case 'email':
@@ -142,7 +144,7 @@ export class ValidationService {
 
     const stringValue = String(value);
     const validOptions = field.dropdownOptions
-      .filter(option => option.is_active)
+      .filter(option => option.is_active !== false)
       .map(option => option.option_value);
 
     if (stringValue && !validOptions.includes(stringValue)) {

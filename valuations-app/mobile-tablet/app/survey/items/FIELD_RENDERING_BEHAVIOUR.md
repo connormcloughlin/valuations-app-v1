@@ -45,6 +45,7 @@ So field configurations are **not** fetched inside `DynamicFieldRenderer` or `Pr
 - **Visibility:** `display_on_ui` is set from the API’s `isVisible`: `1` = visible, `0` = hidden.
 - **Dropdown options:** `dropdownOptions` are taken directly from the API (`field.dropdownOptions || []`). No extra fetching is done in `processFields`; options are expected in the category/order config response.
 - **Multi-select:** `fieldType` values `multiselect`, `multi_select`, or `multiselect_dropdown` are normalised to `multiselect`. Alternatively, `allowsMultipleSelection` / `allows_multiple_selection` or `validationRules` with `allowMultiple` / `multiSelect: true` sets `allows_multiple_selection` on the field (see §6).
+- **Radio group:** `radio_group`, `radioGroup`, `radio-group`, `radiogroup`, or `radio` are normalised to **`radio_group`** (see §6.2c).
 - **Category metadata:** `CategoryConfiguration` may include:
   - **`sectionName`** — from `sectionName`, `section_name`, `parentSectionName`, or envelope-level section fields on the category/order payload; shown as the **header subtitle** on the items screen (`AppLayout` / `AppHeader`).
   - **`layoutMode`** — Parsed from API for future use; list layout uses fixed **two-fields-per-row** pairing (§7).
@@ -171,6 +172,12 @@ So a config with `field_type: 'dropdown'` but no options is effectively rendered
 - **If `dropdownOptions` is missing or empty:** Renders as a **text field**.
 - **Otherwise:** Renders a scrollable list of rows with checkboxes; toggling adds/removes `option_value` from the stored string, which is **comma-separated** (no spaces required; join uses `", "`). Same `onChange` / immediate save path as single-select `selectedanswer`.
 
+### 6.2c Radio group
+
+- **When:** `field_type === 'radio_group'` (API may send `radioGroup`, `radio-group`, or `radio`; **ConfigurationService** maps to `radio_group`).
+- **If `dropdownOptions` is missing or empty:** Renders as a **text field**.
+- **Otherwise:** Renders a **vertical list** of tappable rows with radio icons (`radiobox-marked` / `radiobox-blank`); one `option_value` stored at a time. `onBlur` runs after selection (same pattern as other pickers). **Validation** uses the same rules as **dropdown** (value must be one of active options; `is_active !== false`).
+
 ### 6.3 Combobox / auto_suggest / auto_suggest_box
 
 - **When:** `field_type === 'combobox'`, `'auto_suggest'`, or `'auto_suggest_box'`. The last two are implemented by calling the same logic as combobox.
@@ -223,6 +230,7 @@ So a config with `field_type: 'dropdown'` but no options is effectively rendered
 | **Config source** | Category config from ConfigurationService (order categories complete API or prefetch/SQLite); items screen passes `dynamicFieldConfig`. |
 | **Visibility** | Only fields with `display_on_ui === 1` are considered; then grouping fields are excluded for existing items. |
 | **Dropdown from API** | `field_type === 'dropdown'` + non-empty `dropdownOptions` → modal dropdown. No options → text field. |
+| **Radio group** | `field_type === 'radio_group'` + `dropdownOptions` → vertical radio list; validated like dropdown. No options → text field. |
 | **Comma-separated list** | Only for **`selectedanswer`**: if item has `commaseparatedlist`, options are parsed from it; field becomes `dropdown` or `multiselect` per item/API flags; value stored in `selectedanswer` (comma-separated for multi). |
 | **Grouping strategy** | Normalised from `{ "0": {...} }`, arrays, and string `strategy_config` in **ConfigurationService**. |
 | **Header subtitle** | `categoryConfig.sectionName` when provided by API. |

@@ -2912,6 +2912,38 @@ export const dynamicFieldRendererStyles = StyleSheet.create({
     fontSize: 14,
     color: '#2c3e50',
   },
+  radioGroupContainer: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  radioGroupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  radioGroupRowLast: {
+    borderBottomWidth: 0,
+  },
+  radioGroupRowSelected: {
+    backgroundColor: '#f0f7ff',
+  },
+  radioGroupLabel: {
+    flex: 1,
+    fontSize: 15,
+    color: '#2c3e50',
+    marginLeft: 10,
+  },
+  radioGroupLabelSelected: {
+    color: '#4a90e2',
+    fontWeight: '600',
+  },
   multiselectOuter: {
     width: '100%',
     alignSelf: 'stretch',
