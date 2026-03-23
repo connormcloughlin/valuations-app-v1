@@ -137,6 +137,242 @@ interface MultiselectAnswerProps {
 }
 
 /** Multi-select selectedanswer (comma-separated), e.g. Flooring-style templates */
+/** Strip non-digits from stored value (handles legacy "1,234" or numeric types). */
+function digitsOnlyFromValue(v: any): string {
+  if (v === null || v === undefined || v === '') return '';
+  return String(v).replace(/\D/g, '');
+}
+
+/** Integer with grouping, no decimals (locale-aware thousands separators). */
+function formatGroupedInteger(digits: string): string {
+  if (!digits) return '';
+  const n = parseInt(digits, 10);
+  if (!Number.isFinite(n)) return '';
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    useGrouping: true,
+  }).format(n);
+}
+
+/** Parse stored currency (handles "1,234.56", numbers). */
+function parseCurrencyNumber(v: any): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const s = String(v).replace(/,/g, '').replace(/\s/g, '').trim();
+  if (s === '' || s === '.') return null;
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Grouped display with exactly 2 decimal places. */
+function formatCurrencyGrouped(n: number): string {
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  }).format(n);
+}
+
+/** Allow digits and a single decimal point while typing. */
+function sanitizeCurrencyDraft(text: string): string {
+  const noComma = text.replace(/,/g, '');
+  let out = '';
+  let hasDot = false;
+  for (let i = 0; i < noComma.length; i++) {
+    const c = noComma[i];
+    if (c >= '0' && c <= '9') {
+      out += c;
+    } else if ((c === '.' || c === ',') && !hasDot) {
+      out += '.';
+      hasDot = true;
+    }
+  }
+  return out;
+}
+
+function currencyDraftFromStored(v: any): string {
+  if (v === null || v === undefined || v === '') return '';
+  return sanitizeCurrencyDraft(String(v));
+}
+
+interface CurrencyFieldProps {
+  fieldName: string;
+  value: any;
+  onChange: (fieldName: string, value: any) => void;
+  onBlur?: () => void;
+  hasError: boolean;
+  placeholder?: string;
+  dataAttributes?: { [key: string]: string };
+  handwritingEnabled?: boolean;
+  onOpenHandwriting?: (fieldName: string) => void;
+}
+
+/**
+ * Currency: right-aligned; 2 decimal places + grouping when not editing; canonical `toFixed(2)` on blur.
+ */
+function CurrencyField({
+  fieldName,
+  value,
+  onChange,
+  onBlur,
+  hasError,
+  placeholder,
+  dataAttributes,
+  handwritingEnabled,
+  onOpenHandwriting,
+}: CurrencyFieldProps) {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState(() => currencyDraftFromStored(value));
+
+  useEffect(() => {
+    if (!focused) {
+      setDraft(currencyDraftFromStored(value));
+    }
+  }, [value, focused]);
+
+  const blurredDisplay = (() => {
+    const num = parseCurrencyNumber(value);
+    if (num === null) {
+      const empty =
+        value === null ||
+        value === undefined ||
+        (typeof value === 'string' && value.trim() === '');
+      return empty ? '' : String(value);
+    }
+    return formatCurrencyGrouped(num);
+  })();
+
+  const textShown = focused ? draft : blurredDisplay;
+
+  return (
+    <View style={dynamicFieldRendererStyles.inputContainer}>
+      <View style={dynamicFieldRendererStyles.currencyContainer}>
+        <Text style={dynamicFieldRendererStyles.currencyPrefix}>R</Text>
+        <TextInput
+          style={[
+            dynamicFieldRendererStyles.currencyInput,
+            hasError && dynamicFieldRendererStyles.inputError,
+          ]}
+          value={textShown}
+          onChangeText={(text) => {
+            if (!focused) return;
+            const next = sanitizeCurrencyDraft(text);
+            setDraft(next);
+            onChange(fieldName, next);
+          }}
+          onFocus={() => {
+            setFocused(true);
+            setDraft(currencyDraftFromStored(value));
+          }}
+          onBlur={() => {
+            const d = sanitizeCurrencyDraft(draft);
+            const num = d === '' || d === '.' ? null : parseFloat(d);
+            const normalized =
+              num !== null && Number.isFinite(num) ? num.toFixed(2) : '';
+            onChange(fieldName, normalized);
+            setFocused(false);
+            onBlur?.();
+          }}
+          placeholder={placeholder}
+          placeholderTextColor="#95a5a6"
+          keyboardType="decimal-pad"
+          {...(dataAttributes || {})}
+        />
+      </View>
+      {handwritingEnabled && onOpenHandwriting && (
+        <TouchableOpacity
+          style={dynamicFieldRendererStyles.handwritingButton}
+          onPress={() => onOpenHandwriting(fieldName)}
+        >
+          <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+interface IntegerNumberFieldProps {
+  fieldName: string;
+  value: any;
+  onChange: (fieldName: string, value: any) => void;
+  onBlur?: () => void;
+  hasError: boolean;
+  placeholder?: string;
+  dataAttributes?: { [key: string]: string };
+  handwritingEnabled?: boolean;
+  onOpenHandwriting?: (fieldName: string) => void;
+}
+
+/**
+ * Number fields: right-aligned; show thousands separators when not editing; store plain integer string in parent.
+ */
+function IntegerNumberField({
+  fieldName,
+  value,
+  onChange,
+  onBlur,
+  hasError,
+  placeholder,
+  dataAttributes,
+  handwritingEnabled,
+  onOpenHandwriting,
+}: IntegerNumberFieldProps) {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState(() => digitsOnlyFromValue(value));
+
+  useEffect(() => {
+    if (!focused) {
+      setDraft(digitsOnlyFromValue(value));
+    }
+  }, [value, focused]);
+
+  const displayText = focused
+    ? draft
+    : formatGroupedInteger(digitsOnlyFromValue(value));
+
+  return (
+    <View style={dynamicFieldRendererStyles.inputContainer}>
+      <TextInput
+        style={[
+          dynamicFieldRendererStyles.input,
+          dynamicFieldRendererStyles.numberInput,
+          hasError && dynamicFieldRendererStyles.inputError,
+        ]}
+        value={displayText}
+        onChangeText={(text) => {
+          if (!focused) return;
+          const digits = text.replace(/\D/g, '');
+          setDraft(digits);
+          onChange(fieldName, digits);
+        }}
+        onFocus={() => {
+          setFocused(true);
+          setDraft(digitsOnlyFromValue(value));
+        }}
+        onBlur={() => {
+          const d = draft.replace(/\D/g, '');
+          const normalized = d === '' ? '' : String(parseInt(d, 10));
+          onChange(fieldName, normalized);
+          setFocused(false);
+          onBlur?.();
+        }}
+        placeholder={placeholder}
+        placeholderTextColor="#95a5a6"
+        keyboardType="number-pad"
+        {...(dataAttributes || {})}
+      />
+      {handwritingEnabled && onOpenHandwriting && (
+        <TouchableOpacity
+          style={dynamicFieldRendererStyles.handwritingButton}
+          onPress={() => onOpenHandwriting(fieldName)}
+        >
+          <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 function MultiselectAnswerField({
   value,
   onChange,
@@ -305,52 +541,31 @@ export default function DynamicFieldRenderer({
   );
 
   const renderNumberField = () => (
-    <View style={dynamicFieldRendererStyles.inputContainer}>
-      <TextInput
-        style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
-        value={value ? String(value) : ''}
-        onChangeText={(text) => onChange(fieldName, text)}
-        onBlur={onBlur}
-        placeholder={field.placeholder || field.field_label}
-        placeholderTextColor="#95a5a6"
-        keyboardType="numeric"
-        {...(dataAttributes || {})}
-      />
-      {handwritingEnabled && onOpenHandwriting && (
-        <TouchableOpacity
-          style={dynamicFieldRendererStyles.handwritingButton}
-          onPress={() => onOpenHandwriting(fieldName)}
-        >
-          <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
-        </TouchableOpacity>
-      )}
-    </View>
+    <IntegerNumberField
+      fieldName={fieldName}
+      value={value}
+      onChange={onChange}
+      onBlur={onBlur}
+      hasError={hasError}
+      placeholder={field.placeholder || field.field_label}
+      dataAttributes={dataAttributes}
+      handwritingEnabled={handwritingEnabled}
+      onOpenHandwriting={onOpenHandwriting}
+    />
   );
 
   const renderCurrencyField = () => (
-    <View style={dynamicFieldRendererStyles.inputContainer}>
-      <View style={dynamicFieldRendererStyles.currencyContainer}>
-        <Text style={dynamicFieldRendererStyles.currencyPrefix}>R</Text>
-        <TextInput
-          style={[dynamicFieldRendererStyles.currencyInput, hasError && dynamicFieldRendererStyles.inputError]}
-          value={value ? String(value) : ''}
-          onChangeText={(text) => onChange(fieldName, text)}
-          onBlur={onBlur}
-          placeholder={field.placeholder || "0.00"}
-          placeholderTextColor="#95a5a6"
-          keyboardType="numeric"
-          {...(dataAttributes || {})}
-        />
-      </View>
-      {handwritingEnabled && onOpenHandwriting && (
-        <TouchableOpacity
-          style={dynamicFieldRendererStyles.handwritingButton}
-          onPress={() => onOpenHandwriting(fieldName)}
-        >
-          <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
-        </TouchableOpacity>
-      )}
-    </View>
+    <CurrencyField
+      fieldName={fieldName}
+      value={value}
+      onChange={onChange}
+      onBlur={onBlur}
+      hasError={hasError}
+      placeholder={field.placeholder || '0.00'}
+      dataAttributes={dataAttributes}
+      handwritingEnabled={handwritingEnabled}
+      onOpenHandwriting={onOpenHandwriting}
+    />
   );
 
   const renderCheckboxField = () => {

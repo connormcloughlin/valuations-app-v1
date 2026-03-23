@@ -43,6 +43,8 @@ export default {
   getRiskAssessmentMasterByOrder: hierarchyApi.getRiskAssessmentMasterByOrder,
   getRiskAssessmentCompleteHierarchy: hierarchyApi.getRiskAssessmentCompleteHierarchy,
   getOrderCategoryFieldConfigurations: hierarchyApi.getOrderCategoryFieldConfigurations,
+  cloneRiskAssessmentSection: hierarchyApi.cloneRiskAssessmentSection,
+  invalidateRiskAssessmentHierarchyCache: hierarchyApi.invalidateRiskAssessmentHierarchyCache,
 
   syncChanges: syncApi.syncChanges,
   getSyncChanges: syncApi.getSyncChanges,

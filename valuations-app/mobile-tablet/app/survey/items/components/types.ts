@@ -71,7 +71,8 @@ export interface PredefinedItemsListProps {
   onAddNewItem?: (addFunction: () => void) => void;
   // Sync functionality exposure
   onSyncStatusChange?: (pendingChangesCount: number, syncing: boolean) => void;
-  onSyncRequest?: (syncFunction: () => void) => void;
+  /** Register sync handler; call with `{ silent: true }` to skip success/error alerts (e.g. Done button). */
+  onSyncRequest?: (syncFunction: (options?: { silent?: boolean }) => Promise<void>) => void;
   // Totals calculation exposure
   onTotalsChange?: (itemCount: number, totalValue: number) => void;
   onForceRemount?: () => void;

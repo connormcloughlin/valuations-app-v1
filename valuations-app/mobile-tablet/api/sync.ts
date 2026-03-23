@@ -23,6 +23,8 @@ export async function syncChanges(syncData: {
   riskAssessmentMasters?: any[];
   appointments?: any[];
   syncTimestamp?: string;
+  /** @see BACKEND_OFFLINE_SECTION_CLONE_SYNC.md — optional; backend may ignore until implemented */
+  offlineSectionClones?: any[];
 }): Promise<ApiResponse> {
   try {
     debugLog('SYNC POST /sync/batch payload (object)', syncData);

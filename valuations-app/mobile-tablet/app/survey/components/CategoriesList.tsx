@@ -23,9 +23,19 @@ interface CategoriesListProps {
   photoCountRefreshKey?: number;
   onAddCategoryPhoto?: (categoryId: string, categoryName: string) => void;
   onViewCategoryPhotos?: (categoryId: string, categoryName: string) => void;
+  /** Nested under an expanded section (tighter layout, indented) */
+  embedded?: boolean;
 }
 
-export default function CategoriesList({ categories, totalValue, onCategoryPress, photoCountRefreshKey = 0, onAddCategoryPhoto, onViewCategoryPhotos }: CategoriesListProps) {
+export default function CategoriesList({
+  categories,
+  totalValue,
+  onCategoryPress,
+  photoCountRefreshKey = 0,
+  onAddCategoryPhoto,
+  onViewCategoryPhotos,
+  embedded = false,
+}: CategoriesListProps) {
   const [categoryPhotoCounts, setCategoryPhotoCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -54,16 +64,18 @@ export default function CategoriesList({ categories, totalValue, onCategoryPress
   }, [categories, onViewCategoryPhotos, photoCountRefreshKey]);
 
   return (
-    <View style={styles.sectionContainer}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Categories</Text>
-        <Text style={styles.totalValue}>Total: R{totalValue.toLocaleString()}</Text>
+    <View style={embedded ? styles.embeddedSectionContainer : styles.sectionContainer}>
+      <View style={[styles.sectionHeader, embedded && styles.embeddedSectionHeader]}>
+        <Text style={[styles.sectionTitle, embedded && styles.embeddedSectionTitle]}>Categories</Text>
+        <Text style={[styles.totalValue, embedded && styles.embeddedTotalValue]}>
+          Total: R{totalValue.toLocaleString()}
+        </Text>
       </View>
-      
+
       {categories.map((category: Category) => (
-        <Card 
-          key={category.id} 
-          style={styles.categoryCard}
+        <Card
+          key={category.id}
+          style={[styles.categoryCard, embedded && styles.embeddedCategoryCard]}
           onPress={() => onCategoryPress(category.id, category.name, category.risktemplatecategoryid)}
         >
           <Card.Content style={styles.categoryContent}>
@@ -136,14 +148,16 @@ const styles = StyleSheet.create({
     color: colors.success,
   },
   categoryCard: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
     borderRadius: borderRadius.md,
   },
   categoryContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.sm,
+    minHeight: 56,
   },
   categoryInfo: {
     flex: 1,
@@ -166,4 +180,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
-}); 
+  embeddedSectionContainer: {
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+    paddingBottom: spacing.xs,
+  },
+  embeddedSectionHeader: {
+    marginBottom: spacing.sm,
+  },
+  embeddedSectionTitle: {
+    fontSize: typography.sm,
+    marginBottom: 0,
+  },
+  embeddedTotalValue: {
+    fontSize: typography.sm,
+  },
+  embeddedCategoryCard: {
+    marginBottom: spacing.sm,
+  },
+});

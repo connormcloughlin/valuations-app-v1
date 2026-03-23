@@ -182,10 +182,12 @@ async function purgeDatabaseData(result: PurgeResult): Promise<void> {
     
     result.clearedItems.databaseTables = [
       'appointments',
-      'risk_assessment_master', 
+      'risk_assessment_master',
       'risk_assessment_items',
       'media_files',
-      'category_configurations'
+      'category_configurations',
+      'pending_section_clones',
+      'offline_materialized_section_clones',
     ];
 
     logger.info('Database sensitive data cleared', {

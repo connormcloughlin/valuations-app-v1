@@ -2,6 +2,10 @@ import React, { useState, useEffect, createContext, useContext, useCallback, use
 import api from '../../../api';
 import { storeDataForKey, getDataForKey } from '../../../utils/offlineStorage';
 import { getAllRiskAssessmentItems } from '../../../utils/db';
+import {
+  categoriesForLocalOfflineSection,
+  isLocalOfflineSectionId
+} from '../../../services/offlineSectionMaterialization';
 
 // Types
 export interface Category {
@@ -61,6 +65,8 @@ interface SurveyContextType {
   // Actions
   fetchSurveyData: () => Promise<void>;
   fetchCategories: (sectionId: string, sectionTitle: string) => Promise<void>;
+  /** Collapse section accordion and clear loaded categories */
+  clearSectionSelection: () => void;
   refreshCategoryValues: () => Promise<void>;
   updateSurvey: (updates: Partial<Survey>) => void;
 }
@@ -243,14 +249,32 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
   // Fetch categories for a section (following SectionsCategories logic)
   const fetchCategories = async (sectionId: string, sectionTitle: string) => {
     console.log('🔍 Fetching categories for section:', sectionId);
-    setCategoriesLoading(true);
+    // Clear UI immediately so old section's categories are not shown while loading
+    setCategories([]);
     setCategoriesError(null);
     setSelectedSectionTitle(sectionTitle);
     setSelectedSectionId(sectionId);
+    setCategoriesLoading(true);
     
     const cacheKey = `section_categories_${sectionId}`;
     
     try {
+      if (isLocalOfflineSectionId(sectionId)) {
+        const cats = await categoriesForLocalOfflineSection(sectionId);
+        setCategories(cats);
+        if (survey) {
+          const totalValue = cats.reduce((sum, cat) => sum + cat.value, 0);
+          setSurvey({ ...survey, categories: cats, totalValue });
+        }
+        try {
+          await storeDataForKey(cacheKey, cats);
+        } catch {
+          /* non-fatal */
+        }
+        setCategoriesLoading(false);
+        return;
+      }
+
       // Check cache first
       console.log('📦 Checking cache for section categories...');
       const cachedData = await getDataForKey(cacheKey);
@@ -288,15 +312,11 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       console.log('✅ Composite API response received');
       console.log('✅ Field config response received:', fieldConfigResponse?.success);
       
-      // Cache field configurations if available
+      // Cache field configurations if available (shared with prefetchService.buildPrefetchQueue)
       if (fieldConfigResponse?.success && fieldConfigResponse?.data?.categories) {
         console.log(`🚀 Pre-loading field configurations for ${fieldConfigResponse.data.categories.length} categories`);
-        
-        const configurationService = await import('../../../services/configurationService');
-        await configurationService.default.cacheOrderFieldConfigurations(orderNumber, fieldConfigResponse.data);
-
         const prefetchService = await import('../../../services/prefetchService');
-        await prefetchService.default.storeOrderCategoryConfigurationsInSQLite(fieldConfigResponse.data);
+        await prefetchService.default.applyOrderFieldConfigurationCaches(orderNumber, fieldConfigResponse.data);
       }
       
       if (!compositeResponse?.success || !compositeResponse?.data?.assessmentMasters) {
@@ -311,7 +331,7 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       for (const master of compositeResponse.data.assessmentMasters) {
         if (master.sections) {
           for (const section of master.sections) {
-            if (section.riskAssessmentSectionId === sectionId && section.categories) {
+            if (String(section.riskAssessmentSectionId) === String(sectionId) && section.categories) {
               console.log(`📋 Found ${section.categories.length} categories in composite data for section ${sectionId}`);
               
               // Process categories from composite API
@@ -370,6 +390,14 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       setCategoriesLoading(false);
     }
   };
+
+  const clearSectionSelection = useCallback(() => {
+    setSelectedSectionId(null);
+    setSelectedSectionTitle(null);
+    setCategories([]);
+    setCategoriesError(null);
+    setCategoriesLoading(false);
+  }, []);
 
   const updateSurvey = (updates: Partial<Survey>) => {
     if (survey) {
@@ -435,6 +463,15 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
     initializeSurvey();
   }, [surveyId]);
 
+  // New appointment: don't show previous section's categories
+  useEffect(() => {
+    setSelectedSectionId(null);
+    setSelectedSectionTitle(null);
+    setCategories([]);
+    setCategoriesError(null);
+    setCategoriesLoading(false);
+  }, [surveyId]);
+
   // Start prefetch when survey data is first loaded (by surveyId + orderNumber only, so category/totalValue updates don't re-trigger)
   const orderNumber = survey?.orderNumber ?? null;
   useEffect(() => {
@@ -464,6 +501,7 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
     selectedSectionId,
     fetchSurveyData,
     fetchCategories,
+    clearSectionSelection,
     refreshCategoryValues,
     updateSurvey,
   };

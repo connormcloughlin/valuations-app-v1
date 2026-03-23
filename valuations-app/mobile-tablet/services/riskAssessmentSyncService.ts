@@ -20,6 +20,7 @@ import {
   Appointment,
   MediaFile
 } from '../utils/db';
+import sectionCloneService from './sectionCloneService';
 
 /**
  * Service for handling synchronization of risk assessment data between local storage and server
@@ -57,24 +58,43 @@ const riskAssessmentSyncService = {
       console.log('Starting sync of pending changes...');
       
       // Get all pending changes from SQLite
-      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles, pendingDeletedMediaFiles] = await Promise.all([
+      const [
+        pendingRiskAssessmentItems,
+        pendingAppointments,
+        pendingRiskAssessmentMasters,
+        pendingMediaFiles,
+        pendingDeletedMediaFiles,
+        pendingSectionClones,
+        pendingOfflineMaterialized
+      ] = await Promise.all([
         getPendingSyncRiskAssessmentItems(),
         getPendingSyncAppointments(),
         getPendingSyncRiskAssessmentMasters(),
         getPendingSyncMediaFiles(),
-        getPendingSyncDeletedMediaFiles()
+        getPendingSyncDeletedMediaFiles(),
+        sectionCloneService.getPendingSectionClonesCount(),
+        sectionCloneService.getPendingOfflineMaterializedCount()
       ]);
 
       console.log('Pending changes found:', {
         riskAssessmentItems: pendingRiskAssessmentItems.length,
         appointments: pendingAppointments.length,
         riskAssessmentMasters: pendingRiskAssessmentMasters.length,
-        mediaFiles: pendingMediaFiles.length
+        mediaFiles: pendingMediaFiles.length,
+        sectionClones: pendingSectionClones,
+        offlineMaterializedSectionClones: pendingOfflineMaterialized
       });
 
-      // Return early if no changes to sync
-      if (pendingRiskAssessmentItems.length === 0 && pendingAppointments.length === 0 && 
-          pendingRiskAssessmentMasters.length === 0 && pendingMediaFiles.length === 0 && pendingDeletedMediaFiles.length === 0) {
+      // Return early if no changes to sync (section clone queue still triggers batch path)
+      if (
+        pendingRiskAssessmentItems.length === 0 &&
+        pendingAppointments.length === 0 &&
+        pendingRiskAssessmentMasters.length === 0 &&
+        pendingMediaFiles.length === 0 &&
+        pendingDeletedMediaFiles.length === 0 &&
+        pendingSectionClones === 0 &&
+        pendingOfflineMaterialized === 0
+      ) {
         return {
           success: true,
           message: 'No pending changes to sync.',
@@ -153,6 +173,11 @@ const riskAssessmentSyncService = {
        }
 
        console.log('🔧 Using sync configuration:', { batchSizes, delays });
+
+       const cloneDrain = await sectionCloneService.processPendingSectionClones();
+       if (cloneDrain.processed > 0 || cloneDrain.failed > 0) {
+         console.log('📋 Pending section clones drain:', cloneDrain);
+       }
 
        let totalSynced = {
          riskAssessmentItems: 0,
@@ -1300,12 +1325,22 @@ const riskAssessmentSyncService = {
    */
   getPendingChangesCount: async () => {
     try {
-      const [pendingRiskAssessmentItems, pendingAppointments, pendingRiskAssessmentMasters, pendingMediaFiles, pendingDeletedMediaFiles] = await Promise.all([
+      const [
+        pendingRiskAssessmentItems,
+        pendingAppointments,
+        pendingRiskAssessmentMasters,
+        pendingMediaFiles,
+        pendingDeletedMediaFiles,
+        pendingSectionClones,
+        pendingOfflineMaterialized
+      ] = await Promise.all([
         getPendingSyncRiskAssessmentItems(),
         getPendingSyncAppointments(),
         getPendingSyncRiskAssessmentMasters(),
         getPendingSyncMediaFiles(),
-        getPendingSyncDeletedMediaFiles()
+        getPendingSyncDeletedMediaFiles(),
+        sectionCloneService.getPendingSectionClonesCount(),
+        sectionCloneService.getPendingOfflineMaterializedCount()
       ]);
 
       return {
@@ -1314,7 +1349,16 @@ const riskAssessmentSyncService = {
         riskAssessmentMasters: pendingRiskAssessmentMasters.length,
         mediaFiles: pendingMediaFiles.length,
         deletedMediaFiles: pendingDeletedMediaFiles.length,
-        total: pendingRiskAssessmentItems.length + pendingAppointments.length + pendingRiskAssessmentMasters.length + pendingMediaFiles.length + pendingDeletedMediaFiles.length
+        sectionClones: pendingSectionClones,
+        offlineMaterializedSectionClones: pendingOfflineMaterialized,
+        total:
+          pendingRiskAssessmentItems.length +
+          pendingAppointments.length +
+          pendingRiskAssessmentMasters.length +
+          pendingMediaFiles.length +
+          pendingDeletedMediaFiles.length +
+          pendingSectionClones +
+          pendingOfflineMaterialized
       };
     } catch (error) {
       console.error('Error getting pending changes count:', error);
@@ -1324,6 +1368,8 @@ const riskAssessmentSyncService = {
         riskAssessmentMasters: 0,
         mediaFiles: 0,
         deletedMediaFiles: 0,
+        sectionClones: 0,
+        offlineMaterializedSectionClones: 0,
         total: 0
       };
     }

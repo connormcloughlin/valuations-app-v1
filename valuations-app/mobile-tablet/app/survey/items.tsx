@@ -131,7 +131,7 @@ export default function ItemsScreen() {
   // Sync-related state
   const [pendingChangesCount, setPendingChangesCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const syncFunctionRef = useRef<(() => void) | null>(null);
+  const syncFunctionRef = useRef<((options?: { silent?: boolean }) => Promise<void>) | null>(null);
   
   // Ref to access current predefined items without causing re-renders
   const predefinedItemsRef = useRef<Item[]>([]);
@@ -607,14 +607,21 @@ export default function ItemsScreen() {
               console.log('addNewItemFunction is null - function not set yet');
             }
           }}
-          onDone={() => router.back()}
+          onDone={() => {
+            if (syncFunctionRef.current) {
+              void syncFunctionRef.current({ silent: true }).catch((e) => {
+                console.warn('Background sync on Done failed:', e);
+              });
+            }
+            router.back();
+          }}
           pendingChangesCount={pendingChangesCount}
           syncing={syncing}
           onSync={() => {
             console.log('Sync button pressed, syncFunction:', syncFunctionRef.current);
             if (syncFunctionRef.current) {
               console.log('Calling syncFunction');
-              syncFunctionRef.current();
+              void syncFunctionRef.current();
             } else {
               console.log('syncFunction is null - function not set yet');
             }

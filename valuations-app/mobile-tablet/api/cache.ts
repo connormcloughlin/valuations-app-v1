@@ -33,6 +33,15 @@ export const getData = async (key: string): Promise<{ data: any; timestamp: numb
   }
 };
 
+/** Remove a single cached key (e.g. invalidate hierarchy after section clone). */
+export const removeCachedKey = async (key: string): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(key);
+  } catch (e) {
+    console.error('Error removing cache key:', e);
+  }
+};
+
 export const clearAllCachedData = async (): Promise<{ success: boolean; message?: string }> => {
   try {
     const keys = await AsyncStorage.getAllKeys();

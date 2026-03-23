@@ -558,6 +558,46 @@ export async function migrateDatabase() {
     } else {
       console.log('ℹ️ BackendMediaID column already exists');
     }
+
+    // Pending section clone mutations (offline queue — see sectionCloneService)
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS pending_section_clones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_mutation_id TEXT NOT NULL UNIQUE,
+        risk_assessment_id TEXT NOT NULL,
+        source_section_id TEXT NOT NULL,
+        target_section_name TEXT,
+        order_number TEXT NOT NULL,
+        appointment_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT
+      );
+    `);
+
+    // Offline materialized section clones (local structure + SQLite items until server reconcile)
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS offline_materialized_section_clones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_mutation_id TEXT NOT NULL UNIQUE,
+        risk_assessment_id TEXT NOT NULL,
+        source_section_id TEXT NOT NULL,
+        target_section_name TEXT,
+        order_number TEXT NOT NULL,
+        appointment_id TEXT NOT NULL,
+        local_section_id TEXT NOT NULL,
+        structure_json TEXT NOT NULL,
+        server_section_id TEXT,
+        sync_state TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    await db.execAsync(
+      `CREATE INDEX IF NOT EXISTS idx_offline_mat_section_appointment ON offline_materialized_section_clones(appointment_id, sync_state);`
+    );
     
     console.log('✅ Database migration completed');
     
@@ -634,6 +674,20 @@ export interface RiskAssessmentItem {
   appointmentid?: string;
   isDeleted?: number;
   excludefromreport?: number;
+}
+
+/** Queued POST /sections/clone when user was offline (see sectionCloneService). */
+export interface PendingSectionCloneRow {
+  id: number;
+  client_mutation_id: string;
+  risk_assessment_id: string;
+  source_section_id: string;
+  target_section_name: string | null;
+  order_number: string;
+  appointment_id: string;
+  created_at: string;
+  attempts: number;
+  last_error: string | null;
 }
 
 export interface MediaFile {
@@ -974,12 +1028,18 @@ export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmen
     const validItems = res.rows._array.filter((item: RiskAssessmentItem) => {
       const itemId = String(item.riskassessmentitemid);
       const isTemporaryId = itemId.startsWith('custom-new-') || itemId.startsWith('duplicate-');
-      
+      const isOfflineProvisionalCat = isOfflineProvisionalCategoryId(Number(item.riskassessmentcategoryid));
+
       if (isTemporaryId && __DEV__) {
         console.log(`📊 Filtering out temporary ID from sync count: ${itemId}`);
       }
-      
-      return !isTemporaryId;
+      if (isOfflineProvisionalCat && __DEV__) {
+        console.log(
+          `📊 Excluding item from sync until offline section reconciled (provisional category): ${item.riskassessmentcategoryid}`
+        );
+      }
+
+      return !isTemporaryId && !isOfflineProvisionalCat;
     });
     
     if (__DEV__ && validItems.length !== res.rows._array.length) {
@@ -998,6 +1058,180 @@ export async function getPendingSyncRiskAssessmentItems(): Promise<RiskAssessmen
     console.error('Error fetching pending sync risk assessment items:', error);
     return [];
   }
+}
+
+// --- Pending section clones (offline queue) ---
+
+export async function insertPendingSectionClone(
+  row: Omit<PendingSectionCloneRow, 'id' | 'attempts' | 'last_error'> & { attempts?: number }
+): Promise<void> {
+  await runSql(
+    `INSERT INTO pending_section_clones (
+      client_mutation_id, risk_assessment_id, source_section_id, target_section_name,
+      order_number, appointment_id, created_at, attempts, last_error
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      row.client_mutation_id,
+      row.risk_assessment_id,
+      row.source_section_id,
+      row.target_section_name ?? null,
+      row.order_number,
+      row.appointment_id,
+      row.created_at,
+      row.attempts ?? 0,
+      null
+    ]
+  );
+}
+
+export async function getAllPendingSectionClones(): Promise<PendingSectionCloneRow[]> {
+  try {
+    const res = await runSql('SELECT * FROM pending_section_clones ORDER BY id ASC');
+    return (res.rows?._array || []) as PendingSectionCloneRow[];
+  } catch (error) {
+    console.error('Error fetching pending section clones:', error);
+    return [];
+  }
+}
+
+export async function deletePendingSectionClone(id: number): Promise<void> {
+  await runSql('DELETE FROM pending_section_clones WHERE id = ?', [id]);
+}
+
+export async function incrementPendingSectionCloneAttempt(id: number, errorMessage: string): Promise<void> {
+  await runSql(
+    'UPDATE pending_section_clones SET attempts = attempts + 1, last_error = ? WHERE id = ?',
+    [errorMessage.slice(0, 500), id]
+  );
+}
+
+/** Provisional category IDs for offline materialized clones live in [8e12, 9e12). */
+export const OFFLINE_PROVISIONAL_CATEGORY_MIN = 8_000_000_000_000;
+export const OFFLINE_PROVISIONAL_CATEGORY_MAX = 9_000_000_000_000;
+
+export function isOfflineProvisionalCategoryId(categoryId: number): boolean {
+  return (
+    Number.isFinite(categoryId) &&
+    categoryId >= OFFLINE_PROVISIONAL_CATEGORY_MIN &&
+    categoryId < OFFLINE_PROVISIONAL_CATEGORY_MAX
+  );
+}
+
+export interface OfflineMaterializedSectionCloneRow {
+  id: number;
+  client_mutation_id: string;
+  risk_assessment_id: string;
+  source_section_id: string;
+  target_section_name: string | null;
+  order_number: string;
+  appointment_id: string;
+  local_section_id: string;
+  structure_json: string;
+  server_section_id: string | null;
+  sync_state: string;
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function insertOfflineMaterializedSectionClone(row: {
+  client_mutation_id: string;
+  risk_assessment_id: string;
+  source_section_id: string;
+  target_section_name: string | null;
+  order_number: string;
+  appointment_id: string;
+  local_section_id: string;
+  structure_json: string;
+}): Promise<number> {
+  const now = new Date().toISOString();
+  const res = await runSql(
+    `INSERT INTO offline_materialized_section_clones (
+      client_mutation_id, risk_assessment_id, source_section_id, target_section_name,
+      order_number, appointment_id, local_section_id, structure_json, sync_state, attempts, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+    [
+      row.client_mutation_id,
+      row.risk_assessment_id,
+      row.source_section_id,
+      row.target_section_name,
+      row.order_number,
+      row.appointment_id,
+      row.local_section_id,
+      row.structure_json,
+      now,
+      now
+    ]
+  );
+  const id = Number(res.insertId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('insertOfflineMaterializedSectionClone: missing insert id');
+  }
+  return id;
+}
+
+export async function getOfflineMaterializedSectionCloneByLocalSectionId(
+  localSectionId: string
+): Promise<OfflineMaterializedSectionCloneRow | null> {
+  const res = await runSql(
+    'SELECT * FROM offline_materialized_section_clones WHERE local_section_id = ? LIMIT 1',
+    [localSectionId]
+  );
+  const row = res.rows?._array?.[0] as OfflineMaterializedSectionCloneRow | undefined;
+  return row ?? null;
+}
+
+export async function getOfflineMaterializedSectionClonesByAppointment(
+  appointmentId: string
+): Promise<OfflineMaterializedSectionCloneRow[]> {
+  const res = await runSql(
+    'SELECT * FROM offline_materialized_section_clones WHERE appointment_id = ? ORDER BY id ASC',
+    [appointmentId]
+  );
+  return (res.rows?._array || []) as OfflineMaterializedSectionCloneRow[];
+}
+
+export async function getPendingOfflineMaterializedSectionClones(): Promise<OfflineMaterializedSectionCloneRow[]> {
+  const res = await runSql(
+    `SELECT * FROM offline_materialized_section_clones
+     WHERE sync_state = 'pending' OR sync_state = 'failed'
+     ORDER BY id ASC`
+  );
+  return (res.rows?._array || []) as OfflineMaterializedSectionCloneRow[];
+}
+
+export async function deleteOfflineMaterializedSectionClone(id: number): Promise<void> {
+  await runSql('DELETE FROM offline_materialized_section_clones WHERE id = ?', [id]);
+}
+
+export async function updateOfflineMaterializedSectionCloneState(
+  id: number,
+  syncState: string,
+  serverSectionId?: string | null
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (serverSectionId !== undefined) {
+    await runSql(
+      `UPDATE offline_materialized_section_clones SET sync_state = ?, server_section_id = ?, updated_at = ?, last_error = NULL WHERE id = ?`,
+      [syncState, serverSectionId, now, id]
+    );
+  } else {
+    await runSql(
+      `UPDATE offline_materialized_section_clones SET sync_state = ?, updated_at = ?, last_error = NULL WHERE id = ?`,
+      [syncState, now, id]
+    );
+  }
+}
+
+export async function incrementOfflineMaterializedSectionCloneAttempt(
+  id: number,
+  errorMessage: string
+): Promise<void> {
+  await runSql(
+    `UPDATE offline_materialized_section_clones SET attempts = attempts + 1, last_error = ?, updated_at = ? WHERE id = ?`,
+    [errorMessage.slice(0, 500), new Date().toISOString(), id]
+  );
 }
 
 // Mark risk assessment items as synced (clear pending_sync flag)
@@ -1444,6 +1678,8 @@ export async function clearAllCachedTables(): Promise<void> {
     await database.runAsync('DELETE FROM appointments');
     await database.runAsync('DELETE FROM media_files');
     await database.runAsync('DELETE FROM category_configurations');
+    await database.runAsync('DELETE FROM pending_section_clones');
+    await database.runAsync('DELETE FROM offline_materialized_section_clones');
     
     // Reset auto-increment counters
     await database.runAsync('DELETE FROM sqlite_sequence WHERE name IN ("media_files")');

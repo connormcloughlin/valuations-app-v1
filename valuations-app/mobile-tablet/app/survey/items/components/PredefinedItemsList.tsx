@@ -126,7 +126,15 @@ export default function PredefinedItemsList({
   
   // ScrollView ref for auto-scrolling to new items
   const scrollViewRef = useRef<ScrollView>(null);
-  
+  /** False after unmount — skip setState when Done triggers background sync */
+  const listMountedRef = useRef(true);
+  useEffect(() => {
+    listMountedRef.current = true;
+    return () => {
+      listMountedRef.current = false;
+    };
+  }, []);
+
   // Initialize local items state with props items while preserving new/duplicate items
   useEffect(() => {
     if (propsItems && propsItems.length > 0) {
@@ -350,12 +358,15 @@ export default function PredefinedItemsList({
            (model && model.trim() !== '') || (notes && notes.trim() !== '');
   }, [editItems, assessmentType]);
 
-  // Handle sync
-  const handleSync = useCallback(async () => {
-    setSyncing(true);
-    setSyncStatus('idle');
-    setSyncMessage('');
-    
+  // Handle sync (`silent`: no Alert popups — used when leaving screen via Done)
+  const handleSync = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      setSyncing(true);
+      setSyncStatus('idle');
+      setSyncMessage('');
+    }
+
     try {
       console.log('=== PREDEFINED ITEMS: STARTING SYNC PROCESS ===');
       console.log('Current predefined items state:', items.length, 'items');
@@ -376,7 +387,12 @@ export default function PredefinedItemsList({
       });
       
       const result = await riskAssessmentSyncService.syncPendingChanges();
-      
+
+      // Done → navigate away: don't touch React state after unmount
+      if (silent && !listMountedRef.current) {
+        return;
+      }
+
       if (result.success) {
         setSyncStatus('success');
         if (result.synced && (result.synced.riskAssessmentItems > 0 || result.synced.appointments > 0 || result.synced.riskAssessmentMasters > 0)) {
@@ -419,35 +435,42 @@ export default function PredefinedItemsList({
         }
         // --- END REFRESH LOGIC ---
         
-        // Show success alert
-        Alert.alert(
-          'Sync Complete',
-          result.message || `Successfully synced ${(result.synced?.riskAssessmentItems || 0) + (result.synced?.riskAssessmentMasters || 0) + (result.synced?.appointments || 0)} items to server.`,
-          [{ text: 'OK' }]
-        );
+        if (!silent) {
+          Alert.alert(
+            'Sync Complete',
+            result.message || `Successfully synced ${(result.synced?.riskAssessmentItems || 0) + (result.synced?.riskAssessmentMasters || 0) + (result.synced?.appointments || 0)} items to server.`,
+            [{ text: 'OK' }]
+          );
+        }
       } else {
         setSyncStatus('error');
         setSyncMessage(result.error || 'Sync failed');
         
-        // Show error alert
-        Alert.alert(
-          'Sync Failed',
-          result.error || 'Failed to sync changes to server. Please try again.',
-          [{ text: 'OK' }]
-        );
+        if (!silent) {
+          Alert.alert(
+            'Sync Failed',
+            result.error || 'Failed to sync changes to server. Please try again.',
+            [{ text: 'OK' }]
+          );
+        }
       }
     } catch (error) {
-      setSyncStatus('error');
-      setSyncMessage('Unexpected error during sync');
       console.error('Sync error:', error);
-      
-      Alert.alert(
-        'Sync Error',
-        'An unexpected error occurred during sync. Please try again.',
-        [{ text: 'OK' }]
-      );
+      if (listMountedRef.current) {
+        setSyncStatus('error');
+        setSyncMessage('Unexpected error during sync');
+        if (!silent) {
+          Alert.alert(
+            'Sync Error',
+            'An unexpected error occurred during sync. Please try again.',
+            [{ text: 'OK' }]
+          );
+        }
+      }
     } finally {
-      setSyncing(false);
+      if (listMountedRef.current) {
+        setSyncing(false);
+      }
     }
   }, []);
 
@@ -1797,14 +1820,24 @@ export default function PredefinedItemsList({
         field.allows_multiple_selection === true ||
         (item as any).multiSelectAnswer === true ||
         String((item as any).multiSelectSelectedAnswer || '').toLowerCase() === 'true';
+      // Preserve API/per-item types: radio_group must not be clobbered to dropdown when options come from commaseparatedlist
+      const typeNorm = String(field.field_type || '')
+        .toLowerCase()
+        .replace(/-/g, '_');
+      const isRadioGroup = typeNorm === 'radio_group' || field.field_type === 'radioGroup';
+      const resolvedFieldType = wantMulti
+        ? 'multiselect'
+        : isRadioGroup
+          ? 'radio_group'
+          : 'dropdown';
       const enhancedField = {
         ...field,
         dropdownOptions,
-        field_type: wantMulti ? 'multiselect' : 'dropdown',
+        field_type: resolvedFieldType,
         ...(wantMulti ? { allows_multiple_selection: true } : {})
       };
       if (__DEV__) {
-        console.log('🎯 Enhanced selectedanswer field with dropdown options:', {
+        console.log('🎯 Enhanced selectedanswer field with list options:', {
           enhancedFieldType: enhancedField.field_type,
           dropdownOptionsCount: enhancedField.dropdownOptions.length
         });
@@ -1884,17 +1917,17 @@ export default function PredefinedItemsList({
       }
 
       return (
-        <View key={bundleKey} style={[predefinedItemsListStyles.dynamicFieldContainer, { flex: 1, minWidth: 0 }]}>
+        <View key={bundleKey} style={predefinedItemsListStyles.dynamicFieldGridFullBleed}>
           <View
             style={[
               predefinedItemsListStyles.dynamicFieldRowSideBySide,
               predefinedItemsListStyles.dynamicFieldRowSideBySideMultiline
             ]}
           >
-            <Text style={predefinedItemsListStyles.dynamicFieldLabelLeft} numberOfLines={3}>
+            <Text style={predefinedItemsListStyles.dynamicFieldGridLabel} numberOfLines={3}>
               {answerField.field_label}:
             </Text>
-            <View style={predefinedItemsListStyles.dynamicFieldControlWrap}>
+            <View style={predefinedItemsListStyles.dynamicFieldGridControlFlex}>
               <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <DynamicFieldRenderer
@@ -1929,49 +1962,48 @@ export default function PredefinedItemsList({
       );
     };
 
-    const renderField = (fieldParam: any) => {
+    /** One segment: [right-aligned label][control] as part of a full-width grid row (one or two fields per line). */
+    const renderGridFieldSegment = (fieldParam: any, segKey: string) => {
       const field = applySelectedAnswerEnhancements({ ...fieldParam });
       const fieldName = field.item_fields;
 
       if (fieldName === 'notes') {
         const notesError = itemErrors.find(e => e.fieldName === 'notes');
         return (
-          <View key={fieldName} style={[predefinedItemsListStyles.dynamicFieldContainer, { flex: 1, minWidth: 0 }]}>
+          <React.Fragment key={segKey}>
+            <Text style={predefinedItemsListStyles.dynamicFieldGridLabel} numberOfLines={3}>
+              {field.field_label}:
+            </Text>
             <View
               style={[
-                predefinedItemsListStyles.dynamicFieldRowSideBySide,
-                predefinedItemsListStyles.dynamicFieldRowSideBySideMultiline
+                predefinedItemsListStyles.dynamicFieldGridControlFlex,
+                { flexDirection: 'row', alignItems: 'flex-start' },
               ]}
             >
-              <Text style={predefinedItemsListStyles.dynamicFieldLabelLeft} numberOfLines={3}>
-                {field.field_label}:
-              </Text>
-              <View style={[predefinedItemsListStyles.dynamicFieldControlWrap, { flexDirection: 'row', alignItems: 'flex-start' }]}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={predefinedItemsListStyles.notesCalloutBox}>
-                    <TextInput
-                      multiline
-                      placeholder={field.placeholder || 'Notes...'}
-                      placeholderTextColor="#95a5a6"
-                      value={String(getFieldValue('notes') ?? '')}
-                      onChangeText={(t) => handleEdit(itemId, 'notes', t)}
-                      onBlur={() => {
-                        const v = getFieldValue('notes');
-                        autoSaveItem(itemId, { notes: v });
-                      }}
-                      style={predefinedItemsListStyles.notesCalloutInput}
-                    />
-                    {notesError ? (
-                      <Text style={{ color: '#e74c3c', fontSize: 12, marginTop: 4 }}>{notesError.message}</Text>
-                    ) : null}
-                  </View>
-                </View>
-                <View style={predefinedItemsListStyles.notesStandaloneIconColumn}>
-                  <MaterialCommunityIcons name="comment-text-outline" size={22} color="#7f8c8d" />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={predefinedItemsListStyles.notesCalloutBox}>
+                  <TextInput
+                    multiline
+                    placeholder={field.placeholder || 'Notes...'}
+                    placeholderTextColor="#95a5a6"
+                    value={String(getFieldValue('notes') ?? '')}
+                    onChangeText={(t) => handleEdit(itemId, 'notes', t)}
+                    onBlur={() => {
+                      const v = getFieldValue('notes');
+                      autoSaveItem(itemId, { notes: v });
+                    }}
+                    style={predefinedItemsListStyles.notesCalloutInput}
+                  />
+                  {notesError ? (
+                    <Text style={{ color: '#e74c3c', fontSize: 12, marginTop: 4 }}>{notesError.message}</Text>
+                  ) : null}
                 </View>
               </View>
+              <View style={predefinedItemsListStyles.notesStandaloneIconColumn}>
+                <MaterialCommunityIcons name="comment-text-outline" size={22} color="#7f8c8d" />
+              </View>
             </View>
-          </View>
+          </React.Fragment>
         );
       }
 
@@ -1987,18 +2019,22 @@ export default function PredefinedItemsList({
         });
       }
 
-      // Without grouping only: show item prompt as bold title (web row header), no control.
-      // All other fields (grouped or not): label left, control right — matches web table columns.
       const isItemPromptRow =
         !groupingStrategy && (fieldName === 'type' || fieldName === 'ItemPrompt');
 
-      const isMultilineField = field.field_type === 'textarea';
+      if (isItemPromptRow) {
+        return (
+          <View key={segKey} style={predefinedItemsListStyles.dynamicFieldGridFullBleed}>
+            <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 6 }}>{currentValue}</Text>
+          </View>
+        );
+      }
 
       const fieldControl = (
         <DynamicFieldRenderer
           field={field}
           value={currentValue}
-          onChange={(fieldName, value) => handleEdit(itemId, fieldName, value)}
+          onChange={(fn, value) => handleEdit(itemId, fn, value)}
           validationError={fieldError}
           handwritingEnabled={false}
           onOpenHandwriting={() => {}}
@@ -2020,33 +2056,12 @@ export default function PredefinedItemsList({
       );
 
       return (
-        <View key={fieldName} style={[
-          predefinedItemsListStyles.dynamicFieldContainer,
-          { flex: 1, minWidth: 0 }
-        ]}>
-          {isItemPromptRow ? (
-            <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 6 }}>
-              {currentValue}
-            </Text>
-          ) : (
-            <View
-              style={[
-                predefinedItemsListStyles.dynamicFieldRowSideBySide,
-                isMultilineField && predefinedItemsListStyles.dynamicFieldRowSideBySideMultiline
-              ]}
-            >
-              <Text
-                style={predefinedItemsListStyles.dynamicFieldLabelLeft}
-                numberOfLines={3}
-              >
-                {field.field_label}:
-              </Text>
-              <View style={predefinedItemsListStyles.dynamicFieldControlWrap}>
-                {fieldControl}
-              </View>
-            </View>
-          )}
-        </View>
+        <React.Fragment key={segKey}>
+          <Text style={predefinedItemsListStyles.dynamicFieldGridLabel} numberOfLines={3}>
+            {field.field_label}:
+          </Text>
+          <View style={predefinedItemsListStyles.dynamicFieldGridControlFlex}>{fieldControl}</View>
+        </React.Fragment>
       );
     };
 
@@ -2073,27 +2088,65 @@ export default function PredefinedItemsList({
     ) : null;
 
     const layoutCells = buildLayoutCells(visibleFields);
-    const fieldRows: LayoutCell[][] = [];
-    for (let i = 0; i < layoutCells.length; i += 2) {
-      fieldRows.push(layoutCells.slice(i, i + 2));
-    }
+
+    const isPromptOnlyCell = (cell: LayoutCell) =>
+      cell.kind === 'field' &&
+      !groupingStrategy &&
+      (cell.field.item_fields === 'type' || cell.field.item_fields === 'ItemPrompt');
+
+    /** Pair two fields on one line using a full-width grid (20% label + flex control) × 2 — not nested 50% cells. */
+    const buildPairedFieldRows = (cells: LayoutCell[]): LayoutCell[][] => {
+      const rows: LayoutCell[][] = [];
+      let i = 0;
+      while (i < cells.length) {
+        const a = cells[i];
+        if (a.kind === 'answerWithNotes' || isPromptOnlyCell(a)) {
+          rows.push([a]);
+          i += 1;
+          continue;
+        }
+        const b = cells[i + 1];
+        if (!b || b.kind === 'answerWithNotes' || isPromptOnlyCell(b)) {
+          rows.push([a]);
+          i += 1;
+          continue;
+        }
+        rows.push([a, b]);
+        i += 2;
+      }
+      return rows;
+    };
+
+    const fieldRows = buildPairedFieldRows(layoutCells);
 
     return (
       <>
         {newItemTypeBlock}
-        {fieldRows.map((rowCells, rowIndex) => (
-          <View key={rowIndex} style={predefinedItemsListStyles.detailRow}>
-            {rowCells.map((cell, cellIndex) =>
-              cell.kind === 'answerWithNotes'
-                ? renderAnswerWithNotesBundle(
+        {fieldRows.map((rowCells, rowIndex) => {
+          if (rowCells.length === 1 && rowCells[0].kind === 'answerWithNotes') {
+            const cell = rowCells[0];
+            return (
+              <View key={rowIndex} style={predefinedItemsListStyles.dynamicFieldGridRow}>
+                <View style={predefinedItemsListStyles.dynamicFieldGridFullBleed}>
+                  {renderAnswerWithNotesBundle(
                     cell.answerField,
                     cell.notesField,
-                    `ans-notes-${itemId}-${rowIndex}-${cellIndex}`
-                  )
-                : renderField(cell.field)
-            )}
-          </View>
-        ))}
+                    `ans-notes-${itemId}-${rowIndex}`
+                  )}
+                </View>
+              </View>
+            );
+          }
+          return (
+            <View key={rowIndex} style={predefinedItemsListStyles.dynamicFieldGridRow}>
+              {rowCells.map((cell, j) =>
+                cell.kind === 'field'
+                  ? renderGridFieldSegment(cell.field, `${rowIndex}-${j}`)
+                  : null
+              )}
+            </View>
+          );
+        })}
       </>
     );
   }, [dynamicFieldConfig, categoryConfig, validationErrors, handleEdit, items, itemPhotos, handleViewPhotos, autoSaveItem, groupingStrategy, getDefaultQuantity]);

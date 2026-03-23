@@ -2541,6 +2541,10 @@ export const dynamicFieldRendererStyles = StyleSheet.create({
   inputError: {
     borderColor: '#e74c3c',
   },
+  /** Integer qty-style fields: right-aligned, grouped display (see DynamicFieldRenderer number) */
+  numberInput: {
+    textAlign: 'right' as const,
+  },
   textAreaInput: {
     minHeight: 80,
     textAlignVertical: 'top',
@@ -2646,6 +2650,7 @@ export const dynamicFieldRendererStyles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     borderWidth: 0, // Remove border since container has it
+    textAlign: 'right' as const,
   },
   
   // Combobox styles
@@ -3738,19 +3743,47 @@ export const predefinedItemsListStyles = StyleSheet.create({
   dynamicFieldRowSideBySideMultiline: {
     alignItems: 'flex-start',
   },
+  /** Label column: fixed share of row width; text right-aligned against controls (web table / form grid). */
   dynamicFieldLabelLeft: {
     fontSize: 13,
     fontWeight: '600',
     color: '#34495e',
-    width: '38%',
-    maxWidth: 160,
+    width: '40%',
     paddingRight: 10,
     flexShrink: 0,
+    textAlign: 'right',
   },
   dynamicFieldControlWrap: {
     flex: 1,
     flexBasis: 0,
     minWidth: 0,
+  },
+  /**
+   * Full-width row: [label 20%][control flex][label 20%][control flex] so two fields share one line
+   * with labels/controls aligned to the same grid (not 40% of each half-cell).
+   */
+  dynamicFieldGridRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    width: '100%',
+    marginBottom: 12,
+  },
+  dynamicFieldGridLabel: {
+    width: '20%',
+    paddingRight: 8,
+    flexShrink: 0,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#34495e',
+    textAlign: 'right',
+  },
+  dynamicFieldGridControlFlex: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dynamicFieldGridFullBleed: {
+    width: '100%',
   },
   detailRow: {
     flexDirection: 'row',

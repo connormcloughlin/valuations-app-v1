@@ -8,9 +8,10 @@ This document describes how fields are configured, filtered, and rendered in the
 
 - **Primary source:** Category configuration is loaded via **ConfigurationService** (`services/configurationService.ts`).
 - **API used for order-level config:** `getOrderCategoryFieldConfigurations(orderId)` in `api/hierarchy.ts` calls  
-  `GET /mobile/config/order/{orderId}/categories/complete` (transport key: `config.order.categories`). The response is cached and then passed to `configurationService.cacheOrderFieldConfigurations(orderId, configData)`.
+  `GET /mobile/config/order/{orderId}/categories/complete` (transport key: `config.order.categories`). The response is cached (including `order_field_configurations_*`) and applied via **`prefetchService.applyOrderFieldConfigurationCaches(orderId, configData)`**, which writes both `configurationService.cacheOrderFieldConfigurations` (AsyncStorage `dynamic_ui_config_*`) and **`prefetchService.storeOrderCategoryConfigurationsInSQLite`**.
+- **Prefetch:** When building the appointment prefetch queue, **`fetchAndApplyOrderFieldConfigurationCaches(orderNumber)`** runs in parallel with complete-hierarchy so SQLite/AsyncStorage are hydrated **before** per-category tasks. Per-category **`GET /risk-assessment-category-type-fields/category/{id}`** is **not** used for Dynamic UI; it is only an **optional online fallback** when SQLite has no row for that assessment or template category id (legacy `field_config_*` cache).
 - **Alternative path:** Configuration can also come from:
-  - Prefetched/SQLite data (e.g. `prefetchService.getCategoryConfigurationByIdFromSQLite(categoryId)`), or
+  - SQLite from startup `categories/all/complete` when the table was empty (`ensureCategoryConfigurationsLoaded`), or
   - The composite endpoint `/mobile/config/category/{riskTemplateCategoryId}/complete` when no cached config exists.
 - **Items screen:** `app/survey/items.tsx` calls `fetchFieldConfiguration(categoryId)`, which uses `configurationService.getCategoryConfiguration()`. The returned **visible** fields (`display_on_ui === 1`) are stored as `dynamicFieldConfig` and passed into `PredefinedItemsList` as `dynamicFieldConfig`.
 
@@ -99,7 +100,7 @@ The app decides whether the **field prompt** (Item Type / `type` / ItemPrompt) i
 ### 4.1 When there is **no** grouping strategy
 
 - In the dynamic field rows, the field with `item_fields === 'type'` or `'ItemPrompt'` is **never** rendered as an input. It is rendered as **display-only**: a bold `<Text>` showing the current value (`currentValue`). No `DynamicFieldRenderer` is used for that field.
-- **All other fields** use a **visible label** (`field.field_label` + `:`) and `DynamicFieldRenderer` with `hideLabel={true}`. Layout: label and control are in a **horizontal row** (label ~38% width on the left, control flexes on the right—web table parity) for **both grouped and non-grouped** templates; **notes/textarea** use **top-aligned** labels in that row. The only exception is the **non-grouped item prompt** row (`type` / `ItemPrompt`), which stays a **bold full-width title** with no side-by-side control.
+- **All other fields** use a **visible label** (`field.field_label` + `:`) and `DynamicFieldRenderer` with `hideLabel={true}`. Layout uses a **full-width grid row**: each segment is **~20% label** (**right-aligned**) + **`flex: 1` control**. Up to **two fields** share one row (`[label][control][label][control]`) so controls line up vertically across the card. The only exception is the **non-grouped item prompt** (`type` / `ItemPrompt`), which stays a **bold full-width title** on its own row (never paired). **`selectedanswer` + `notes`** bundle stays **full width** on its own row.
 
 So with no grouping, the type prompt is display-only in the grid; other fields are **labeled** inputs (web parity for flat templates such as Header Info).
 
@@ -174,8 +175,8 @@ So a config with `field_type: 'dropdown'` but no options is effectively rendered
 
 ### 6.2c Radio group
 
-- **When:** `field_type === 'radio_group'` (API may send `radioGroup`, `radio-group`, or `radio`; **ConfigurationService** maps to `radio_group`).
-- **If `dropdownOptions` is missing or empty:** Renders as a **text field**.
+- **When:** `field_type === 'radio_group'` (API may send `radioGroup`, `radio-group`, or `radio`; **ConfigurationService** maps to `radio_group`). Per-item overrides in order `categories/complete` (e.g. **Urban / Remote** with `SelectedAnswer` as `radio_group` while the category template row is still `dropdown`) are applied via **`itemFieldConfigs`** keyed by normalised `itemPrompt` (see **PredefinedItemsList** `effectiveFieldConfig`).
+- **If `dropdownOptions` is missing or empty:** Renders as a **text field** — **unless** the item has **`commaseparatedlist`**: **PredefinedItemsList** `applySelectedAnswerEnhancements` builds `dropdownOptions` from that string (same as dropdown) but **keeps `field_type` as `radio_group`** when not multi-select, so the UI shows radio rows instead of forcing `dropdown`.
 - **Otherwise:** Renders a **vertical list** of tappable rows with radio icons (`radiobox-marked` / `radiobox-blank`); one `option_value` stored at a time. `onBlur` runs after selection (same pattern as other pickers). **Validation** uses the same rules as **dropdown** (value must be one of active options; `is_active !== false`).
 
 ### 6.3 Combobox / auto_suggest / auto_suggest_box
@@ -206,9 +207,9 @@ So a config with `field_type: 'dropdown'` but no options is effectively rendered
 
 - Visible (non-grouping) fields are sorted by **`display_order`**, then a **tie-break** so **`quantity` → `selectedanswer` → `notes`** when orders match (so **SelectedAnswer + Notes** bundle below works), then alphabetical by `item_fields`.
 - **`selectedanswer` immediately followed by `notes`** in that list is rendered as one **bundle** (web-style): label for the answer field on the left; on the right, the answer control with a **comment icon**, then a **grey callout** under the control with a small **upward caret**, multiline **Notes…** input, and validation error under the box. **`notes` without an adjacent preceding `selectedanswer`** uses the same grey callout + **icon to the right** of the box.
-- They are chunked **two fields per row** (sequential pairs). Each cell is **label left | control right** (`dynamicFieldRowSideBySide`). **Notes/textarea** can share a row with another field (e.g. SelectedAnswer + Notes), matching a compact web-style grid.
-- A **trailing odd field** occupies a row alone and still grows with `flex: 1` (effectively half row width unless you add a full-width style later).
-- **`layoutMode` / `inline_row`** on `CategoryConfiguration` is still accepted from the API but **no longer changes** this list layout (pairing is always used).
+- Consecutive **non-bundle** fields are paired onto **one full-width row** when possible: `dynamicFieldGridRow` lays out **`[label 20%][flex control][label 20%][flex control]`** so both columns share the same grid as single-field rows (unlike nesting two `flex:1` cells that each had their own 40% label).
+- **Do not pair** with the next field when: the cell is **`selectedanswer`+`notes` bundle** (always its own row), or the field is the **item prompt** (`type` / `ItemPrompt` without grouping).
+- Labels use **`dynamicFieldGridLabel`** (right-aligned). **`layoutMode` / `inline_row`** on `CategoryConfiguration` is still accepted from the API but does not change this list layout.
 
 ---
 
@@ -231,7 +232,7 @@ So a config with `field_type: 'dropdown'` but no options is effectively rendered
 | **Visibility** | Only fields with `display_on_ui === 1` are considered; then grouping fields are excluded for existing items. |
 | **Dropdown from API** | `field_type === 'dropdown'` + non-empty `dropdownOptions` → modal dropdown. No options → text field. |
 | **Radio group** | `field_type === 'radio_group'` + `dropdownOptions` → vertical radio list; validated like dropdown. No options → text field. |
-| **Comma-separated list** | Only for **`selectedanswer`**: if item has `commaseparatedlist`, options are parsed from it; field becomes `dropdown` or `multiselect` per item/API flags; value stored in `selectedanswer` (comma-separated for multi). |
+| **Comma-separated list** | Only for **`selectedanswer`**: if item has `commaseparatedlist`, options are parsed from it; field becomes **`dropdown`**, **`multiselect`**, or **`radio_group`** (the last when the effective field config is already `radio_group` and not multi-select); value stored in `selectedanswer` (comma-separated for multi). |
 | **Grouping strategy** | Normalised from `{ "0": {...} }`, arrays, and string `strategy_config` in **ConfigurationService**. |
 | **Header subtitle** | `categoryConfig.sectionName` when provided by API. |
 | **Field rows** | Two fields per row (sequential pairs); each field is label-left + control. |

@@ -159,6 +159,14 @@ This document provides a comprehensive list of all external API endpoints used b
 - **Features**: Offline caching, graceful 404 handling
 - **Response**: Array of item objects
 
+### 7. Clone Risk Assessment Section (structure-only)
+- **Endpoint**: `POST /mobile/risk-assessment/{riskAssessmentId}/sections/clone`
+- **Purpose**: Duplicate a section’s structure (categories + item shells) within the same assessment; no copied answers or media
+- **Parameters**: `riskAssessmentId` (number): Risk assessment master ID (path)
+- **Body**: `sourceRiskAssessmentSectionId` (number), optional `targetSectionName`, optional `clientMutationId` (UUID) for idempotent retries
+- **Mobile**: `cloneRiskAssessmentSection` in `api/hierarchy.ts`; **offline-first copy** materializes locally in `offline_materialized_section_clones` + provisional `risk_assessment_items`, then the same clone POST runs on sync to remap IDs (see `services/offlineSectionMaterialization.ts`). Legacy rows may still exist in `pending_section_clones`.
+- **Spec**: `BACKEND_SECTION_CLONE_API_SPEC.md`, `BACKEND_OFFLINE_SECTION_CLONE_SYNC.md`, `SECTION_CLONE_QA.md`
+
 ## Dynamic UI Configuration Endpoints
 
 ### 1. Complete Category Configuration
@@ -193,11 +201,12 @@ This document provides a comprehensive list of all external API endpoints used b
 - **Parameters**: `templateId` (number): Template ID
 - **Response**: Template categories configuration
 
-### 6. Field Configuration
+### 6. Field Configuration (type-fields — optional fallback only on mobile)
 - **Endpoint**: `GET /risk-assessment-category-type-fields/category/{categoryId}`
-- **Purpose**: Get field configuration for a category
-- **Parameters**: `categoryId` (number): Category ID
-- **Response**: Field configuration data
+- **Purpose**: Legacy field-configuration shape; **not** the primary source for survey Dynamic UI on mobile.
+- **Mobile behaviour**: Order-level **`GET /mobile/config/order/{orderId}/categories/complete`** hydrates SQLite + `dynamic_ui_config_*` via `prefetchService.applyOrderFieldConfigurationCaches`. Appointment prefetch calls this once in parallel with complete-hierarchy. Type-fields is used only when SQLite has no config for the risk assessment **or** template category id **and** the device is online (see `prefetchService.ensureFieldConfigurationForCategory`).
+- **Parameters**: `categoryId` (number): Risk assessment category ID
+- **Response**: Field configuration data (stored in legacy `field_config_*` AsyncStorage keys if fetched)
 
 ### 7. All Categories Configuration
 - **Endpoint**: `GET /mobile/config/categories/all/complete`

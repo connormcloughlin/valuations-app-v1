@@ -1,4 +1,3 @@
-import api from '../api';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../constants/apiConfig';
@@ -15,6 +14,10 @@ import {
 } from '../utils/db';
 import imagePrefetchService from './imagePrefetchService';
 import offlineStorage from '../utils/offlineStorage';
+import {
+  getAssessmentMastersFromHierarchyPayload,
+  peelCompleteHierarchyInner
+} from '../utils/completeHierarchyPayload';
 
 // Types
 interface PrefetchTask {
@@ -107,29 +110,10 @@ class PrefetchService {
       this.stopPrefetch();
     }
 
-    console.log(`🚀 Starting prefetch for appointment: ${appointmentId}`);
-    
-    // Check if we already have data for this appointment BEFORE making any API calls
-    const cachedData = await this.checkPrefetchedData(appointmentId);
-    console.log(`🔍 PREFETCH SERVICE - checkPrefetchedData returned: ${cachedData} for appointment ${appointmentId}`);
-    if (cachedData) {
-      // Check if existing data has null category IDs (from old incorrect mapping)
-      const { getAllRiskAssessmentItems } = await import('../utils/db');
-      const existingItems = await getAllRiskAssessmentItems();
-      const nullCategoryItems = existingItems.filter(item => 
-        item.riskassessmentcategoryid === null &&
-        String(item.appointmentid) === String(appointmentId)
-      );
+    console.log(
+      `🚀 Starting prefetch for appointment: ${appointmentId} (always building queue when online; per-category tasks skip if SQLite already has items)`
+    );
 
-      if (nullCategoryItems.length > 0) {
-        console.log(`⚠️ PREFETCH SERVICE - Found ${nullCategoryItems.length} items with null category IDs, forcing re-prefetch`);
-        // Continue with prefetch to fix the data
-      } else {
-        console.log(`✅ PREFETCH SERVICE - Data already prefetched for appointment ${appointmentId} - skipping prefetch`);
-        return true;
-      }
-    }
-    
     // Check network connectivity
     const netInfo = await NetInfo.fetch();
     if (!netInfo.isConnected) {
@@ -174,49 +158,130 @@ class PrefetchService {
     }
   }
 
-  // Check if data is already prefetched
-  private async checkPrefetchedData(appointmentId: string): Promise<boolean> {
-    try {
-      console.log(`🔍 PREFETCH SERVICE - Checking if data already exists for appointment ${appointmentId}`);
-      
-      // First check SQLite for risk assessment items specific to this appointment
-      const db = await waitForDatabase();
-      const results = await db.getAllAsync(
-        'SELECT COUNT(*) as count FROM risk_assessment_items WHERE appointmentid = ?',
-        [appointmentId]
-      );
-      
-      console.log(`🔍 PREFETCH SERVICE - SQLite query results:`, results);
-      
-      if (results && results.length > 0 && typeof results[0] === 'object' && results[0] !== null && 'count' in results[0]) {
-        const count = (results[0] as { count: number }).count;
-        console.log(`🔍 PREFETCH SERVICE - Found ${count} items in SQLite for appointment ${appointmentId}`);
-        if (count > 0) {
-          console.log(`✅ PREFETCH SERVICE - Data already exists, skipping prefetch`);
-          return true;
-        } else {
-          console.log(`❌ PREFETCH SERVICE - No items found in SQLite for appointment ${appointmentId}`);
-        }
-      } else {
-        console.log(`❌ PREFETCH SERVICE - Invalid SQLite query results for appointment ${appointmentId}`);
-      }
-
-      // If no items in SQLite, check AsyncStorage as fallback
-      const cachedCategories = await AsyncStorage.getItem(`assessment_categories_${appointmentId}`);
-      const cachedSections = await AsyncStorage.getItem(`assessment_sections_${appointmentId}`);
-      const cachedTemplates = await AsyncStorage.getItem(`assessment_templates_${appointmentId}`);
-
-      if (cachedCategories || cachedSections || cachedTemplates) {
-        console.log(`✅ Found cached data in AsyncStorage for appointment ${appointmentId}`);
-        return true;
-      }
-
-      console.log(`❌ No prefetched data found for appointment ${appointmentId}`);
-      return false;
-    } catch (error) {
-      console.error('Error checking prefetched data:', error);
-      return false;
+  /**
+   * Resolve assessment category id from composite/hierarchy category objects (API casing varies).
+   */
+  private resolveRiskAssessmentCategoryId(category: any): string | null {
+    const raw =
+      category?.riskAssessmentCategoryId ??
+      category?.riskassessmentcategoryid ??
+      category?.categoryId ??
+      category?.CategoryId;
+    if (raw === undefined || raw === null || raw === '') {
+      return null;
     }
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) {
+      return String(n);
+    }
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      return raw.trim();
+    }
+    return null;
+  }
+
+  /**
+   * complete-hierarchy: single or double-wrapped `{ data: { data: { assessmentMasters }}}` (see completeHierarchyPayload).
+   */
+  private normalizeHierarchyAssessmentMasters(hierarchyData: any): any[] {
+    if (!hierarchyData) return [];
+    const peeled = getAssessmentMastersFromHierarchyPayload(hierarchyData);
+    if (peeled.length > 0) return peeled;
+    const fromNested = hierarchyData.data?.assessmentMasters;
+    const fromTop = hierarchyData.assessmentMasters;
+    if (Array.isArray(fromNested)) return fromNested;
+    if (Array.isArray(fromTop)) return fromTop;
+    return [];
+  }
+
+  private hierarchyResponseIsUsable(hierarchyData: any): boolean {
+    if (!hierarchyData) return false;
+    if (hierarchyData.success === false) return false;
+    return this.normalizeHierarchyAssessmentMasters(hierarchyData).length > 0;
+  }
+
+  /** Backend may omit items on hierarchy nodes; try common keys + PascalCase. */
+  private extractEmbeddedCategoryItems(category: any): any[] {
+    const raw =
+      category?.items ??
+      category?.Items ??
+      category?.riskAssessmentItems ??
+      category?.RiskAssessmentItems;
+    return Array.isArray(raw) ? raw : [];
+  }
+
+  /** transportClient returns axios body — array or { data: [] }. */
+  private normalizeItemsArrayResponse(response: any): any[] {
+    if (Array.isArray(response)) return response;
+    if (response?.data != null && Array.isArray(response.data)) return response.data;
+    return [];
+  }
+
+  private async fetchRiskAssessmentItemsFromApi(categoryId: number): Promise<any[]> {
+    try {
+      const response = await transportClient.get(
+        'risk-assessments.items',
+        `/risk-assessment-items/category/${categoryId}`
+      );
+      const list = this.normalizeItemsArrayResponse(response);
+      console.log(`🌐 PREFETCH - Items API returned ${list.length} rows for category ${categoryId}`);
+      return list;
+    } catch (error) {
+      console.error(`❌ PREFETCH - Items API failed for category ${categoryId}:`, error);
+      return [];
+    }
+  }
+
+  private mapItemPayloadToSqlite(
+    item: any,
+    categoryId: number,
+    appointmentId: string
+  ): RiskAssessmentItem | null {
+    const id = Number(
+      item?.riskAssessmentItemId ?? item?.riskassessmentitemid ?? item?.RiskAssessmentItemId
+    );
+    if (!Number.isFinite(id) || id <= 0) {
+      return null;
+    }
+    const itemTypeRaw = item.itemType ?? item.ItemType ?? 0;
+    const itemType =
+      typeof itemTypeRaw === 'string' && Number.isNaN(Number(itemTypeRaw))
+        ? 0
+        : Number(itemTypeRaw) || 0;
+
+    return {
+      riskassessmentitemid: id,
+      riskassessmentcategoryid: categoryId,
+      itemprompt: item.itemPrompt ?? item.itemprompt ?? item.ItemPrompt ?? '',
+      itemtype: itemType,
+      rank: Number(item.rank ?? item.Rank ?? 0) || 0,
+      commaseparatedlist:
+        item.commaSeparatedList ?? item.CommaseparatedList ?? item.comma_separated_list ?? '',
+      selectedanswer: item.selectedAnswer ?? item.SelectedAnswer ?? '',
+      qty: Number(item.qty ?? item.Qty ?? 0) || 0,
+      price: Number(item.price ?? item.Price ?? 0) || 0,
+      description: item.description ?? item.Description ?? '',
+      model: item.model ?? item.Model ?? '',
+      location: item.location ?? item.Location ?? '',
+      assessmentregisterid: Number(item.assessmentRegisterId ?? item.AssessmentRegisterId ?? 0) || 0,
+      assessmentregistertypeid:
+        Number(item.assessmentRegisterTypeId ?? item.AssessmentRegisterTypeId ?? 0) || 0,
+      datecreated: item.dateCreated ?? item.DateCreated ?? new Date().toISOString(),
+      createdbyid: String(item.createdById ?? item.CreatedById ?? ''),
+      dateupdated: item.dateUpdated ?? item.DateUpdated ?? new Date().toISOString(),
+      updatedbyid: String(item.updatedById ?? item.UpdatedById ?? ''),
+      issynced: Number(item.isSynced ?? item.IsSynced ?? 0) || 0,
+      syncversion: Number(item.syncVersion ?? item.SyncVersion ?? 0) || 0,
+      deviceid: String(item.deviceId ?? item.DeviceId ?? ''),
+      syncstatus: String(item.syncStatus ?? item.SyncStatus ?? ''),
+      synctimestamp: item.syncTimestamp ?? item.SyncTimestamp ?? new Date().toISOString(),
+      hasphoto: Number(item.hasPhoto ?? item.HasPhoto ?? 0) || 0,
+      latitude: Number(item.latitude ?? item.Latitude ?? 0) || 0,
+      longitude: Number(item.longitude ?? item.Longitude ?? 0) || 0,
+      notes: item.notes ?? item.Notes ?? '',
+      appointmentid: appointmentId,
+      excludefromreport: (item.excludeFromReport ?? item.ExcludeFromReport) ? 1 : 0
+    };
   }
 
   // Build prefetch queue based on appointment/order data
@@ -233,37 +298,48 @@ class PrefetchService {
       console.log(`🚀 Using composite hierarchy API for order: ${orderNumber}`);
       
       try {
-        // Only fetch hierarchy - field configurations come from prefetched all categories
-        const hierarchyResponse = await transportClient.get('risk-assessment.hierarchy', `/mobile/risk-assessment/${orderNumber}/complete-hierarchy`);
-        
+        // Hierarchy + order categories/complete in parallel: order payload hydrates SQLite/AsyncStorage
+        // so Dynamic UI offline data is available before per-category tasks (avoids N type-fields calls).
+        const [hierarchyResponse, orderConfigHydrated] = await Promise.all([
+          transportClient.get('risk-assessment.hierarchy', `/mobile/risk-assessment/${orderNumber}/complete-hierarchy`),
+          this.fetchAndApplyOrderFieldConfigurationCaches(orderNumber)
+        ]);
+
         console.log(`📡 COMPOSITE API - Response received`);
-        console.log(`📡 FIELD CONFIG - Using prefetched all category configurations (no order-specific call)`);
-        
+        console.log(
+          `📡 FIELD CONFIG - Order categories/complete hydrate: ${orderConfigHydrated ? 'ok' : 'skipped or failed'} (SQLite + dynamic_ui_config)`
+        );
+
         // Transport client returns data directly
         const hierarchyData = hierarchyResponse;
-      
-      const mastersCount = hierarchyData?.data?.assessmentMasters?.length || 0;
-      console.log(`📦 COMPOSITE API - Found ${mastersCount} assessment masters`);
-      
-      // Check if we have prefetched all category configurations
+
+      const assessmentMasters = this.normalizeHierarchyAssessmentMasters(hierarchyData);
+      console.log(`📦 COMPOSITE API - Found ${assessmentMasters.length} assessment masters`);
+
       const allCategoryConfigs = await this.getAllCategoryConfigurations();
       if (allCategoryConfigs) {
-        console.log(`📦 FIELD CONFIG - Using prefetched all category configurations (${allCategoryConfigs.categories.length} categories)`);
+        console.log(`📦 FIELD CONFIG - AsyncStorage all_category_configurations: ${allCategoryConfigs.categories.length} categories`);
       } else {
-        console.log(`⚠️ FIELD CONFIG - No prefetched all category configurations found, will use individual calls as fallback`);
+        console.log(`📦 FIELD CONFIG - No AsyncStorage all_category_configurations blob (optional)`);
       }
       
-      if (!hierarchyData?.success || !hierarchyData?.data?.assessmentMasters) {
-        console.log('❌ COMPOSITE API - Invalid response format or no assessment masters');
+      if (!this.hierarchyResponseIsUsable(hierarchyData)) {
+        console.log('❌ COMPOSITE API - Invalid response format or no assessment masters', {
+          success: hierarchyData?.success,
+          masterCount: assessmentMasters.length
+        });
         return false;
       }
 
       // Process the composite response and build tasks
-      const assessmentMasters = hierarchyData.data.assessmentMasters;
       console.log(`✅ COMPOSITE API - Processing ${assessmentMasters.length} assessment masters`);
       
-      // Store the complete hierarchy data for processing
-      this.completeHierarchyData = hierarchyData.data;
+      // Single flat snapshot for offline helpers (peel double-wrapped envelopes)
+      const peeled = peelCompleteHierarchyInner(hierarchyData);
+      this.completeHierarchyData =
+        peeled && typeof peeled === 'object'
+          ? { ...peeled, assessmentMasters }
+          : { assessmentMasters };
       
       // Debug: Log sample category structure
       if (assessmentMasters.length > 0 && assessmentMasters[0].sections && assessmentMasters[0].sections.length > 0) {
@@ -284,27 +360,35 @@ class PrefetchService {
           }
           
           for (const category of section.categories) {
-            const categoryId = category.riskAssessmentCategoryId;
-            
-    // Skip categories without valid IDs
-    if (!categoryId) {
-      console.log(`⚠️ PREFETCH - Skipping category without valid ID:`, {
-        riskAssessmentCategoryId: category.riskAssessmentCategoryId,
-        categoryName: category.categoryName
-      });
-      continue;
-    }
-            
+            const categoryId = this.resolveRiskAssessmentCategoryId(category);
+
+            if (!categoryId) {
+              console.log(`⚠️ PREFETCH - Skipping category without valid ID:`, {
+                riskAssessmentCategoryId: category.riskAssessmentCategoryId,
+                riskassessmentcategoryid: category.riskassessmentcategoryid,
+                categoryId: category.categoryId,
+                categoryName: category.categoryName
+              });
+              continue;
+            }
+
+            const numericCategoryId = Number(categoryId);
+            const normalizedCategory = {
+              ...category,
+              riskAssessmentCategoryId: Number.isFinite(numericCategoryId)
+                ? numericCategoryId
+                : (category.riskAssessmentCategoryId ?? categoryId)
+            };
+
             const priority = this.getCategoryPriority(category, master.assessmenttypename || master.templateName);
-            
+
             const task: PrefetchTask = {
               id: `category-${categoryId}`,
               type: 'category',
               categoryId: String(categoryId),
               priority,
               status: 'pending',
-              // Store the category data from composite API
-              categoryData: category
+              categoryData: normalizedCategory
             };
 
             this.queue.push(task);
@@ -408,8 +492,11 @@ class PrefetchService {
           if (task.categoryData) {
             // Process category data from composite API instead of making individual API calls
             await this.processCategoryFromCompositeAPI(task.categoryData);
-            await this.prefetchFieldConfiguration(task.categoryData.riskAssessmentCategoryId);
-            this.emitCategoryCompleted(task.categoryData.riskAssessmentCategoryId);
+            // Field UI config: order hydrate + SQLite (above); type-fields only as rare online fallback
+            await this.ensureFieldConfigurationForCategory(task.categoryData);
+            if (task.categoryId) {
+              this.emitCategoryCompleted(task.categoryId);
+            }
           }
           break;
         // Add other task types as needed
@@ -430,7 +517,19 @@ class PrefetchService {
 
   // Process category data from composite API (no individual API calls)
   private async processCategoryFromCompositeAPI(category: any): Promise<void> {
-    const categoryId = category.riskAssessmentCategoryId;
+    const categoryIdStr = this.resolveRiskAssessmentCategoryId(category);
+    if (!categoryIdStr) {
+      console.log(`⚠️ PREFETCH - processCategoryFromCompositeAPI: missing category id`, {
+        categoryName: category.categoryName
+      });
+      return;
+    }
+    const categoryId = Number(categoryIdStr);
+    if (!Number.isFinite(categoryId)) {
+      console.log(`⚠️ PREFETCH - processCategoryFromCompositeAPI: non-numeric category id "${categoryIdStr}"`);
+      return;
+    }
+
     console.log(`📦 PREFETCH - Processing category ${categoryId} from composite API data`);
     console.log(`🔍 PREFETCH - Category object:`, {
       riskAssessmentCategoryId: category.riskAssessmentCategoryId,
@@ -468,98 +567,128 @@ class PrefetchService {
       // Don't return - continue with processing to fix the data
     }
 
-    // Process items from composite API data
-    const items = category.items || [];
-    console.log(`📦 PREFETCH - Processing ${items.length} items for category ${categoryId} from composite API`);
-    
+    // Items: hierarchy often omits them for size — fall back to per-category items API
+    let items = this.extractEmbeddedCategoryItems(category);
+    console.log(
+      `📦 PREFETCH - ${items.length} embedded items for category ${categoryId} in complete-hierarchy payload`
+    );
+
     if (items.length === 0) {
-      console.log(`ℹ️ PREFETCH - No items found for category ${categoryId} in composite API data`);
+      const netInfo = await NetInfo.fetch();
+      if (netInfo.isConnected) {
+        console.log(
+          `🌐 PREFETCH - Fetching items via API for category ${categoryId} (hierarchy had no item list)`
+        );
+        items = await this.fetchRiskAssessmentItemsFromApi(categoryId);
+      }
+    }
+
+    if (items.length === 0) {
+      console.log(
+        `ℹ️ PREFETCH - No items for category ${categoryId} after hierarchy + optional items API`
+      );
       return;
     }
 
-    // Prepare all items for batch insert
-    const sqliteItems: RiskAssessmentItem[] = items.map((item: any, index: number) => {
-      
-      return {
-        riskassessmentitemid: Number(item.riskAssessmentItemId),
-        riskassessmentcategoryid: Number(categoryId),
-        itemprompt: item.itemPrompt || '',
-        itemtype: Number(item.itemType) || 0,
-        rank: Number(item.rank) || 0,
-        commaseparatedlist: item.commaSeparatedList || '',
-        selectedanswer: item.selectedAnswer || '',
-        qty: Number(item.qty) || 0,
-        price: Number(item.price) || 0,
-        description: item.description || '',
-        model: item.model || '',
-        location: item.location || '',
-        assessmentregisterid: Number(item.assessmentRegisterId) || 0,
-        assessmentregistertypeid: Number(item.assessmentRegisterTypeId) || 0,
-        datecreated: item.dateCreated || new Date().toISOString(),
-        createdbyid: item.createdById || '',
-        dateupdated: item.dateUpdated || new Date().toISOString(),
-        updatedbyid: item.updatedById || '',
-        issynced: Number(item.isSynced) || 0,
-        syncversion: Number(item.syncVersion) || 0,
-        deviceid: item.deviceId || '',
-        syncstatus: item.syncStatus || '',
-        synctimestamp: item.syncTimestamp || new Date().toISOString(),
-        hasphoto: Number(item.hasPhoto) || 0,
-        latitude: Number(item.latitude) || 0,
-        longitude: Number(item.longitude) || 0,
-        notes: item.notes || '',
-        appointmentid: this.currentStats?.appointmentId || '',
-        excludefromreport: (item.excludeFromReport ?? item.ExcludeFromReport) ? 1 : 0
-      };
-    });
-    
+    const appointmentId = String(this.currentStats?.appointmentId || '');
+    const sqliteItems: RiskAssessmentItem[] = items
+      .map((item: any) => this.mapItemPayloadToSqlite(item, categoryId, appointmentId))
+      .filter((row): row is RiskAssessmentItem => row !== null);
+
+    if (sqliteItems.length === 0) {
+      console.log(
+        `⚠️ PREFETCH - Category ${categoryId}: ${items.length} raw rows but none mapped to valid SQLite items (missing IDs?)`
+      );
+      return;
+    }
+
     // Add focused logging before batch insert
     console.log(`🔍 PREFETCH - About to insert ${sqliteItems.length} items for category ${categoryId}`);
     
     // Batch insert all items at once
     await batchInsertRiskAssessmentItems(sqliteItems);
-    console.log(`✅ PREFETCH - Successfully processed ${items.length} items for category ${categoryId} from composite API`);
-    
+    console.log(`✅ PREFETCH - Successfully stored ${sqliteItems.length} items for category ${categoryId}`);
+
     // Process media files for items in this category
     await this.processMediaFilesForItems(items);
     
   }
 
-  // Prefetch field configuration for a specific category
-  private async prefetchFieldConfiguration(categoryId: string): Promise<void> {
-    console.log(`📋 PREFETCH - Fetching field configuration for category ${categoryId}`);
-    
+  /**
+   * Ensure field configuration exists for offline Dynamic UI.
+   * Primary source: SQLite from order `categories/complete` (same keys as configurationService: assessment or template category id).
+   * Legacy fallback: GET risk-assessment-category-type-fields (only when SQLite misses and online).
+   */
+  private async ensureFieldConfigurationForCategory(category: any): Promise<void> {
+    const assessmentId = Number(
+      category.riskAssessmentCategoryId ?? category.riskassessmentcategoryid ?? category.categoryId
+    );
+    if (!assessmentId || Number.isNaN(assessmentId)) {
+      console.log(`⚠️ PREFETCH - ensureFieldConfigurationForCategory: no assessment category id`, category);
+      return;
+    }
+
+    const rawTemplateId =
+      category.riskTemplateCategoryId ??
+      category.risktemplatecategoryid ??
+      category.RiskTemplateCategoryID;
+    const templateId =
+      rawTemplateId !== undefined && rawTemplateId !== null && rawTemplateId !== ''
+        ? Number(rawTemplateId)
+        : NaN;
+
+    console.log(`📋 PREFETCH - Field config check for category ${assessmentId} (template ${Number.isFinite(templateId) ? templateId : 'n/a'})`);
+
+    if (!isDatabaseReady()) {
+      await waitForDatabase();
+    }
+
+    let sqliteConfig = await this.getCategoryConfigurationByIdFromSQLite(assessmentId);
+    if (!sqliteConfig && Number.isFinite(templateId) && templateId !== assessmentId) {
+      sqliteConfig = await this.getCategoryConfigurationByIdFromSQLite(templateId);
+    }
+
+    if (sqliteConfig) {
+      console.log(`📦 PREFETCH - Field configuration in SQLite for category ${assessmentId}`);
+      return;
+    }
+
+    const { getFieldConfiguration, storeFieldConfiguration } = offlineStorage;
+    const legacyKey = String(assessmentId);
+    const legacyCached = await getFieldConfiguration(legacyKey);
+    if (legacyCached && legacyCached.data) {
+      console.log(`📦 PREFETCH - Legacy field_config cache hit for ${legacyKey}`);
+      return;
+    }
+
+    const netInfo = await NetInfo.fetch();
+    if (!netInfo.isConnected) {
+      console.log(
+        `📱 PREFETCH - Offline: no SQLite field config for ${assessmentId}, skipping type-fields fallback`
+      );
+      return;
+    }
+
+    console.log(`🚀 PREFETCH - SQLite miss for ${assessmentId}, fallback GET type-fields...`);
     try {
-      // Check if already cached
-      const { getFieldConfiguration, storeFieldConfiguration } = offlineStorage;
-      const cachedConfig = await getFieldConfiguration(categoryId);
-      
-      if (cachedConfig && cachedConfig.data) {
-        console.log(`📦 PREFETCH - Field configuration already cached for category ${categoryId}`);
-        return;
-      }
-
-      console.log(`🚀 PREFETCH - Using transport client for field configuration category ${categoryId}...`);
-      const response = await transportClient.get('config.field-config', `/risk-assessment-category-type-fields/category/${categoryId}?pageSize=30`);
-      
-      // Transport client returns data directly
+      const response = await transportClient.get(
+        'config.field-config',
+        `/risk-assessment-category-type-fields/category/${assessmentId}?pageSize=30`
+      );
       if (response) {
-        console.log(`💾 PREFETCH - Caching field configuration for category ${categoryId}`);
-        await storeFieldConfiguration(categoryId, response);
+        console.log(`💾 PREFETCH - Legacy cache type-fields for category ${assessmentId}`);
+        await storeFieldConfiguration(legacyKey, response);
       }
-
     } catch (error: any) {
-      // Handle 404 gracefully - not all categories have field configurations
-      if (error?.response?.status === 404) {
-        console.log(`ℹ️ PREFETCH - No field configuration found for category ${categoryId}`);
+      if (error?.response?.status === 404 || error?.response?.status === 204) {
+        console.log(`ℹ️ PREFETCH - No type-fields for category ${assessmentId} (${error?.response?.status})`);
         return;
       }
-      // Handle authentication errors
       if (error?.response?.status === 401 || error?.response?.status === 403) {
-        console.log(`❌ PREFETCH - Authentication required for field configuration, skipping category ${categoryId}`);
+        console.log(`❌ PREFETCH - Auth error on type-fields for ${assessmentId}, skipping`);
         return;
       }
-      console.error(`❌ PREFETCH - Error fetching field configuration for category ${categoryId}:`, error);
+      console.error(`❌ PREFETCH - Error fetching type-fields for category ${assessmentId}:`, error);
     }
   }
 
@@ -903,6 +1032,44 @@ class PrefetchService {
   }
 
   /**
+   * Persist order `GET .../categories/complete` payload to AsyncStorage (`dynamic_ui_config_*`) and SQLite.
+   * Shared by SurveyDataProvider, RiskAssessmentTemplates, and prefetch (after fetch).
+   */
+  async applyOrderFieldConfigurationCaches(orderId: string, configData: { categories: any[] }): Promise<void> {
+    if (!configData?.categories?.length) {
+      console.log('📦 Order field config: no categories in payload, skipping cache hydrate');
+      return;
+    }
+    const configurationService = (await import('./configurationService')).default;
+    await configurationService.cacheOrderFieldConfigurations(orderId, configData);
+    await this.storeOrderCategoryConfigurationsInSQLite(configData);
+    console.log(`✅ Order field configuration caches applied for ${orderId} (${configData.categories.length} categories)`);
+  }
+
+  /**
+   * Fetch order field configuration and apply to AsyncStorage + SQLite.
+   * Runs at prefetch queue build so per-category type-fields calls are not needed for offline UI.
+   * @returns true if categories were cached
+   */
+  async fetchAndApplyOrderFieldConfigurationCaches(orderNumber: string): Promise<boolean> {
+    try {
+      const { getOrderCategoryFieldConfigurations } = await import('../api/hierarchy');
+      const response = await getOrderCategoryFieldConfigurations(orderNumber);
+      if (!response?.success || !response?.data?.categories?.length) {
+        console.log(
+          `⚠️ PREFETCH - Order field config unavailable for ${orderNumber} (success=${response?.success}, categories=${response?.data?.categories?.length ?? 0})`
+        );
+        return false;
+      }
+      await this.applyOrderFieldConfigurationCaches(orderNumber, response.data);
+      return true;
+    } catch (error) {
+      console.error(`❌ PREFETCH - Error fetching order field configuration for ${orderNumber}:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Get all category configurations from SQLite
    */
   async getAllCategoryConfigurationsFromSQLite(): Promise<any | null> {
@@ -1174,36 +1341,42 @@ class PrefetchService {
     const entitiesToPrefetch: Array<{ entityName: string; entityID: number }> = [];
     
     for (const item of items) {
-      const mediaFiles = item.mediaFiles || [];
+      const mediaFiles =
+        item.mediaFiles ?? item.MediaFiles ?? item.mediafiles ?? [];
+      const itemEntityId = Number(
+        item.riskAssessmentItemId ?? item.riskassessmentitemid ?? item.RiskAssessmentItemId
+      );
       if (mediaFiles.length > 0) {
-        console.log(`📸 PREFETCH - Found ${mediaFiles.length} media files for item ${item.riskAssessmentItemId}`);
+        console.log(`📸 PREFETCH - Found ${mediaFiles.length} media files for item ${itemEntityId}`);
         
         // Track entities that have media files for image prefetching
-        entitiesToPrefetch.push({
-          entityName: 'riskAssessmentItem',
-          entityID: Number(item.riskAssessmentItemId)
-        });
+        if (Number.isFinite(itemEntityId)) {
+          entitiesToPrefetch.push({
+            entityName: 'riskAssessmentItem',
+            entityID: itemEntityId
+          });
+        }
         
         for (const mediaFile of mediaFiles) {
           try {
             const sqliteMediaFile: MediaFile = {
               // Persist the backend media ID so the app fetches via proxy with correct ID
-              BackendMediaID: Number(mediaFile.mediaId),
-              FileName: mediaFile.fileName,
-              FileType: mediaFile.fileType,
-              BlobURL: mediaFile.blobUrl, // Note: payload uses 'blobUrl' (camelCase)
+              BackendMediaID: Number(mediaFile.mediaId ?? mediaFile.MediaId),
+              FileName: mediaFile.fileName ?? mediaFile.FileName ?? '',
+              FileType: mediaFile.fileType ?? mediaFile.FileType ?? '',
+              BlobURL: mediaFile.blobUrl ?? mediaFile.BlobURL ?? '',
               EntityName: 'riskAssessmentItem',
-              EntityID: Number(item.riskAssessmentItemId),
-              UploadedAt: mediaFile.uploadedAt,
-              UploadedBy: mediaFile.uploadedBy,
+              EntityID: itemEntityId,
+              UploadedAt: mediaFile.uploadedAt ?? mediaFile.UploadedAt ?? '',
+              UploadedBy: mediaFile.uploadedBy ?? mediaFile.UploadedBy,
               IsDeleted: 0,
-              Metadata: mediaFile.metadata,
+              Metadata: mediaFile.metadata ?? mediaFile.Metadata,
               pending_sync: 0 // Already synced from server
             };
             
             await insertMediaFile(sqliteMediaFile);
             totalMediaFiles++;
-            console.log(`📸 PREFETCH - Inserted media file ${mediaFile.mediaId} for item ${item.riskAssessmentItemId}`);
+            console.log(`📸 PREFETCH - Inserted media file ${mediaFile.mediaId} for item ${itemEntityId}`);
           } catch (error) {
             console.error(`📸 PREFETCH - Error inserting media file ${mediaFile.mediaId}:`, error);
           }

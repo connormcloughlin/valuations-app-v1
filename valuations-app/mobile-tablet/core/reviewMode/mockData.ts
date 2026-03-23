@@ -211,6 +211,43 @@ export async function getMockResponse(
     return MOCK_COMPLETE_HIERARCHY;
   }
 
+  // Section clone (mobile POST) — structure-only mock for review / offline QA
+  if (
+    method === 'POST' &&
+    (id.includes('risk-assessment.section-clone') || url.includes('/sections/clone'))
+  ) {
+    return {
+      success: true,
+      data: {
+        riskAssessmentSectionId: 799001,
+        sectionName: 'Building (copy)',
+        categories: [
+          {
+            riskAssessmentCategoryId: 899001,
+            riskTemplateCategoryId: 801,
+            categoryName: 'Sample category',
+            items: [
+              {
+                riskAssessmentItemId: 999001,
+                itemPrompt: 'Line 1',
+                itemType: 4,
+                rank: 1,
+                commaSeparatedList: '',
+                selectedAnswer: '',
+                qty: 0,
+                price: 0,
+                description: '',
+                model: '',
+                location: '',
+                notes: ''
+              }
+            ]
+          }
+        ]
+      }
+    };
+  }
+
   // Risk assessment master by order - transport returns body; caller expects { success, data }
   if (id.includes('risk-assessment.master') || (url.includes('risk-assessment-master') && url.includes('by-order'))) {
     return MOCK_RISK_ASSESSMENT_MASTER_BY_ORDER.data;

@@ -174,6 +174,12 @@ export const policies = new Map<string, TransportPolicy>([
     interpretEmptyPolicyKey: 'mobile_empty'
   }],
 
+  ['risk-assessment.section-clone', {
+    timeoutMs: 45000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    interpretEmptyPolicyKey: 'mobile_empty'
+  }],
+
   ['config.categories-all', {
     timeoutMs: 30000,
     retry: { attempts: 2, strategy: 'exponential' },

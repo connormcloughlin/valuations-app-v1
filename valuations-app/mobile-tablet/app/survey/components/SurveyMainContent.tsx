@@ -14,7 +14,6 @@ import { CameraModal, PhotoGalleryModal } from '../items/components';
 import SurveyHeader from './SurveyHeader';
 import SurveyDetails from './SurveyDetails';
 import RiskAssessmentTemplates from './RiskAssessmentTemplates';
-import CategoriesList from './CategoriesList';
 import SurveyActions from './SurveyActions';
 
 // Import GlobalStyles constants
@@ -32,8 +31,9 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
     categories,
     categoriesLoading,
     categoriesError,
-    selectedSectionTitle,
+    selectedSectionId,
     fetchCategories,
+    clearSectionSelection,
   } = useSurveyData();
 
   const {
@@ -138,7 +138,12 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
   }, [refreshPendingCount]);
 
   const handleSectionSelection = (sectionId: string, sectionTitle: string) => {
-    console.log('🚀 Section selected:', sectionId, sectionTitle);
+    if (selectedSectionId != null && String(selectedSectionId) === String(sectionId)) {
+      console.log('🚀 Section collapsed:', sectionId, sectionTitle);
+      clearSectionSelection();
+      return;
+    }
+    console.log('🚀 Section expanded:', sectionId, sectionTitle);
     fetchCategories(sectionId, sectionTitle);
   };
 
@@ -396,10 +401,28 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
     return null;
   }
 
-  // Calculate progress based on available categories
-  const totalCategories = categories.length > 0 ? categories.length : survey.categories.length;
-  const completedCategories = categories.length > 0 ? 
-    categories.filter(cat => cat.items > 0).length : survey.completedCategories;
+  /** When a section is selected, only show that section's `categories` state (never stale `survey.categories`). */
+  const displayCategories =
+    selectedSectionId != null
+      ? categories
+      : categories.length > 0
+        ? categories
+        : survey.categories;
+  const displayTotalValue = displayCategories.reduce((sum, cat) => sum + cat.value, 0);
+
+  // Calculate progress: when a section is selected but list not loaded yet, don't use stale survey.category counts
+  const totalCategories =
+    displayCategories.length > 0
+      ? displayCategories.length
+      : selectedSectionId != null
+        ? 0
+        : survey.categories.length || 1;
+  const completedCategories =
+    displayCategories.length > 0
+      ? displayCategories.filter((cat) => cat.items > 0).length
+      : selectedSectionId != null
+        ? 0
+        : survey.completedCategories;
   
   const progress = totalCategories > 0 ? 
     Math.floor((completedCategories / totalCategories) * 100) : 
@@ -432,6 +455,7 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
         
         <RiskAssessmentTemplates
           orderNumber={survey.orderNumber}
+          appointmentId={surveyId}
           templatePhotosRefreshKey={templatePhotosRefreshKey}
           onTemplatePress={handleTemplateSelection}
           onSectionPress={handleSectionSelection}
@@ -449,28 +473,13 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
             setShowAppointmentPhotoModal(true);
           }}
           onViewSectionPhotos={openSectionPhotoGallery}
-        />
-        
-        {/* Show categories status when a section is selected */}
-        {selectedSectionTitle && (
-          <View style={styles.categoriesStatus}>
-            <Text style={styles.selectedSectionTitle}>
-              Categories from: {selectedSectionTitle}
-            </Text>
-            {categoriesLoading && (
-              <Text style={styles.loadingText}>Loading categories...</Text>
-            )}
-            {categoriesError && (
-              <Text style={styles.errorText}>{categoriesError}</Text>
-            )}
-          </View>
-        )}
-        
-        <CategoriesList
-          categories={categories.length > 0 ? categories : survey.categories}
-          totalValue={categories.length > 0 ? categories.reduce((sum, cat) => sum + cat.value, 0) : survey.totalValue}
+          selectedSectionId={selectedSectionId}
+          sectionCategories={displayCategories}
+          sectionCategoriesLoading={categoriesLoading}
+          sectionCategoriesError={categoriesError}
+          sectionCategoriesTotal={displayTotalValue}
           onCategoryPress={navigateToCategory}
-          photoCountRefreshKey={templatePhotosRefreshKey}
+          categoryPhotoCountRefreshKey={templatePhotosRefreshKey}
           onAddCategoryPhoto={(categoryId, categoryName) => {
             setCategoryPhotoTarget({ categoryId, categoryName });
             setTemplatePhotoTarget(null);
@@ -565,29 +574,5 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     padding: spacing.lg,
-  },
-  categoriesStatus: {
-    backgroundColor: colors.white,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  selectedSectionTitle: {
-    fontSize: typography.sm,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  loadingText: {
-    fontSize: typography.xs,
-    color: colors.textSecondary,
-    fontStyle: 'italic',
-  },
-  errorText: {
-    fontSize: typography.xs,
-    color: colors.error,
-    fontStyle: 'italic',
   },
 }); 
