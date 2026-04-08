@@ -311,11 +311,13 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       
       console.log('✅ Composite API response received');
       console.log('✅ Field config response received:', fieldConfigResponse?.success);
+
+      const prefetchService = await import('../../../services/prefetchService');
+      await prefetchService.default.hydrateMediaMetadataFromHierarchy(compositeResponse.data);
       
       // Cache field configurations if available (shared with prefetchService.buildPrefetchQueue)
       if (fieldConfigResponse?.success && fieldConfigResponse?.data?.categories) {
         console.log(`🚀 Pre-loading field configurations for ${fieldConfigResponse.data.categories.length} categories`);
-        const prefetchService = await import('../../../services/prefetchService');
         await prefetchService.default.applyOrderFieldConfigurationCaches(orderNumber, fieldConfigResponse.data);
       }
       

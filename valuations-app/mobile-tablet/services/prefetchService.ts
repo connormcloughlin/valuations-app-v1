@@ -9,7 +9,7 @@ import {
   RiskAssessmentItem,
   waitForDatabase,
   isDatabaseReady,
-  insertMediaFile,
+  upsertMediaFilesBatch,
   MediaFile
 } from '../utils/db';
 import imagePrefetchService from './imagePrefetchService';
@@ -217,6 +217,163 @@ class PrefetchService {
     return [];
   }
 
+  private extractMediaFiles(node: any): any[] {
+    const raw = node?.mediaFiles ?? node?.MediaFiles ?? node?.mediafiles;
+    return Array.isArray(raw) ? raw : [];
+  }
+
+  private resolveEntityId(node: any, keys: string[]): number | null {
+    for (const key of keys) {
+      const raw = node?.[key];
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private normalizeHierarchyMediaFile(
+    mediaFile: any,
+    entityName: string,
+    entityID: number
+  ): MediaFile | null {
+    const backendMediaID = Number(mediaFile?.mediaId ?? mediaFile?.MediaId ?? mediaFile?.mediaID);
+    const fileName = mediaFile?.fileName ?? mediaFile?.FileName ?? '';
+    if (!fileName) {
+      return null;
+    }
+
+    return {
+      BackendMediaID: Number.isFinite(backendMediaID) ? backendMediaID : undefined,
+      FileName: fileName,
+      FileType: mediaFile?.fileType ?? mediaFile?.FileType ?? '',
+      BlobURL: mediaFile?.blobUrl ?? mediaFile?.BlobURL ?? '',
+      EntityName: entityName,
+      EntityID: entityID,
+      UploadedAt: mediaFile?.uploadedAt ?? mediaFile?.UploadedAt ?? '',
+      UploadedBy: mediaFile?.uploadedBy ?? mediaFile?.UploadedBy,
+      IsDeleted: 0,
+      Metadata:
+        typeof (mediaFile?.metadata ?? mediaFile?.Metadata) === 'string'
+          ? (mediaFile?.metadata ?? mediaFile?.Metadata)
+          : JSON.stringify(mediaFile?.metadata ?? mediaFile?.Metadata ?? null),
+      pending_sync: 0
+    };
+  }
+
+  private async persistHierarchyMediaMetadata(
+    entityName: string,
+    entityID: number,
+    mediaFiles: any[],
+    entitiesToPrefetch?: Array<{ entityName: string; entityID: number }>
+  ): Promise<number> {
+    if (!Number.isFinite(entityID) || entityID <= 0 || mediaFiles.length === 0) {
+      return 0;
+    }
+
+    const normalized = mediaFiles
+      .map((mediaFile) => this.normalizeHierarchyMediaFile(mediaFile, entityName, entityID))
+      .filter((mediaFile): mediaFile is MediaFile => mediaFile !== null);
+
+    if (normalized.length === 0) {
+      return 0;
+    }
+
+    await upsertMediaFilesBatch(normalized);
+    if (entitiesToPrefetch) {
+      entitiesToPrefetch.push({ entityName, entityID });
+    }
+    return normalized.length;
+  }
+
+  private async hydrateHierarchyLevelMedia(
+    assessmentMasters: any[]
+  ): Promise<Array<{ entityName: string; entityID: number }>> {
+    const entitiesToPrefetch: Array<{ entityName: string; entityID: number }> = [];
+    let totalMediaFiles = 0;
+
+    for (const master of assessmentMasters) {
+      const masterId = this.resolveEntityId(master, [
+        'riskAssessmentId',
+        'riskassessmentid',
+        'assessmentid',
+        'RiskAssessmentId'
+      ]);
+      if (masterId) {
+        totalMediaFiles += await this.persistHierarchyMediaMetadata(
+          'riskAssessmentMaster',
+          masterId,
+          this.extractMediaFiles(master),
+          entitiesToPrefetch
+        );
+      }
+
+      const sections = Array.isArray(master?.sections) ? master.sections : [];
+      for (const section of sections) {
+        const sectionId = this.resolveEntityId(section, [
+          'riskAssessmentSectionId',
+          'riskassessmentsectionid',
+          'sectionId',
+          'RiskAssessmentSectionId'
+        ]);
+        if (sectionId) {
+          totalMediaFiles += await this.persistHierarchyMediaMetadata(
+            'riskAssessmentSection',
+            sectionId,
+            this.extractMediaFiles(section),
+            entitiesToPrefetch
+          );
+        }
+
+        const categories = Array.isArray(section?.categories) ? section.categories : [];
+        for (const category of categories) {
+          const categoryId = this.resolveEntityId(category, [
+            'riskAssessmentCategoryId',
+            'riskassessmentcategoryid',
+            'categoryId',
+            'RiskAssessmentCategoryId'
+          ]);
+          if (categoryId) {
+            totalMediaFiles += await this.persistHierarchyMediaMetadata(
+              'riskAssessmentCategory',
+              categoryId,
+              this.extractMediaFiles(category),
+              entitiesToPrefetch
+            );
+          }
+        }
+      }
+    }
+
+    console.log(
+      `📸 PREFETCH - Hydrated ${totalMediaFiles} hierarchy media records across ${entitiesToPrefetch.length} entities`
+    );
+    return entitiesToPrefetch;
+  }
+
+  async hydrateMediaMetadataFromHierarchy(hierarchyData: any): Promise<void> {
+    const assessmentMasters = this.normalizeHierarchyAssessmentMasters(hierarchyData);
+    if (assessmentMasters.length === 0) {
+      console.log('📸 PREFETCH - No assessment masters available for media hydration');
+      return;
+    }
+
+    const hierarchyMediaEntities = await this.hydrateHierarchyLevelMedia(assessmentMasters);
+    if (hierarchyMediaEntities.length === 0) {
+      return;
+    }
+
+    try {
+      const prefetchResult = await imagePrefetchService.prefetchImagesForEntities(hierarchyMediaEntities);
+      console.log(
+        `📸 PREFETCH - Hierarchy image prefetch completed: ${prefetchResult.downloaded} downloaded, ${prefetchResult.failed} failed, ${(prefetchResult.totalSize / 1024 / 1024).toFixed(2)}MB total`
+      );
+    } catch (error) {
+      console.error('📸 PREFETCH - Error prefetching hierarchy media images:', error);
+    }
+  }
+
   private async fetchRiskAssessmentItemsFromApi(categoryId: number): Promise<any[]> {
     try {
       const response = await transportClient.get(
@@ -341,6 +498,8 @@ class PrefetchService {
           ? { ...peeled, assessmentMasters }
           : { assessmentMasters };
       
+      await this.hydrateMediaMetadataFromHierarchy(hierarchyData);
+
       // Debug: Log sample category structure
       if (assessmentMasters.length > 0 && assessmentMasters[0].sections && assessmentMasters[0].sections.length > 0) {
         const firstSection = assessmentMasters[0].sections[0];
@@ -1359,23 +1518,12 @@ class PrefetchService {
         
         for (const mediaFile of mediaFiles) {
           try {
-            const sqliteMediaFile: MediaFile = {
-              // Persist the backend media ID so the app fetches via proxy with correct ID
-              BackendMediaID: Number(mediaFile.mediaId ?? mediaFile.MediaId),
-              FileName: mediaFile.fileName ?? mediaFile.FileName ?? '',
-              FileType: mediaFile.fileType ?? mediaFile.FileType ?? '',
-              BlobURL: mediaFile.blobUrl ?? mediaFile.BlobURL ?? '',
-              EntityName: 'riskAssessmentItem',
-              EntityID: itemEntityId,
-              UploadedAt: mediaFile.uploadedAt ?? mediaFile.UploadedAt ?? '',
-              UploadedBy: mediaFile.uploadedBy ?? mediaFile.UploadedBy,
-              IsDeleted: 0,
-              Metadata: mediaFile.metadata ?? mediaFile.Metadata,
-              pending_sync: 0 // Already synced from server
-            };
-            
-            await insertMediaFile(sqliteMediaFile);
-            totalMediaFiles++;
+            totalMediaFiles += await this.persistHierarchyMediaMetadata(
+              'riskAssessmentItem',
+              itemEntityId,
+              [mediaFile],
+              entitiesToPrefetch
+            );
             console.log(`📸 PREFETCH - Inserted media file ${mediaFile.mediaId} for item ${itemEntityId}`);
           } catch (error) {
             console.error(`📸 PREFETCH - Error inserting media file ${mediaFile.mediaId}:`, error);

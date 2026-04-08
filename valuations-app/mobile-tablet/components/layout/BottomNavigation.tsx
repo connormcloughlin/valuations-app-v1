@@ -15,7 +15,14 @@ import { bottomNavigationStyles } from '../../app/GlobalStyles';
 export type TabConfig = {
   name: string;
   title: string;
-  icon: 'view-dashboard' | 'clipboard-list' | 'note-text' | 'account' | 'calendar-clock' | 'plus-circle';
+  icon:
+    | 'view-dashboard'
+    | 'clipboard-list'
+    | 'note-text'
+    | 'account'
+    | 'calendar-clock'
+    | 'plus-circle'
+    | 'cash-multiple';
   path: string;
   /** Optional badge count (e.g. number of tasks assigned) */
   badge?: number;

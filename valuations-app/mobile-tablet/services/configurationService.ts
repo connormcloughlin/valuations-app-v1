@@ -540,7 +540,7 @@ class ConfigurationService {
           fieldType = 'textarea';
         }
       }
-      const normalizedTypes = ['checkbox', 'date', 'percentage', 'email', 'phone'];
+      const normalizedTypes = ['checkbox', 'switch', 'date', 'percentage', 'email', 'phone'];
       if (normalizedTypes.includes((fieldType || '').toLowerCase())) {
         fieldType = (fieldType || '').toLowerCase();
       }

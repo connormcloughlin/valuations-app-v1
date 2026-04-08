@@ -2508,6 +2508,22 @@ export const dynamicFieldRendererStyles = StyleSheet.create({
   fieldContainer: {
     marginBottom: 16,
   },
+  /** Label + control on one row, vertically centered (when hideLabel is false). */
+  fieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: 8,
+  },
+  fieldControlInRow: {
+    flex: 1,
+    minWidth: 0,
+  },
+  labelInRow: {
+    marginBottom: 0,
+    flexShrink: 1,
+    maxWidth: '42%',
+  },
   
   // Label styles - controlled by hideLabel prop
   label: {
@@ -2527,6 +2543,13 @@ export const dynamicFieldRendererStyles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  /** Scaled visual size for checkbox/switch (layout space unchanged — use margins so rows don’t clip). */
+  booleanSwitchWrapper: {
+    transform: [{ scaleX: 1.6 }, { scaleY: 1.6 }],
+    marginVertical: 12,
+    marginLeft: 10,
+    marginRight: 28,
   },
   input: {
     flex: 1,
@@ -3765,7 +3788,7 @@ export const predefinedItemsListStyles = StyleSheet.create({
   dynamicFieldGridRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     width: '100%',
     marginBottom: 12,
   },
@@ -3773,6 +3796,7 @@ export const predefinedItemsListStyles = StyleSheet.create({
     width: '20%',
     paddingRight: 8,
     flexShrink: 0,
+    alignSelf: 'center',
     fontSize: 13,
     fontWeight: '600',
     color: '#34495e',

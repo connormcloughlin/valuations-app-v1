@@ -562,11 +562,24 @@ export default function PredefinedItemsList({
       }
     }));
 
+    const item = items.find(i => String(i.id) === itemId);
+    let effectiveFieldConfig: FieldConfiguration[] = dynamicFieldConfig || [];
+    if (item && dynamicFieldConfig && dynamicFieldConfig.length > 0) {
+      const itemPromptKey = (item.type || '').toLowerCase().trim();
+      const itemLevelFields = categoryConfig?.itemFieldConfigs?.[itemPromptKey];
+      effectiveFieldConfig = itemLevelFields ?? dynamicFieldConfig;
+    }
+    const editedFieldCfg = effectiveFieldConfig.find(f => f.item_fields === fieldName);
+    const typeNorm = String(editedFieldCfg?.field_type || '')
+      .toLowerCase()
+      .replace(/-/g, '_');
+    const isImmediateDynamicToggle = typeNorm === 'switch' || typeNorm === 'checkbox';
+
     // Debounced auto-save to prevent excessive saves and accordion collapse
-    // For dropdowns and checkbox we save immediately so sync sends the correct value
+    // Immediate save for dropdowns, exclude-from-report, and dynamic switch/checkbox toggles
     const isDropdownField = fieldName === 'selectedanswer';
     const isCheckboxField = fieldName === 'excludefromreport';
-    if (!isDropdownField && !isCheckboxField) {
+    if (!isDropdownField && !isCheckboxField && !isImmediateDynamicToggle) {
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
@@ -1825,6 +1838,11 @@ export default function PredefinedItemsList({
         .toLowerCase()
         .replace(/-/g, '_');
       const isRadioGroup = typeNorm === 'radio_group' || field.field_type === 'radioGroup';
+      const isBooleanToggle = typeNorm === 'switch' || typeNorm === 'checkbox';
+      // switch/checkbox + commaseparatedlist (e.g. Yes,No): keep toggle UI; pass options only for value encoding
+      if (isBooleanToggle) {
+        return { ...field, dropdownOptions };
+      }
       const resolvedFieldType = wantMulti
         ? 'multiselect'
         : isRadioGroup

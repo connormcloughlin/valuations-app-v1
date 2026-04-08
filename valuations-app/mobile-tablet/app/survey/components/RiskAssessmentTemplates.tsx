@@ -218,11 +218,12 @@ export default function RiskAssessmentTemplates({
           if (hierarchyResponse.success && hierarchyResponse.data) {
             console.log('🚀 Complete hierarchy loaded successfully');
             setHierarchyData(hierarchyResponse.data);
+            const prefetchService = await import('../../../services/prefetchService');
+            await prefetchService.default.hydrateMediaMetadataFromHierarchy(hierarchyResponse.data);
             
             // Cache field configurations if available (shared with prefetchService.buildPrefetchQueue)
             if (fieldConfigResponse?.success && fieldConfigResponse?.data?.categories) {
               console.log(`🚀 Pre-loading field configurations for ${fieldConfigResponse.data.categories.length} categories`);
-              const prefetchService = await import('../../../services/prefetchService');
               await prefetchService.default.applyOrderFieldConfigurationCaches(orderNumber, fieldConfigResponse.data);
             }
             

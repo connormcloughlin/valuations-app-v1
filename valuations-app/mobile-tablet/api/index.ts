@@ -8,6 +8,7 @@ import { clearAllCachedData } from './cache';
 import * as hierarchyApi from './hierarchy';
 import * as syncApi from './sync';
 import * as mediaApi from './media';
+import * as payrollApi from './payroll';
 
 export default {
   setAuthToken: authApi.setAuthToken,
@@ -57,4 +58,6 @@ export default {
   deleteMedia: mediaApi.deleteMedia,
   fetchImage: mediaApi.fetchImage,
   uploadMediaBatch: mediaApi.uploadMediaBatch,
+
+  getCommissionPayroll: payrollApi.getCommissionPayroll,
 };

@@ -293,83 +293,17 @@ class MediaService {
   }
 
   /**
-   * Download photos from Azure Blob Storage for a specific entity
+   * Resolve entity photos from locally hydrated metadata.
+   * Hierarchy-covered entities should already be present in SQLite from complete-hierarchy ingestion.
    */
   async downloadPhotosForEntity(entityName: string, entityID: number): Promise<MediaFile[]> {
     try {
-      console.log('Downloading photos for:', { entityName, entityID });
-
-      // Call API to get media files for this entity
-      const response = await api.getMediaForEntity(entityName, entityID);
-      
-      if (!response.success || !response.data) {
-        console.log('No photos found on server for entity');
-        return await this.getPhotosForEntity(entityName, entityID);
-      }
-
-      const downloadedFiles: MediaFile[] = [];
-
-      for (const serverMediaFile of response.data) {
-        try {
-          // Check if we already have this file locally
-          const existingFiles = await getMediaFilesByEntity(entityName, entityID);
-          const existingFile = existingFiles.find(f => f.FileName === serverMediaFile.FileName);
-
-          if (existingFile && existingFile.LocalPath) {
-            // File already exists locally
-            downloadedFiles.push(existingFile);
-            continue;
-          }
-
-          // Download the file
-          const mediaDir = await this.getMediaDirectory();
-          const localPath = `${mediaDir}${serverMediaFile.FileName}`;
-          const downloadResult = await FileSystem.downloadAsync(
-            serverMediaFile.BlobURL,
-            localPath
-          );
-
-          if (downloadResult.status === 200) {
-            const backendId = serverMediaFile.mediaID ?? serverMediaFile.MediaID ?? serverMediaFile.mediaId;
-            const backendMediaID = typeof backendId === 'number' ? backendId : undefined;
-            const mediaFile: MediaFile = {
-              MediaID: existingFile?.MediaID,
-              FileName: serverMediaFile.FileName,
-              FileType: serverMediaFile.FileType,
-              BlobURL: serverMediaFile.BlobURL,
-              EntityName: entityName,
-              EntityID: entityID,
-              UploadedAt: serverMediaFile.UploadedAt,
-              UploadedBy: serverMediaFile.UploadedBy,
-              IsDeleted: serverMediaFile.IsDeleted ? 1 : 0,
-              Metadata: serverMediaFile.Metadata,
-              LocalPath: localPath,
-              pending_sync: 0,
-              BackendMediaID: backendMediaID ?? existingFile?.BackendMediaID
-            };
-
-            if (existingFile) {
-              await updateMediaFile(mediaFile);
-            } else {
-              const mediaID = await insertMediaFile(mediaFile);
-              if (typeof mediaID === 'number') {
-                mediaFile.MediaID = mediaID;
-              }
-            }
-
-            downloadedFiles.push(mediaFile);
-            console.log('Downloaded:', serverMediaFile.FileName, backendMediaID != null ? `(BackendMediaID: ${backendMediaID})` : '');
-          }
-        } catch (error) {
-          console.error('Error downloading file:', serverMediaFile.FileName, error);
-        }
-      }
-
-      return downloadedFiles;
+      console.log('Resolving photos from local media metadata for:', { entityName, entityID });
+      return await this.getPhotosForEntity(entityName, entityID);
 
     } catch (error) {
       console.error('Error downloading photos for entity:', error);
-      return await this.getPhotosForEntity(entityName, entityID);
+      return [];
     }
   }
 

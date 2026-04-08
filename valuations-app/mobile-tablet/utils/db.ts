@@ -1407,6 +1407,50 @@ export async function insertMediaFilesBatch(mediaFiles: MediaFile[]): Promise<nu
   }
 }
 
+export async function upsertMediaFile(m: MediaFile): Promise<number | undefined> {
+  try {
+    const identifier =
+      m.BackendMediaID != null
+        ? await runSql(
+            'SELECT * FROM media_files WHERE BackendMediaID = ? AND EntityName = ? AND EntityID = ? LIMIT 1',
+            [m.BackendMediaID, m.EntityName, m.EntityID]
+          )
+        : await runSql(
+            'SELECT * FROM media_files WHERE FileName = ? AND EntityName = ? AND EntityID = ? LIMIT 1',
+            [m.FileName, m.EntityName, m.EntityID]
+          );
+
+    const existing = identifier.rows._array[0] as MediaFile | undefined;
+    if (existing?.MediaID) {
+      await updateMediaFile({
+        ...existing,
+        ...m,
+        MediaID: existing.MediaID,
+        LocalPath: m.LocalPath ?? existing.LocalPath,
+        pending_sync: m.pending_sync ?? existing.pending_sync ?? 0
+      });
+      return existing.MediaID;
+    }
+
+    const inserted = await insertMediaFile(m);
+    return typeof inserted === 'number' ? inserted : undefined;
+  } catch (error) {
+    console.error('Error upserting media file:', error);
+    throw error;
+  }
+}
+
+export async function upsertMediaFilesBatch(mediaFiles: MediaFile[]): Promise<number[]> {
+  const ids: number[] = [];
+  for (const mediaFile of mediaFiles) {
+    const id = await upsertMediaFile(mediaFile);
+    if (typeof id === 'number') {
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
 export async function getAllMediaFiles(): Promise<MediaFile[]> {
   try {
     console.log('Fetching all media files from SQLite');

@@ -503,7 +503,8 @@ export default function DynamicFieldRenderer({
       case 'location_group':
         return renderLocationGroupField();
       case 'checkbox':
-        return renderCheckboxField();
+      case 'switch':
+        return renderBooleanSwitchField();
       case 'date':
         return renderDateField();
       case 'percentage':
@@ -568,16 +569,48 @@ export default function DynamicFieldRenderer({
     />
   );
 
-  const renderCheckboxField = () => {
-    const checked = value === true || value === 'true' || value === '1' || value === 1;
+  /** Boolean toggle for `checkbox` and `switch`. Values may be `'true'`/`'false'` or template pairs like `'Yes'`/`'No'`. */
+  const renderBooleanSwitchField = () => {
+    const opts = field.dropdownOptions || [];
+    const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+    const pickYesNoValues = (): { on: string; off: string } | null => {
+      if (opts.length < 2) return null;
+      const yesOpt = opts.find(o => /^(yes|true|1|y)$/i.test(String(o.option_value).trim()));
+      const noOpt = opts.find(o => /^(no|false|0|n)$/i.test(String(o.option_value).trim()));
+      if (yesOpt && noOpt) {
+        return { on: String(yesOpt.option_value), off: String(noOpt.option_value) };
+      }
+      return { on: String(opts[0].option_value), off: String(opts[1].option_value) };
+    };
+    const pair = pickYesNoValues();
+    let checked =
+      value === true ||
+      value === 1 ||
+      norm(value) === 'true' ||
+      norm(value) === '1' ||
+      norm(value) === 'yes' ||
+      norm(value) === 'y';
+    if (pair) {
+      checked = norm(value) === norm(pair.on);
+    }
+    const emitToggle = (newValue: boolean) => {
+      if (pair) {
+        onChange(fieldName, newValue ? pair.on : pair.off);
+      } else {
+        onChange(fieldName, newValue ? 'true' : 'false');
+      }
+      onBlur?.();
+    };
     return (
       <View style={dynamicFieldRendererStyles.inputContainer}>
-        <Switch
-          value={checked}
-          onValueChange={(newValue) => onChange(fieldName, newValue ? 'true' : 'false')}
-          trackColor={{ false: '#ccc', true: '#4a90e2' }}
-          thumbColor="#fff"
-        />
+        <View style={dynamicFieldRendererStyles.booleanSwitchWrapper}>
+          <Switch
+            value={checked}
+            onValueChange={emitToggle}
+            trackColor={{ false: '#ccc', true: '#4a90e2' }}
+            thumbColor="#fff"
+          />
+        </View>
       </View>
     );
   };
@@ -987,15 +1020,24 @@ export default function DynamicFieldRenderer({
 
   return (
     <View style={dynamicFieldRendererStyles.fieldContainer}>
-      {!hideLabel && (
-        <Text style={[dynamicFieldRendererStyles.label, hasError && dynamicFieldRendererStyles.labelError]}>
-          {field.field_label}
-          {isRequired && <Text style={dynamicFieldRendererStyles.required}> *</Text>}
-        </Text>
+      {!hideLabel ? (
+        <View style={dynamicFieldRendererStyles.fieldLabelRow}>
+          <Text
+            style={[
+              dynamicFieldRendererStyles.label,
+              dynamicFieldRendererStyles.labelInRow,
+              hasError && dynamicFieldRendererStyles.labelError
+            ]}
+          >
+            {field.field_label}
+            {isRequired && <Text style={dynamicFieldRendererStyles.required}> *</Text>}
+          </Text>
+          <View style={dynamicFieldRendererStyles.fieldControlInRow}>{renderFieldByType()}</View>
+        </View>
+      ) : (
+        renderFieldByType()
       )}
-      
-      {renderFieldByType()}
-      
+
       {hasError && (
         <Text style={dynamicFieldRendererStyles.errorText}>{validationError?.message}</Text>
       )}

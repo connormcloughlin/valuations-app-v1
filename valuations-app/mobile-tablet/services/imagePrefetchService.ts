@@ -74,12 +74,13 @@ class ImagePrefetchService {
       }
 
       console.log(`📸 ImagePrefetchService: Found ${backendMediaFiles.length} backend media files to prefetch`);
-      
-      this.currentProgress = {
+
+      const progress: PrefetchProgress = {
         total: backendMediaFiles.length,
         completed: 0,
         failed: 0
       };
+      this.currentProgress = progress;
 
       const result: PrefetchResult = {
         success: true,
@@ -92,24 +93,28 @@ class ImagePrefetchService {
       // Download each image
       for (const mediaFile of backendMediaFiles) {
         try {
-          this.currentProgress.current = mediaFile.FileName;
+          progress.current = mediaFile.FileName;
+          this.currentProgress = { ...progress };
           
           const downloadResult = await this.downloadAndStoreImage(mediaFile);
           if (downloadResult.success) {
             result.downloaded++;
             result.totalSize += downloadResult.size || 0;
-            this.currentProgress.completed++;
+            progress.completed++;
+            this.currentProgress = { ...progress };
             console.log(`📸 ImagePrefetchService: Downloaded ${mediaFile.FileName} (${downloadResult.size} bytes)`);
           } else {
             result.failed++;
             result.errors.push(`Failed to download ${mediaFile.FileName}: ${downloadResult.error}`);
-            this.currentProgress.failed++;
+            progress.failed++;
+            this.currentProgress = { ...progress };
             console.error(`📸 ImagePrefetchService: Failed to download ${mediaFile.FileName}:`, downloadResult.error);
           }
         } catch (error) {
           result.failed++;
           result.errors.push(`Error downloading ${mediaFile.FileName}: ${error}`);
-          this.currentProgress.failed++;
+          progress.failed++;
+          this.currentProgress = { ...progress };
           console.error(`📸 ImagePrefetchService: Error downloading ${mediaFile.FileName}:`, error);
         }
       }

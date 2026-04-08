@@ -19,10 +19,10 @@ const baseTabs: TabConfig[] = [
     path: '/(tabs)/tasks'
   },
   {
-    name: 'survey',
-    title: 'Survey',
-    icon: 'note-text',
-    path: '/(tabs)/survey'
+    name: 'commission',
+    title: 'Commission',
+    icon: 'cash-multiple',
+    path: '/(tabs)/commission'
   },
   {
     name: 'profile',
