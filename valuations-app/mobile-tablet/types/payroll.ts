@@ -4,6 +4,11 @@ export type MobilePayrollLine = {
   assessmentNo: string | null;
   clientName: string | null;
   surveyDate: string;
+  riskAssessmentStatus?: string | null;
+  status?: string | null;
+  lineStatus?: string | null;
+  assessmentStatus?: string | null;
+  isReplaced?: boolean | null;
   baseFee: number;
   commissionPercent: number;
   commissionAmount: number;
