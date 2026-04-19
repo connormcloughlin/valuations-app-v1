@@ -1,4 +1,5 @@
 import transportClient from '../core/transport/transportClient';
+import { requestDeduplication } from '../core/requestDeduplication';
 import { getData, storeData, removeCachedKey } from './cache';
 import { normalizeCompleteHierarchyEnvelope } from '../utils/completeHierarchyPayload';
 
@@ -68,7 +69,14 @@ export async function getRiskAssessmentCompleteHierarchy(orderId: string): Promi
     return { success: false, message: 'You are offline and no cached hierarchy data is available.', status: 0, data: null };
   }
   try {
-    const data = await transportClient.get('risk-assessment.hierarchy', `/mobile/risk-assessment/${orderId}/complete-hierarchy`);
+    const data = await requestDeduplication.deduplicateRequest(
+      `risk-assessment.hierarchy:${orderId}`,
+      () =>
+        transportClient.get(
+          'risk-assessment.hierarchy',
+          `/mobile/risk-assessment/${orderId}/complete-hierarchy`
+        )
+    );
     const normalized = normalizeCompleteHierarchyEnvelope(data);
     if (normalized.success && normalized.data) {
       try {
@@ -168,7 +176,14 @@ export async function getOrderCategoryFieldConfigurations(orderId: string): Prom
     return { success: false, message: 'You are offline and no cached field configuration data is available.', status: 0, data: null };
   }
   try {
-    const data = await transportClient.get('config.order.categories', `/mobile/config/order/${orderId}/categories/complete`);
+    const data = await requestDeduplication.deduplicateRequest(
+      `config.order.categories:${orderId}`,
+      () =>
+        transportClient.get(
+          'config.order.categories',
+          `/mobile/config/order/${orderId}/categories/complete`
+        )
+    );
     // API returns { success, data: { categories } }; transport returns that or [] when 404 treated as empty
     const normalized = Array.isArray(data)
       ? { success: true, data: { categories: data }, status: 200 }

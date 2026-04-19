@@ -44,6 +44,8 @@ class TransportClient {
       timeout: this.config.timeout,
       headers: {
         'Content-Type': 'application/json',
+        // Explicit so future interceptors never leave Accept-Encoding empty; server may return Content-Encoding: gzip
+        'Accept-Encoding': 'gzip, deflate',
       }
     });
 
@@ -106,6 +108,32 @@ class TransportClient {
    */
   private generateCorrelationId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Dev-only: log Content-Encoding / Content-Length for large mobile GETs (verify gzip with API).
+   * See docs/MOBILE_RESPONSE_COMPRESSION.md
+   */
+  private logMobileCompressionDev(
+    response: AxiosResponse,
+    requestUrl: string,
+    method: string | undefined
+  ): void {
+    if (!__DEV__) return;
+    if ((method || 'GET').toUpperCase() !== 'GET') return;
+    const path = requestUrl || '';
+    if (!path.includes('/mobile/')) return;
+    const isLarge =
+      path.includes('complete-hierarchy') ||
+      path.includes('/categories/complete') ||
+      path.includes('categories/all/complete');
+    if (!isLarge) return;
+    const h = response.headers || {};
+    const enc = h['content-encoding'] ?? h['Content-Encoding'];
+    const len = h['content-length'] ?? h['Content-Length'];
+    console.log(
+      `[HTTP] ${path} content-encoding=${enc ?? 'none'} content-length=${len ?? 'n/a'}`
+    );
   }
 
   /**
@@ -186,7 +214,9 @@ class TransportClient {
         }
 
         const response = await this.axiosInstance(requestConfig);
-        
+
+        this.logMobileCompressionDev(response, config.url || '', config.method);
+
         // Log successful API response
         logger.apiResponse(
           response.status,
@@ -198,6 +228,7 @@ class TransportClient {
           {
             responseTime: Date.now(),
             statusText: response.statusText,
+            // Decoded JSON size after automatic gzip/br decompression — not wire bytes (see docs/MOBILE_RESPONSE_COMPRESSION.md)
             dataSize: JSON.stringify(response.data).length
           }
         );

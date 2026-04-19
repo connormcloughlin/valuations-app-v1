@@ -951,11 +951,59 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
 export async function getAllRiskAssessmentItems(): Promise<RiskAssessmentItem[]> {
   try {
     const res = await runSql('SELECT * FROM risk_assessment_items');
-    console.log('Number of items found:', res.rows._array.length);
+    if (__DEV__) {
+      console.log('Number of items found:', res.rows._array.length);
+    }
     return res.rows._array;
   } catch (error) {
     console.error('Error fetching risk assessment items from SQLite:', error);
     return [];
+  }
+}
+
+/**
+ * Single indexed query: item counts per risk assessment category for one appointment.
+ * Used by prefetch to avoid scanning the full risk_assessment_items table per category.
+ */
+export async function getCategoryItemCountsForAppointment(
+  appointmentId: string
+): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  try {
+    const res = await runSql(
+      `SELECT riskassessmentcategoryid AS cid, COUNT(*) AS n
+       FROM risk_assessment_items
+       WHERE appointmentid = ?
+       GROUP BY riskassessmentcategoryid`,
+      [appointmentId]
+    );
+    const rows = res.rows?._array ?? [];
+    for (const row of rows) {
+      const cid = Number((row as any).cid);
+      const n = Number((row as any).n) || 0;
+      if (Number.isFinite(cid)) {
+        map.set(cid, n);
+      }
+    }
+  } catch (error) {
+    console.error('Error in getCategoryItemCountsForAppointment:', error);
+  }
+  return map;
+}
+
+/** Items stuck with null category id for this appointment (legacy bad rows). */
+export async function countNullCategoryItemsForAppointment(appointmentId: string): Promise<number> {
+  try {
+    const res = await runSql(
+      `SELECT COUNT(*) AS n FROM risk_assessment_items
+       WHERE appointmentid = ? AND riskassessmentcategoryid IS NULL`,
+      [appointmentId]
+    );
+    const n = res.rows?._array?.[0]?.n;
+    return Number(n) || 0;
+  } catch (error) {
+    console.error('Error in countNullCategoryItemsForAppointment:', error);
+    return 0;
   }
 }
 export async function getRiskAssessmentItemById(id: number): Promise<RiskAssessmentItem | undefined> {
@@ -1877,12 +1925,115 @@ async function processTransactionQueue() {
   }
 }
 
+/** Shared insert loop for risk_assessment_items (used inside a single withTransactionAsync). */
+async function executeRiskAssessmentItemsStatementLoop(
+  database: any,
+  items: RiskAssessmentItem[]
+): Promise<void> {
+  const stmt = await database.prepareAsync(`
+    INSERT OR REPLACE INTO risk_assessment_items (
+      riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
+      commaseparatedlist, selectedanswer, qty, price, description, model, location,
+      assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
+      dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
+      synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid,
+      excludefromreport
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  try {
+    for (const item of items) {
+      const pendingSync = item.issynced ? 0 : (item.pending_sync ?? 1);
+
+      await stmt.executeAsync([
+        item.riskassessmentitemid,
+        item.riskassessmentcategoryid,
+        item.itemprompt || '',
+        item.itemtype || 0,
+        item.rank || 0,
+        item.commaseparatedlist || '',
+        item.selectedanswer || '',
+        item.qty || 0,
+        item.price || 0,
+        item.description || '',
+        item.model || '',
+        item.location || '',
+        item.assessmentregisterid || 0,
+        item.assessmentregistertypeid || 0,
+        item.datecreated || new Date().toISOString(),
+        item.createdbyid || '',
+        item.dateupdated || new Date().toISOString(),
+        item.updatedbyid || '',
+        item.issynced ? 1 : 0,
+        item.syncversion || 0,
+        item.deviceid || '',
+        item.syncstatus || '',
+        item.synctimestamp || new Date().toISOString(),
+        item.hasphoto ? 1 : 0,
+        item.latitude || 0,
+        item.longitude || 0,
+        item.notes || '',
+        pendingSync,
+        item.appointmentid || null,
+        item.excludefromreport ? 1 : 0
+      ]);
+    }
+  } finally {
+    await stmt.finalizeAsync();
+  }
+}
+
+/**
+ * Single transaction for the entire appointment prefetch item set (avoids N queued writes).
+ * Prefer this over repeated batchInsertRiskAssessmentItems during prefetch.
+ */
+export async function batchInsertRiskAssessmentItemsBulk(items: RiskAssessmentItem[]): Promise<void> {
+  if (items.length === 0) return;
+
+  console.log(`🔄 Bulk inserting ${items.length} risk assessment items (single transaction)...`);
+
+  return new Promise((resolve, reject) => {
+    const executeTransaction = async () => {
+      if (transactionInProgress) {
+        transactionQueue.push(executeTransaction);
+        processTransactionQueue();
+        return;
+      }
+
+      transactionInProgress = true;
+      const start = performance.now();
+
+      try {
+        const database = await ensureDbReady();
+
+        await database.withTransactionAsync(async () => {
+          await executeRiskAssessmentItemsStatementLoop(database, items);
+        });
+
+        const duration = performance.now() - start;
+        console.log(`✅ Bulk batch insert completed in ${duration.toFixed(2)}ms (${items.length} items)`);
+        console.log(`📊 Performance: ${(duration / items.length).toFixed(2)}ms per item`);
+
+        transactionInProgress = false;
+        processTransactionQueue();
+        resolve();
+      } catch (error) {
+        console.error('❌ Error in bulk batch insert:', error);
+        transactionInProgress = false;
+        processTransactionQueue();
+        reject(error);
+      }
+    };
+
+    executeTransaction();
+  });
+}
+
 // Batch insert risk assessment items (Step 1.2 - Performance Optimization)
 export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]): Promise<void> {
   if (items.length === 0) return;
   
   console.log(`🔄 Batch inserting ${items.length} risk assessment items...`);
-  const start = performance.now();
   
   // Use promise-based queue to prevent concurrent transactions
   return new Promise((resolve, reject) => {
@@ -1895,62 +2046,13 @@ export async function batchInsertRiskAssessmentItems(items: RiskAssessmentItem[]
       }
       
       transactionInProgress = true;
+      const start = performance.now();
       
       try {
         const database = await ensureDbReady();
         
         await database.withTransactionAsync(async () => {
-          const stmt = await database.prepareAsync(`
-            INSERT OR REPLACE INTO risk_assessment_items (
-              riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
-              commaseparatedlist, selectedanswer, qty, price, description, model, location,
-              assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
-              dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
-              synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid,
-              excludefromreport
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `);
-          
-          try {
-            for (const item of items) {
-              const pendingSync = item.issynced ? 0 : (item.pending_sync ?? 1);
-              
-              await stmt.executeAsync([
-                item.riskassessmentitemid,
-                item.riskassessmentcategoryid,
-                item.itemprompt || '',
-                item.itemtype || 0,
-                item.rank || 0,
-                item.commaseparatedlist || '',
-                item.selectedanswer || '',
-                item.qty || 0,
-                item.price || 0,
-                item.description || '',
-                item.model || '',
-                item.location || '',
-                item.assessmentregisterid || 0,
-                item.assessmentregistertypeid || 0,
-                item.datecreated || new Date().toISOString(),
-                item.createdbyid || '',
-                item.dateupdated || new Date().toISOString(),
-                item.updatedbyid || '',
-                item.issynced ? 1 : 0,
-                item.syncversion || 0,
-                item.deviceid || '',
-                item.syncstatus || '',
-                item.synctimestamp || new Date().toISOString(),
-                item.hasphoto ? 1 : 0,
-                item.latitude || 0,
-                item.longitude || 0,
-                item.notes || '',
-                pendingSync,
-                item.appointmentid || null,
-                item.excludefromreport ? 1 : 0
-              ]);
-            }
-          } finally {
-            await stmt.finalizeAsync();
-          }
+          await executeRiskAssessmentItemsStatementLoop(database, items);
         });
         
         const duration = performance.now() - start;

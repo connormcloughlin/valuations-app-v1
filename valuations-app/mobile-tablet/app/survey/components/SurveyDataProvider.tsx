@@ -482,7 +482,23 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
         try {
           console.log(`🚀 SURVEY DATA PROVIDER - Starting prefetch for survey ${surveyId}, order ${orderNumber}`);
           const prefetchService = await import('../../../services/prefetchService');
-          const prefetchResult = await prefetchService.default.startAppointmentPrefetch(surveyId, orderNumber);
+          const [hierarchyResp, fieldResp] = await Promise.all([
+            api.getRiskAssessmentCompleteHierarchy(orderNumber),
+            api.getOrderCategoryFieldConfigurations(orderNumber)
+          ]);
+          const hierarchyOk =
+            hierarchyResp?.success === true && hierarchyResp.data != null;
+          const fieldOk =
+            fieldResp?.success === true &&
+            Array.isArray(fieldResp.data?.categories) &&
+            fieldResp.data.categories.length > 0;
+          const prefetchResult = await prefetchService.default.startAppointmentPrefetch(
+            surveyId,
+            orderNumber,
+            hierarchyOk && fieldOk
+              ? { hierarchy: hierarchyResp, orderFieldConfig: fieldResp.data }
+              : undefined
+          );
           console.log(`🔍 SURVEY DATA PROVIDER - Prefetch result:`, prefetchResult);
         } catch (error) {
           console.error('❌ SURVEY DATA PROVIDER - Prefetch error:', error);
