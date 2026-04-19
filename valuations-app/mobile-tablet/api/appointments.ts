@@ -730,8 +730,8 @@ const appointmentsApi = {
       const startDateFrom = options.startDateFrom || null;
       const startDateTo = options.startDateTo || null;
 
-      // Check if we're online first
-      const isOnline = connectionUtils.isConnected();
+      // Align with UI: fresh async check (not stale sync isConnected)
+      const isOnline = await connectionUtils.getStatus();
       const statusLower = (status || '').toString().toLowerCase();
       const isCompletedStatus = statusLower === 'completed';
       console.log(`Connection status before fetching appointments by list-view: ${isOnline ? 'Online' : 'Offline'}`);
@@ -751,9 +751,18 @@ const appointmentsApi = {
         if (cachedResponse && cachedResponse.data) {
           console.log(`Using cached list-view appointments (offline - incomplete only)`);
           
-          // Extract data and filter by status, surveyor, and date range
+          // Extract array: getApiData wraps storage; stored payload may be { data: rows } envelope
+          const raw = cachedResponse.data as any;
+          const cachedData = Array.isArray(raw)
+            ? raw
+            : Array.isArray(raw?.data)
+              ? raw.data
+              : Array.isArray(raw?.appointments)
+                ? raw.appointments
+                : [];
+          console.log(`📦 Offline list-view cache resolved ${cachedData.length} appointment row(s)`);
+          
           // Cached data only contains incomplete appointments
-          const cachedData = Array.isArray(cachedResponse.data) ? cachedResponse.data : [];
           const filteredData = cachedData.filter((appointment: any) => {
             // Filter by status
             if (appointment.inviteStatus !== status) return false;

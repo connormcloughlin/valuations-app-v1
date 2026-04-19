@@ -4,7 +4,7 @@ import { Text, View } from '../Themed';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import appointmentsApi from '../../api/appointments';
-import { storeDataForKey, getDataForKey, removeDataForKey } from '../../utils/offlineStorage';
+import { storeDataForKey, getDataForKey, removeDataForKey, storeApiData } from '../../utils/offlineStorage';
 import { todaysAppointmentsStyles } from '../../app/GlobalStyles';
 import { useAuth } from '../../context/AuthContext';
 import connectionUtils from '../../utils/connectionUtils';
@@ -12,6 +12,17 @@ import connectionUtils from '../../utils/connectionUtils';
 const getRequestDeduplication = () => import('../../core/requestDeduplication');
 import { LoadingState, SkeletonLoader } from '../LoadingStates';
 import { getStartOfTodayISO, getEndOfTodayISO, formatTimeForSA, getTodayInSA } from '../../utils/dateUtils';
+
+/** Normalize getDataForKey / getApiData shapes to an appointment array or null */
+function normalizeTodaysAppointmentsCache(cached: any): Appointment[] | null {
+  if (!cached) return null;
+  if (Array.isArray(cached)) return cached as Appointment[];
+  if (Array.isArray(cached.data)) return cached.data as Appointment[];
+  if (cached.data && typeof cached.data === 'object' && Array.isArray((cached.data as any).data)) {
+    return (cached.data as any).data as Appointment[];
+  }
+  return null;
+}
 
 interface Appointment {
   id: string;
@@ -116,29 +127,21 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
             await removeDataForKey(cacheKey);
           }
           
-          // Check cache first if we're offline or not forcing reload
-          if (!forceReload) {
+          // Check cache when not forcing reload, or when offline (never skip cache offline)
+          if (!forceReload || !isOnline) {
             const cachedData = await getDataForKey(cacheKey);
-            if (cachedData) {
-              // Support both raw array and wrapped object shapes
-              if (Array.isArray(cachedData)) {
-                console.log(`✅ Cache hit for ${cacheKey}: ${(JSON.stringify(cachedData).length / 1024).toFixed(1)}KB`);
-                console.log('✅ Using cached today\'s appointments data');
-                return cachedData;
-              }
-              if (cachedData && Array.isArray((cachedData as any).data)) {
-                const arr = (cachedData as any).data;
-                console.log(`✅ Cache hit for ${cacheKey}: ${(JSON.stringify(arr).length / 1024).toFixed(1)}KB`);
-                console.log('✅ Using cached today\'s appointments data (wrapped)');
-                return arr;
-              }
+            const fromCache = normalizeTodaysAppointmentsCache(cachedData);
+            if (fromCache !== null) {
+              console.log(`✅ Cache hit for ${cacheKey}: ${(JSON.stringify(fromCache).length / 1024).toFixed(1)}KB`);
+              console.log('✅ Using cached today\'s appointments data');
+              return fromCache;
             }
           }
           
-          // If we're offline and no cache, return empty array
+          // Offline with no cache: throw so outer catch preserves previous appointments state
           if (!isOnline) {
-            console.log('📱 Offline - no cached data available for today\'s appointments');
-            return [];
+            console.log('📱 Offline - no cached data for today\'s appointments; preserving previous state');
+            throw new Error('OFFLINE_NO_TODAYS_CACHE');
           }
           
           console.log('🏠 TodaysAppointments calling getAppointmentsByListView with:', {
@@ -166,7 +169,7 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
             console.log(`📋 Successfully processed ${response.data.length} appointments for list-view`);
             
             // Cache the data
-            await storeDataForKey(cacheKey, response.data, 1440); // Cache for 24 hours
+            await storeApiData(cacheKey, response.data, 1440); // Cache for 24 hours
             console.log(`📦 Stored appointmentsByListView: ${(JSON.stringify(response.data).length / 1024).toFixed(1)}KB, TTL: 1440min`);
             
             return response.data;
@@ -183,27 +186,43 @@ export const OptimizedTodaysAppointments: React.FC<OptimizedTodaysAppointmentsPr
       // Cache the data for display
       const todaySA = getTodayInSA();
       const displayCacheKey = `todays_appointments_${todaySA.toISOString().split('T')[0]}`;
-      await storeDataForKey(displayCacheKey, appointmentsData, 1440); // Cache for 24 hours
+      await storeApiData(displayCacheKey, appointmentsData, 1440); // Cache for 24 hours
       console.log('💾 Caching today\'s appointments data...');
       console.log(`📦 Stored ${displayCacheKey}: ${(JSON.stringify(appointmentsData).length / 1024).toFixed(1)}KB, TTL: 1440min`);
       
+      const isOnlineAfter = await connectionUtils.getStatus();
       const safeAppointments = Array.isArray(appointmentsData) ? appointmentsData : [];
-      setAppointments(safeAppointments);
-    } catch (error) {
+      // Never replace existing rows with an empty list while offline
+      if (!isOnlineAfter && safeAppointments.length === 0) {
+        console.log('📱 Offline: keeping previous today\'s appointments (no new data)');
+      } else {
+        setAppointments(safeAppointments);
+      }
+    } catch (error: any) {
       console.error('❌ Error fetching today\'s appointments:', error);
-      setError('Failed to load today\'s appointments');
-      
+      const isOfflineNoCache = error?.message === 'OFFLINE_NO_TODAYS_CACHE';
+
       // Try to load from cache as fallback
       try {
         const todaySA = getTodayInSA();
-        const cacheKey = `todays_appointments_${todaySA.toISOString().split('T')[0]}`;
-        const cachedData = await getDataForKey(cacheKey);
-        if (cachedData) {
+        const dayKey = `todays_appointments_${todaySA.toISOString().split('T')[0]}`;
+        const cachedRaw = await getDataForKey(dayKey);
+        const normalized = normalizeTodaysAppointmentsCache(cachedRaw);
+        if (normalized) {
           console.log('📦 Using cached data as fallback');
-          setAppointments(cachedData);
+          setAppointments(normalized);
+          setError(null);
+          return;
         }
       } catch (cacheError) {
         console.error('❌ Error loading from cache:', cacheError);
+      }
+
+      if (isOfflineNoCache) {
+        setError(null);
+        console.log('📱 Offline with no today\'s cache — keeping previous appointments state');
+      } else {
+        setError('Failed to load today\'s appointments');
       }
     } finally {
       setLoading(false);

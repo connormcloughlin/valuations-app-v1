@@ -104,8 +104,9 @@ const connectionUtils = {
     return await checkConnection();
   },
   
-  // Get connection status with automatic check if needed
+  // Get connection status — bypass throttle so UI/API agree on online vs offline immediately
   getStatus: async (): Promise<boolean> => {
+    lastConnectionCheck = 0;
     return await checkConnection();
   }
 };

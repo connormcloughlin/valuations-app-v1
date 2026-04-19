@@ -86,22 +86,23 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
         await removeDataForKey(cacheKey);
       }
       
-      // Check cache first (only if not force reloading or offline)
-      if (!forceReload) {
+      // Check cache when not forcing reload, or when offline (never skip cache offline)
+      if (!forceReload || !isOnline) {
         console.log('📦 Checking cache for in-progress surveys...');
         const cachedData = await getDataForKey(cacheKey);
         if (cachedData && cachedData.data) {
           console.log('✅ Using cached in-progress surveys data');
           setSurveys(cachedData.data);
           setLoading(false);
+          setError(null);
           return; // Exit early if we have valid cached data
         }
       }
       
-      // If offline and no cache, show error
-      if (!isOnline && !forceReload) {
-        console.log('📱 Offline - no cached data available for in-progress surveys');
-        setError('No internet connection. Please check your network and try again.');
+      // Offline with no cached blob — keep existing surveys, do not call API
+      if (!isOnline) {
+        console.log('📱 Offline - no cached in-progress surveys; keeping previous list');
+        setError(null);
         setLoading(false);
         return;
       }
@@ -142,18 +143,12 @@ export const SurveysInProgress: React.FC<SurveysInProgressProps> = ({ onSurveyPr
         }
       } else {
         console.warn('Invalid API response:', response);
-        // Don't clear surveys on API failure - keep existing data
-        if (surveys.length === 0) {
-          setSurveys([]);
-        }
+        // Keep existing surveys on API failure — never blank the list here
       }
     } catch (err) {
       setError('Failed to load surveys in progress');
       console.error('Error fetching in-progress surveys:', err);
-      // Don't clear surveys on error - keep existing data
-      if (surveys.length === 0) {
-        setSurveys([]);
-      }
+      // Keep existing surveys on error — never blank the list here
     } finally {
       setLoading(false);
     }

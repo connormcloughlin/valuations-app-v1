@@ -128,9 +128,18 @@ export function handleApiSuccess(
   response: any,
   endpointId?: string
 ): ErrorHandlerResult {
-  const data = response.data || response;
-  const status = response.status || 200;
-  
+  const status = response.status ?? 200;
+  let data = response.data;
+
+  // Axios uses '' for empty bodies; `'' || response` would leak the full Axios object.
+  // 204 No Content must not fall back to the wrapper response.
+  if (data === '') {
+    data = null;
+  }
+  if (data == null) {
+    data = status === 204 ? null : response;
+  }
+
   // Check if this should be treated as an empty result
   if (endpointId && Array.isArray(data) && data.length === 0) {
     const emptyResult = evaluateEmptyResponse(endpointId, status, data);

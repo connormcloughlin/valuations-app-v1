@@ -4,7 +4,8 @@ import { Button, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { logNavigation } from '../../../utils/logger';
-import { AppLayout, TabConfig } from '../../../components/layout';
+import { AppLayout } from '../../../components/layout';
+import { useMainTabTabs } from '../../../hooks/useMainTabTabs';
 import { surveySummaryStyles } from '../../GlobalStyles';
 
 // Import components
@@ -17,30 +18,9 @@ import SurveySummaryActions from './components/SurveySummaryActions';
 import { useSurveySummaryData } from './hooks/useSurveySummaryData';
 import * as db from '../../../utils/db';
 
-// Define tabs for survey summary navigation
-const surveyTabs: TabConfig[] = [
-  {
-    name: 'dashboard',
-    title: 'Dashboard',
-    icon: 'view-dashboard',
-    path: '/(tabs)'
-  },
-  {
-    name: 'survey',
-    title: 'Survey',
-    icon: 'note-text',
-    path: '/(tabs)/survey'
-  },
-  {
-    name: 'profile',
-    title: 'Profile',
-    icon: 'account',
-    path: '/(tabs)/profile'
-  }
-];
-
 export default function SurveySummaryScreen() {
   logNavigation('Survey Summary Detail');
+  const tabs = useMainTabTabs();
   const params = useLocalSearchParams();
   const { id, orderNumber: orderNumberFromParams } = params;
   const surveyId = id as string;
@@ -235,7 +215,7 @@ Completed on ${survey.completionDate}
     return (
       <AppLayout
         title="Survey Summary"
-        tabs={surveyTabs}
+        tabs={tabs}
         showHeader={true}
         showBottomNav={true}
         showLogout={true}
@@ -252,7 +232,7 @@ Completed on ${survey.completionDate}
     return (
       <AppLayout
         title="Survey Not Found"
-        tabs={surveyTabs}
+        tabs={tabs}
         showHeader={true}
         showBottomNav={true}
         showLogout={true}
@@ -278,7 +258,7 @@ Completed on ${survey.completionDate}
   return (
     <AppLayout
       title="Survey Summary 1"
-      tabs={surveyTabs}
+      tabs={tabs}
       showHeader={true}
       showBottomNav={true}
       showLogout={true}

@@ -2,37 +2,17 @@ import React, { useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { logNavigation } from '../../utils/logger';
-import { AppLayout, TabConfig } from '../../components/layout';
+import { AppLayout } from '../../components/layout';
+import { useMainTabTabs } from '../../hooks/useMainTabTabs';
 
 // Import refactored components
 import { SurveyDataProvider, useSurveyData } from './components/SurveyDataProvider';
 import { SurveyMainContent } from './components/SurveyMainContent';
 import { SurveyLoading, SurveyError } from './components/SurveyStates';
 
-// Define tabs for survey navigation
-const surveyTabs: TabConfig[] = [
-  {
-    name: 'dashboard',
-    title: 'Dashboard',
-    icon: 'view-dashboard',
-    path: '/(tabs)'
-  },
-  {
-    name: 'survey',
-    title: 'Survey',
-    icon: 'note-text',
-    path: '/(tabs)/survey'
-  },
-  {
-    name: 'profile',
-    title: 'Profile',
-    icon: 'account',
-    path: '/(tabs)/profile'
-  }
-];
-
 // Wrapper component for loading and error states
 const SurveyScreenWrapper: React.FC<{ surveyId: string }> = ({ surveyId }) => {
+  const tabs = useMainTabTabs();
   const { survey, loading, error, refreshCategoryValues } = useSurveyData();
 
   // Refresh category totals when returning from items screen so the total updates after edits
@@ -46,7 +26,7 @@ const SurveyScreenWrapper: React.FC<{ surveyId: string }> = ({ surveyId }) => {
     return (
       <AppLayout
         title="Loading Survey"
-        tabs={surveyTabs}
+        tabs={tabs}
         showHeader={true}
         showBottomNav={true}
         showLogout={true}
@@ -60,7 +40,7 @@ const SurveyScreenWrapper: React.FC<{ surveyId: string }> = ({ surveyId }) => {
     return (
       <AppLayout
         title="Survey Error"
-        tabs={surveyTabs}
+        tabs={tabs}
         showHeader={true}
         showBottomNav={true}
         showLogout={true}
@@ -77,7 +57,7 @@ const SurveyScreenWrapper: React.FC<{ surveyId: string }> = ({ surveyId }) => {
   return (
     <AppLayout
       title={survey.client}
-      tabs={surveyTabs}
+      tabs={tabs}
       showHeader={true}
       showBottomNav={true}
       showLogout={true}

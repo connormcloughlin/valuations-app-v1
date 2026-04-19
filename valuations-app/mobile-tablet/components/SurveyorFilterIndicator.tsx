@@ -7,11 +7,14 @@ import { useAuth } from '../context/AuthContext';
 interface SurveyorFilterIndicatorProps {
   appointmentCount?: number;
   showEmptyState?: boolean;
+  /** Banner copy: `tasks` on the Tasks tab; default `appointments` for appointment screens. */
+  resource?: 'appointments' | 'tasks';
 }
 
 export const SurveyorFilterIndicator: React.FC<SurveyorFilterIndicatorProps> = ({ 
   appointmentCount = 0, 
-  showEmptyState = false 
+  showEmptyState = false,
+  resource = 'appointments'
 }) => {
   const { user } = useAuth();
   
@@ -90,7 +93,7 @@ export const SurveyorFilterIndicator: React.FC<SurveyorFilterIndicatorProps> = (
         color: '#1976d2',
         flex: 1
       }}>
-        Showing your assigned appointments ({appointmentCount} found)
+        Showing your assigned {resource} ({appointmentCount} found)
       </Text>
       <Chip 
         mode="outlined" 

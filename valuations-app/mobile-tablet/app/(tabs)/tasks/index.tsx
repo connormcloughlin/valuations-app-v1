@@ -253,6 +253,7 @@ export default function TasksScreen() {
             <SurveyorFilterIndicator
               appointmentCount={filteredTasks.length}
               showEmptyState={false}
+              resource="tasks"
             />
             <FlatList
               data={filteredTasks}
@@ -288,10 +289,6 @@ export default function TasksScreen() {
           </>
         ) : (
           <View style={scheduledAppointmentsStyles.emptyContainer}>
-            <SurveyorFilterIndicator
-              appointmentCount={0}
-              showEmptyState
-            />
             <MaterialCommunityIcons name="clipboard-check-outline" size={64} color="#ccc" />
             <Text style={scheduledAppointmentsStyles.emptyText}>
               {tasks.length === 0 ? 'No tasks found' : 'No tasks match your search'}

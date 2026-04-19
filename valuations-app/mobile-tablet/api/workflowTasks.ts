@@ -103,17 +103,51 @@ export async function getWorkflowTasks(
       params.status = status;
     }
 
-    const response = await transportClient.get<WorkflowTasksResponse>(
+    const raw = await transportClient.get<WorkflowTasksResponse | null>(
       'workflow.tasks',
       '/workflow/tasks',
       params
     );
 
-    if (response?.data) {
+    // 204 No Content / empty body → null from transport. Legacy: Axios object leaked when body was ''.
+    let payload: WorkflowTasksResponse | null = null;
+    if (raw == null) {
+      payload = null;
+    } else if (
+      typeof raw === 'object' &&
+      raw !== null &&
+      'config' in raw &&
+      'status' in raw &&
+      typeof (raw as { status: unknown }).status === 'number'
+    ) {
+      const ax = raw as { status: number; data: unknown };
+      if (ax.status === 204 || ax.data === '' || ax.data == null) {
+        payload = null;
+      } else {
+        payload = ax.data as WorkflowTasksResponse;
+      }
+    } else {
+      payload = raw as WorkflowTasksResponse;
+    }
+
+    if (payload == null) {
       return {
         success: true,
-        data: Array.isArray(response.data) ? response.data : [],
-        pagination: response.pagination
+        data: [],
+        pagination: {
+          page,
+          pageSize,
+          totalCount: 0,
+          totalPages: 0
+        }
+      };
+    }
+
+    if (typeof payload === 'object' && payload !== null && 'data' in payload) {
+      return {
+        success: true,
+        data: Array.isArray(payload.data) ? payload.data : [],
+        pagination: payload.pagination
       };
     }
 

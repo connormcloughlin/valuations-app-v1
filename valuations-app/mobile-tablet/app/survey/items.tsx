@@ -6,9 +6,9 @@ import api from '../../api';
 // Use require instead of import to avoid type declaration issues
 const ImagePicker = require('expo-image-picker');
 import { logNavigation } from '../../utils/logger';
-import ConnectionStatus from '../../components/ConnectionStatus';
 import connectionUtils from '../../utils/connectionUtils';
-import { AppLayout, TabConfig } from '../../components/layout';
+import { AppLayout } from '../../components/layout';
+import { useMainTabTabs } from '../../hooks/useMainTabTabs';
 import { FieldConfiguration, GroupingStrategy, CategoryConfiguration } from '../../types/dynamicUI';
 import { surveyItemsStyles } from '../GlobalStyles';
 
@@ -26,7 +26,8 @@ import {
 
 export default function ItemsScreen() {
   logNavigation('Survey Items');
-  
+  const tabs = useMainTabTabs();
+
   // Get router instance
   const router = useRouter();
   
@@ -140,34 +141,6 @@ export default function ItemsScreen() {
   useEffect(() => {
     predefinedItemsRef.current = predefinedItems;
   }, [predefinedItems]);
-
-  // Define navigation tabs - using standard app navigation
-  const surveyTabs: TabConfig[] = [
-    {
-      name: 'dashboard',
-      title: 'Dashboard',
-      icon: 'view-dashboard',
-      path: '/(tabs)'
-    },
-    {
-      name: 'tasks',
-      title: 'Tasks',
-      icon: 'clipboard-list',
-      path: '/(tabs)/tasks'
-    },
-    {
-      name: 'survey',
-      title: 'Survey',
-      icon: 'note-text',
-      path: '/(tabs)/survey'
-    },
-    {
-      name: 'profile',
-      title: 'Profile',
-      icon: 'account',
-      path: '/(tabs)/profile'
-    }
-  ];
 
   // Fetch field configuration for the category using new Configuration Service
   const fetchFieldConfiguration = async (categoryId: string) => {
@@ -548,11 +521,9 @@ export default function ItemsScreen() {
     <AppLayout
       title={categoryTitle as string || 'Survey Items'}
       subtitle={categoryConfig?.sectionName}
-      tabs={surveyTabs}
+      tabs={tabs}
     >
       <View style={surveyItemsStyles.container}>
-        <ConnectionStatus showOffline={true} showOnline={false} />
-        
         <ScrollView style={surveyItemsStyles.scrollView}>
           <PredefinedItemsList
             key={predefinedListKey}

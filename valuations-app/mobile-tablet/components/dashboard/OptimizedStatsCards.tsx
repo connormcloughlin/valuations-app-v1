@@ -10,9 +10,12 @@ import { useAuth } from '../../context/AuthContext';
 import { useDashboard } from '../../context/DashboardContext';
 import { setGlobalRefreshFunction } from '../../utils/dashboardRefresh';
 import riskAssessmentSyncService from '../../services/riskAssessmentSyncService';
+import { getDataForKey, storeApiData } from '../../utils/offlineStorage';
 // Dynamic import to prevent bundling at startup
 const getRequestDeduplication = () => import('../../core/requestDeduplication');
-import { LoadingState, SkeletonLoader } from '../LoadingStates';
+import { SkeletonLoader } from '../LoadingStates';
+
+const DASHBOARD_STATS_PERSIST_KEY = 'dashboard_status_counts_v1';
 
 interface StatsData {
   scheduled: number;
@@ -34,6 +37,22 @@ interface OptimizedStatsCardsProps {
   forceReload?: boolean;
 }
 
+/** Parse persisted dashboard counts from getDataForKey / getApiData shapes */
+function parsePersistedDashboardStats(raw: any): Omit<StatsData, 'pendingSync'> | null {
+  if (!raw) return null;
+  const d = raw.data !== undefined && typeof raw.data === 'object' && !Array.isArray(raw.data) ? raw.data : raw;
+  if (d && typeof d.scheduled === 'number' && typeof d.inProgress === 'number') {
+    return {
+      scheduled: d.scheduled,
+      inProgress: d.inProgress,
+      completed: typeof d.completed === 'number' ? d.completed : 0,
+      finalise: typeof d.finalise === 'number' ? d.finalise : 0,
+      lastSync: typeof d.lastSync === 'string' ? d.lastSync : 'Never',
+    };
+  }
+  return null;
+}
+
 export const OptimizedStatsCards: React.FC<OptimizedStatsCardsProps> = ({ onCardPress, forceReload = false }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   const { setRefreshStats } = useDashboard();
@@ -51,13 +70,49 @@ export const OptimizedStatsCards: React.FC<OptimizedStatsCardsProps> = ({ onCard
 
   // Add a ref to track if stats have been fetched to prevent duplicate calls
   const statsFetchedRef = useRef(false);
+  const statsRef = useRef(stats);
+  useEffect(() => {
+    statsRef.current = stats;
+  }, [stats]);
 
   // Define fetchStats function with request deduplication
   const fetchStats = useCallback(async () => {
     const cacheKey = 'dashboard-stats';
     
     try {
-      setLoading(true);
+      let persisted: ReturnType<typeof parsePersistedDashboardStats> = null;
+      try {
+        persisted = parsePersistedDashboardStats(await getDataForKey(DASHBOARD_STATS_PERSIST_KEY));
+      } catch (e) {
+        console.warn('Could not read persisted dashboard stats:', e);
+      }
+
+      const s = statsRef.current;
+      const isDefaultEmpty =
+        s.scheduled === 0 &&
+        s.inProgress === 0 &&
+        s.completed === 0 &&
+        s.finalise === 0 &&
+        s.lastSync === 'Never';
+
+      if (persisted && isDefaultEmpty) {
+        setStats(prev => ({
+          ...prev,
+          scheduled: persisted!.scheduled,
+          inProgress: persisted!.inProgress,
+          completed: persisted!.completed,
+          finalise: persisted!.finalise,
+          lastSync: persisted!.lastSync,
+        }));
+      }
+
+      // Soft refresh: only skeleton when we have no persisted snapshot and no in-memory counts yet
+      const shouldShowSkeleton = !persisted && isDefaultEmpty;
+      if (shouldShowSkeleton) {
+        setLoading(true);
+      } else {
+        setLoading(false);
+      }
       
       const { requestDeduplication } = await getRequestDeduplication();
       const statsData = await requestDeduplication.deduplicateRequest(
@@ -124,43 +179,95 @@ export const OptimizedStatsCards: React.FC<OptimizedStatsCardsProps> = ({ onCard
       
       console.log(`📊 Pending sync count: ${pendingSyncCount} (${pendingChanges.riskAssessmentItems} items, ${pendingChanges.appointments} appointments, ${pendingChanges.riskAssessmentMasters} masters, ${pendingChanges.mediaFiles} media)`);
       
+      const lastSyncLabel = new Date().toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+
       const newStats = {
         scheduled: statsData.scheduled,
         inProgress: statsData.inProgress,
         completed: statsData.completed,
         finalise: statsData.finalise,
         pendingSync: pendingSyncCount,
-        lastSync: new Date().toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        })
+        lastSync: lastSyncLabel
       };
       
       setStats(newStats);
+
+      try {
+        await storeApiData(
+          DASHBOARD_STATS_PERSIST_KEY,
+          {
+            scheduled: newStats.scheduled,
+            inProgress: newStats.inProgress,
+            completed: newStats.completed,
+            finalise: newStats.finalise,
+            lastSync: lastSyncLabel,
+          },
+          1440
+        );
+      } catch (persistErr) {
+        console.warn('Could not persist dashboard stats:', persistErr);
+      }
     } catch (error) {
       console.error('❌ Error fetching dashboard stats:', error);
       
-      // Even if there's an error, try to get pending sync count from local database
       try {
         const pendingChanges = await riskAssessmentSyncService.getPendingChangesCount();
         const pendingSyncCount = pendingChanges.total || 0;
-        
         console.log(`📊 Pending sync count (error occurred): ${pendingSyncCount}`);
-        
-        setStats(prevStats => ({
-          ...prevStats,
-          pendingSync: pendingSyncCount,
-          lastSync: 'Error loading stats'
-        }));
+
+        let persistedOnError: ReturnType<typeof parsePersistedDashboardStats> = null;
+        try {
+          persistedOnError = parsePersistedDashboardStats(await getDataForKey(DASHBOARD_STATS_PERSIST_KEY));
+        } catch (_) {
+          /* ignore */
+        }
+
+        if (persistedOnError) {
+          setStats(prevStats => ({
+            ...prevStats,
+            scheduled: persistedOnError!.scheduled,
+            inProgress: persistedOnError!.inProgress,
+            completed: persistedOnError!.completed,
+            finalise: persistedOnError!.finalise,
+            pendingSync: pendingSyncCount,
+            lastSync: `Offline (last sync ${persistedOnError!.lastSync})`,
+          }));
+        } else {
+          setStats(prevStats => ({
+            ...prevStats,
+            pendingSync: pendingSyncCount,
+            lastSync: 'Error loading stats',
+          }));
+        }
       } catch (syncError) {
         console.error('❌ Error getting pending sync count:', syncError);
-        setStats(prevStats => ({
-          ...prevStats,
-          lastSync: 'Error loading stats'
-        }));
+        let persistedOnError: ReturnType<typeof parsePersistedDashboardStats> = null;
+        try {
+          persistedOnError = parsePersistedDashboardStats(await getDataForKey(DASHBOARD_STATS_PERSIST_KEY));
+        } catch (_) {
+          /* ignore */
+        }
+        if (persistedOnError) {
+          setStats(prevStats => ({
+            ...prevStats,
+            scheduled: persistedOnError!.scheduled,
+            inProgress: persistedOnError!.inProgress,
+            completed: persistedOnError!.completed,
+            finalise: persistedOnError!.finalise,
+            lastSync: `Offline (last sync ${persistedOnError!.lastSync})`,
+          }));
+        } else {
+          setStats(prevStats => ({
+            ...prevStats,
+            lastSync: 'Error loading stats',
+          }));
+        }
       }
     } finally {
       setLoading(false);
@@ -171,7 +278,6 @@ export const OptimizedStatsCards: React.FC<OptimizedStatsCardsProps> = ({ onCard
   const refreshStats = useCallback(() => {
     console.log('🔄 Refreshing dashboard stats...');
     statsFetchedRef.current = false; // Allow fetching again
-    setLoading(true); // Show loading state
     fetchStats();
   }, [fetchStats]);
 
@@ -179,6 +285,13 @@ export const OptimizedStatsCards: React.FC<OptimizedStatsCardsProps> = ({ onCard
   useEffect(() => {
     setGlobalRefreshFunction(refreshStats);
   }, [refreshStats]);
+
+  // Initial load when authenticated (stats tiles do not rely on tab forceReload alone)
+  useEffect(() => {
+    if (isAuthenticated && user && !isLoading) {
+      fetchStats();
+    }
+  }, [isAuthenticated, user, isLoading, fetchStats]);
 
   // Handle force reload when forceReload prop changes
   useEffect(() => {

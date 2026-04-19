@@ -2,32 +2,13 @@ import React, { useState } from 'react';
 import { StyleSheet, ScrollView, Alert } from 'react-native';
 import { View } from '../components/Themed';
 import { Text, Button, Card, ProgressBar } from 'react-native-paper';
-import { AppLayout, TabConfig } from '../components/layout';
+import { AppLayout } from '../components/layout';
+import { useMainTabTabs } from '../hooks/useMainTabTabs';
 import riskAssessmentSyncService from '../services/riskAssessmentSyncService';
 import { syncStyles } from './GlobalStyles';
 
-const tabs: TabConfig[] = [
-  {
-    name: 'dashboard',
-    title: 'Dashboard',
-    icon: 'view-dashboard',
-    path: '/(tabs)'
-  },
-  {
-    name: 'survey',
-    title: 'Survey',
-    icon: 'clipboard-list',
-    path: '/(tabs)/survey'
-  },
-  {
-    name: 'profile',
-    title: 'Profile',
-    icon: 'account',
-    path: '/(tabs)/profile'
-  }
-];
-
 export default function SyncScreen() {
+  const tabs = useMainTabTabs();
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<any>(null);
   const [pendingCount, setPendingCount] = useState<any>(null);
