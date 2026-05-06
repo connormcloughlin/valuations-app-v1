@@ -438,6 +438,116 @@ function MultiselectAnswerField({
   );
 }
 
+interface ComboboxFieldProps {
+  field: FieldConfiguration;
+  value: any;
+  fieldName: string;
+  onChange: (fieldName: string, value: any) => void;
+  onBlur?: () => void;
+  hasError: boolean;
+  dataAttributes?: { [key: string]: string };
+  handwritingEnabled?: boolean;
+  onOpenHandwriting?: (fieldName: string) => void;
+}
+
+function ComboboxField({
+  field,
+  value,
+  fieldName,
+  onChange,
+  onBlur,
+  hasError,
+  dataAttributes,
+  handwritingEnabled,
+  onOpenHandwriting,
+}: ComboboxFieldProps) {
+  const sortedDropdownOptions = [...(field.dropdownOptions || [])].sort((a, b) =>
+    (a.option_label || '').localeCompare(b.option_label || '')
+  );
+  const [inputText, setInputText] = useState(value || '');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredOptions, setFilteredOptions] = useState(sortedDropdownOptions);
+  const selectingOption = useRef(false);
+
+  useEffect(() => {
+    setInputText(value || '');
+  }, [value]);
+
+  const handleTextChange = (text: string) => {
+    setInputText(text);
+    onChange(fieldName, text);
+    const filtered = sortedDropdownOptions.filter((option: DropdownOption) =>
+      option.option_label.toLowerCase().includes(text.toLowerCase())
+    );
+    setFilteredOptions(filtered);
+    setShowSuggestions(text.length > 0 && filtered.length > 0);
+  };
+
+  const handleSelectSuggestion = (optionValue: string) => {
+    const selectedOption = sortedDropdownOptions.find((option: DropdownOption) => option.option_value === optionValue);
+    const displayText = selectedOption ? selectedOption.option_label : optionValue;
+    setInputText(displayText);
+    onChange(fieldName, optionValue);
+    setShowSuggestions(false);
+    onBlur?.();
+  };
+
+  const handleBlur = () => {
+    setTimeout(() => {
+      if (!selectingOption.current) {
+        setShowSuggestions(false);
+      }
+      onBlur?.();
+    }, 100);
+  };
+
+  return (
+    <View style={dynamicFieldRendererStyles.comboboxContainer}>
+      <View style={dynamicFieldRendererStyles.inputContainer}>
+        <TextInput
+          style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
+          value={inputText}
+          onChangeText={handleTextChange}
+          onFocus={() => {
+            if (inputText.length > 0) {
+              setShowSuggestions(true);
+            }
+          }}
+          onBlur={handleBlur}
+          placeholder={field.placeholder || field.field_label}
+          placeholderTextColor="#95a5a6"
+          {...(dataAttributes || {})}
+        />
+        {handwritingEnabled && onOpenHandwriting && (
+          <TouchableOpacity
+            style={dynamicFieldRendererStyles.handwritingButton}
+            onPress={() => onOpenHandwriting(fieldName)}
+          >
+            <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
+          </TouchableOpacity>
+        )}
+      </View>
+      {showSuggestions && (
+        <View style={dynamicFieldRendererStyles.suggestionsContainer}>
+          <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
+            {filteredOptions.map((item: DropdownOption) => (
+              <TouchableOpacity
+                key={item.option_value}
+                style={dynamicFieldRendererStyles.suggestionItem}
+                onPress={() => handleSelectSuggestion(item.option_value)}
+                onPressIn={() => { selectingOption.current = true; }}
+                onPressOut={() => { setTimeout(() => { selectingOption.current = false; }, 150); }}
+              >
+                <Text style={dynamicFieldRendererStyles.suggestionText}>{item.option_label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function DynamicFieldRenderer({
   field,
   value,
@@ -898,91 +1008,18 @@ export default function DynamicFieldRenderer({
     if (!field.dropdownOptions || field.dropdownOptions.length === 0) {
       return renderTextField();
     }
-
-    // Sort dropdown options alphabetically by option_label
-    const sortedDropdownOptions = [...field.dropdownOptions].sort((a, b) => 
-      (a.option_label || '').localeCompare(b.option_label || '')
-    );
-
-    const [inputText, setInputText] = useState(value || '');
-    const [showSuggestions, setShowSuggestions] = useState(false);
-    const [filteredOptions, setFilteredOptions] = useState(sortedDropdownOptions);
-    const selectingOption = useRef(false);
-
-    const handleTextChange = (text: string) => {
-      setInputText(text);
-      onChange(fieldName, text);
-      
-      // Filter options based on input
-      const filtered = sortedDropdownOptions.filter((option: DropdownOption) =>
-        option.option_label.toLowerCase().includes(text.toLowerCase())
-      );
-      setFilteredOptions(filtered);
-      setShowSuggestions(text.length > 0 && filtered.length > 0);
-    };
-
-    const handleSelectSuggestion = (optionValue: string) => {
-      const selectedOption = sortedDropdownOptions.find((option: DropdownOption) => option.option_value === optionValue);
-      const displayText = selectedOption ? selectedOption.option_label : optionValue;
-      setInputText(displayText);
-      onChange(fieldName, optionValue);
-      setShowSuggestions(false);
-    };
-
-    // Only close suggestions on blur if not selecting an option
-    const handleBlur = () => {
-      setTimeout(() => {
-        if (!selectingOption.current) {
-          setShowSuggestions(false);
-        }
-        onBlur?.();
-      }, 100);
-    };
-
     return (
-      <View style={dynamicFieldRendererStyles.comboboxContainer}>
-        <View style={dynamicFieldRendererStyles.inputContainer}>
-          <TextInput
-            style={[dynamicFieldRendererStyles.input, hasError && dynamicFieldRendererStyles.inputError]}
-            value={inputText}
-            onChangeText={handleTextChange}
-            onFocus={() => {
-              if (inputText.length > 0) {
-                setShowSuggestions(true);
-              }
-            }}
-            onBlur={handleBlur}
-            placeholder={field.placeholder || field.field_label}
-            placeholderTextColor="#95a5a6"
-            {...(dataAttributes || {})}
-          />
-          {handwritingEnabled && onOpenHandwriting && (
-            <TouchableOpacity
-              style={dynamicFieldRendererStyles.handwritingButton}
-              onPress={() => onOpenHandwriting(fieldName)}
-            >
-              <MaterialCommunityIcons name="pencil" size={24} color="#4a90e2" />
-            </TouchableOpacity>
-          )}
-        </View>
-        {showSuggestions && (
-          <View style={dynamicFieldRendererStyles.suggestionsContainer}>
-            <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
-              {filteredOptions.map((item: DropdownOption) => (
-                <TouchableOpacity
-                  key={item.option_value}
-                  style={dynamicFieldRendererStyles.suggestionItem}
-                  onPress={() => handleSelectSuggestion(item.option_value)}
-                  onPressIn={() => { selectingOption.current = true; }}
-                  onPressOut={() => { setTimeout(() => { selectingOption.current = false; }, 150); }}
-                >
-                  <Text style={dynamicFieldRendererStyles.suggestionText}>{item.option_label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-      </View>
+      <ComboboxField
+        field={field}
+        value={value}
+        fieldName={fieldName}
+        onChange={onChange}
+        onBlur={onBlur}
+        hasError={hasError}
+        dataAttributes={dataAttributes}
+        handwritingEnabled={handwritingEnabled}
+        onOpenHandwriting={onOpenHandwriting}
+      />
     );
   };
 

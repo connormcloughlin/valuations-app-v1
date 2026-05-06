@@ -19,6 +19,7 @@ import {
   getAssessmentMastersFromHierarchyPayload,
   peelCompleteHierarchyInner
 } from '../utils/completeHierarchyPayload';
+import { debugLog, errorLog } from '../utils/debugUtils';
 
 /** Optional payloads from SurveyDataProvider to avoid duplicate network calls. */
 export interface AppointmentPrefetchPreload {
@@ -427,8 +428,8 @@ class PrefetchService {
       }
     }
 
-    console.log(
-      `📸 PREFETCH - Hydrated ${totalMediaFiles} hierarchy media records across ${entitiesToPrefetch.length} entities`
+    debugLog(
+      `PREFETCH - Hydrated ${totalMediaFiles} hierarchy media records across ${entitiesToPrefetch.length} entities`
     );
     return entitiesToPrefetch;
   }
@@ -436,7 +437,7 @@ class PrefetchService {
   async hydrateMediaMetadataFromHierarchy(hierarchyData: any): Promise<void> {
     const assessmentMasters = this.normalizeHierarchyAssessmentMasters(hierarchyData);
     if (assessmentMasters.length === 0) {
-      console.log('📸 PREFETCH - No assessment masters available for media hydration');
+      debugLog('PREFETCH - No assessment masters available for media hydration');
       return;
     }
 
@@ -447,11 +448,20 @@ class PrefetchService {
 
     try {
       const prefetchResult = await imagePrefetchService.prefetchImagesForEntities(hierarchyMediaEntities);
-      console.log(
-        `📸 PREFETCH - Hierarchy image prefetch completed: ${prefetchResult.downloaded} downloaded, ${prefetchResult.failed} failed, ${(prefetchResult.totalSize / 1024 / 1024).toFixed(2)}MB total`
-      );
+      if (prefetchResult.failed > 0) {
+        errorLog('PREFETCH - Hierarchy image prefetch completed with failures', {
+          downloaded: prefetchResult.downloaded,
+          failed: prefetchResult.failed,
+          errors: prefetchResult.errors,
+          totalMB: (prefetchResult.totalSize / 1024 / 1024).toFixed(2),
+        });
+      } else {
+        debugLog(
+          `PREFETCH - Hierarchy image prefetch completed: ${prefetchResult.downloaded} downloaded, ${(prefetchResult.totalSize / 1024 / 1024).toFixed(2)}MB total`
+        );
+      }
     } catch (error) {
-      console.error('📸 PREFETCH - Error prefetching hierarchy media images:', error);
+      errorLog('PREFETCH - Error prefetching hierarchy media images', error);
     }
   }
 

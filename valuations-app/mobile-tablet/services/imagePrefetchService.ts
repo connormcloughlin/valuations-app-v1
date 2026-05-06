@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import api from '../api';
 import { getMediaFilesByEntity } from '../utils/db';
+import { debugLog, errorLog } from '../utils/debugUtils';
 
 interface PrefetchProgress {
   total: number;
@@ -16,6 +17,9 @@ interface PrefetchResult {
   errors: string[];
   totalSize: number;
 }
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 class ImagePrefetchService {
   private mediaDirectory: string | null = null;
@@ -50,10 +54,10 @@ class ImagePrefetchService {
       const dirInfo = await FileSystem.getInfoAsync(mediaDir);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(mediaDir, { intermediates: true });
-        console.log('📸 ImagePrefetchService: Created prefetched images directory:', mediaDir);
+        debugLog('ImagePrefetchService: Created prefetched images directory', mediaDir);
       }
     } catch (error) {
-      console.error('📸 ImagePrefetchService: Error creating media directory:', error);
+      errorLog('ImagePrefetchService: Error creating media directory', error);
     }
   }
 
@@ -62,18 +66,18 @@ class ImagePrefetchService {
    */
   async prefetchImagesForEntity(entityName: string, entityID: number): Promise<PrefetchResult> {
     try {
-      console.log(`📸 ImagePrefetchService: Starting prefetch for ${entityName} ${entityID}`);
+      debugLog(`ImagePrefetchService: Starting prefetch for ${entityName} ${entityID}`);
       
       // Get all media files for this entity
       const mediaFiles = await getMediaFilesByEntity(entityName, entityID);
       const backendMediaFiles = mediaFiles.filter(f => (f as any).BackendMediaID && f.pending_sync === 0);
       
       if (backendMediaFiles.length === 0) {
-        console.log(`📸 ImagePrefetchService: No backend media files found for ${entityName} ${entityID}`);
+        debugLog(`ImagePrefetchService: No backend media files found for ${entityName} ${entityID}`);
         return { success: true, downloaded: 0, failed: 0, errors: [], totalSize: 0 };
       }
 
-      console.log(`📸 ImagePrefetchService: Found ${backendMediaFiles.length} backend media files to prefetch`);
+      debugLog(`ImagePrefetchService: Found ${backendMediaFiles.length} backend media files to prefetch`);
 
       const progress: PrefetchProgress = {
         total: backendMediaFiles.length,
@@ -102,33 +106,33 @@ class ImagePrefetchService {
             result.totalSize += downloadResult.size || 0;
             progress.completed++;
             this.currentProgress = { ...progress };
-            console.log(`📸 ImagePrefetchService: Downloaded ${mediaFile.FileName} (${downloadResult.size} bytes)`);
+            debugLog(`ImagePrefetchService: Downloaded ${mediaFile.FileName} (${downloadResult.size} bytes)`);
           } else {
             result.failed++;
             result.errors.push(`Failed to download ${mediaFile.FileName}: ${downloadResult.error}`);
             progress.failed++;
             this.currentProgress = { ...progress };
-            console.error(`📸 ImagePrefetchService: Failed to download ${mediaFile.FileName}:`, downloadResult.error);
+            errorLog(`ImagePrefetchService: Failed to download ${mediaFile.FileName}`, downloadResult.error);
           }
         } catch (error) {
           result.failed++;
           result.errors.push(`Error downloading ${mediaFile.FileName}: ${error}`);
           progress.failed++;
           this.currentProgress = { ...progress };
-          console.error(`📸 ImagePrefetchService: Error downloading ${mediaFile.FileName}:`, error);
+          errorLog(`ImagePrefetchService: Error downloading ${mediaFile.FileName}`, error);
         }
       }
 
-      console.log(`📸 ImagePrefetchService: Prefetch completed for ${entityName} ${entityID}: ${result.downloaded} downloaded, ${result.failed} failed`);
+      debugLog(`ImagePrefetchService: Prefetch completed for ${entityName} ${entityID}: ${result.downloaded} downloaded, ${result.failed} failed`);
       return result;
 
     } catch (error) {
-      console.error('📸 ImagePrefetchService: Error prefetching images:', error);
+      errorLog('ImagePrefetchService: Error prefetching images', error);
       return {
         success: false,
         downloaded: 0,
         failed: 0,
-        errors: [error.toString()],
+        errors: [errorMessage(error)],
         totalSize: 0
       };
     } finally {
@@ -147,7 +151,7 @@ class ImagePrefetchService {
       }
 
       // Fetch image from backend API
-      console.log(`📸 ImagePrefetchService: Fetching image ${backendMediaID} from backend API`);
+      debugLog(`ImagePrefetchService: Fetching image ${backendMediaID} from backend API`);
       const response = await api.fetchImage(backendMediaID);
       
       if (!response.success || !response.data?.imageUrl) {
@@ -186,7 +190,7 @@ class ImagePrefetchService {
 
       return { success: true, size };
     } catch (error) {
-      return { success: false, error: error.toString() };
+      return { success: false, error: errorMessage(error) };
     }
   }
 
@@ -195,7 +199,7 @@ class ImagePrefetchService {
    */
   private async updateMediaFileWithLocalPath(mediaID: number, localPath: string): Promise<void> {
     try {
-      const { updateMediaFile, runSql } = await import('../utils/db');
+      const { runSql } = await import('../utils/db');
       
       // Update the media file directly in the database
       await runSql(
@@ -203,9 +207,9 @@ class ImagePrefetchService {
         [localPath, mediaID]
       );
       
-      console.log(`📸 ImagePrefetchService: Updated media file ${mediaID} with local path: ${localPath}`);
+      debugLog(`ImagePrefetchService: Updated media file ${mediaID} with local path`, localPath);
     } catch (error) {
-      console.error('📸 ImagePrefetchService: Error updating media file with local path:', error);
+      errorLog('ImagePrefetchService: Error updating media file with local path', error);
     }
   }
 
@@ -214,7 +218,7 @@ class ImagePrefetchService {
    */
   async prefetchImagesForEntities(entities: Array<{ entityName: string; entityID: number }>): Promise<PrefetchResult> {
     try {
-      console.log(`📸 ImagePrefetchService: Starting batch prefetch for ${entities.length} entities`);
+      debugLog(`ImagePrefetchService: Starting batch prefetch for ${entities.length} entities`);
       
       const totalResult: PrefetchResult = {
         success: true,
@@ -232,21 +236,22 @@ class ImagePrefetchService {
           totalResult.errors.push(...result.errors);
           totalResult.totalSize += result.totalSize;
         } catch (error) {
+          errorLog(`ImagePrefetchService: Error prefetching ${entity.entityName} ${entity.entityID}`, error);
           totalResult.failed++;
           totalResult.errors.push(`Error prefetching ${entity.entityName} ${entity.entityID}: ${error}`);
         }
       }
 
-      console.log(`📸 ImagePrefetchService: Batch prefetch completed: ${totalResult.downloaded} downloaded, ${totalResult.failed} failed`);
+      debugLog(`ImagePrefetchService: Batch prefetch completed: ${totalResult.downloaded} downloaded, ${totalResult.failed} failed`);
       return totalResult;
 
     } catch (error) {
-      console.error('📸 ImagePrefetchService: Error in batch prefetch:', error);
+      errorLog('ImagePrefetchService: Error in batch prefetch', error);
       return {
         success: false,
         downloaded: 0,
         failed: 0,
-        errors: [error.toString()],
+        errors: [errorMessage(error)],
         totalSize: 0
       };
     }
@@ -292,7 +297,7 @@ class ImagePrefetchService {
         files: fileStats
       };
     } catch (error) {
-      console.error('📸 ImagePrefetchService: Error getting storage stats:', error);
+      errorLog('ImagePrefetchService: Error getting storage stats', error);
       return { totalFiles: 0, totalSize: 0, files: [] };
     }
   }
@@ -314,11 +319,11 @@ class ImagePrefetchService {
         
         if (fileInfo.exists && fileInfo.modificationTime && fileInfo.modificationTime < cutoffDate.getTime()) {
           await FileSystem.deleteAsync(filePath);
-          console.log('📸 ImagePrefetchService: Cleaned up old prefetched image:', fileName);
+          debugLog('ImagePrefetchService: Cleaned up old prefetched image', fileName);
         }
       }
     } catch (error) {
-      console.error('📸 ImagePrefetchService: Error cleaning up old images:', error);
+      errorLog('ImagePrefetchService: Error cleaning up old images', error);
     }
   }
 
@@ -335,9 +340,9 @@ class ImagePrefetchService {
         await FileSystem.deleteAsync(filePath);
       }
       
-      console.log(`📸 ImagePrefetchService: Cleared ${files.length} prefetched images`);
+      debugLog(`ImagePrefetchService: Cleared ${files.length} prefetched images`);
     } catch (error) {
-      console.error('📸 ImagePrefetchService: Error clearing prefetched images:', error);
+      errorLog('ImagePrefetchService: Error clearing prefetched images', error);
     }
   }
 
@@ -366,10 +371,10 @@ class ImagePrefetchService {
         }
       }
       
-      console.log(`📸 ImagePrefetchService: Status for ${entityName} ${entityID}: ${prefetched} prefetched, ${notPrefetched} not prefetched`);
+      debugLog(`ImagePrefetchService: Status for ${entityName} ${entityID}: ${prefetched} prefetched, ${notPrefetched} not prefetched`);
       return { total: backendMediaFiles.length, prefetched, notPrefetched };
     } catch (error) {
-      console.error('📸 ImagePrefetchService: Error checking prefetch status:', error);
+      errorLog('ImagePrefetchService: Error checking prefetch status', error);
       return { total: 0, prefetched: 0, notPrefetched: 0 };
     }
   }

@@ -29,6 +29,8 @@ export interface Item {
   itemtype?: number; // Add itemtype property for database compatibility
   qty?: number; // Add original database qty value for hasDataCaptured function
   excludefromreport?: number; // 0 = not excluded, 1 = excluded (syncs to backend ExcludeFromReport)
+  pending_sync?: number; // Local sync queue flag from SQLite
+  issynced?: number; // Backend sync state from SQLite/API
 }
 
 // Define the API response type
