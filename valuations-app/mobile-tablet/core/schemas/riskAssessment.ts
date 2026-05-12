@@ -28,7 +28,7 @@ export const RiskAssessmentItemSchema = z.object({
   rank: z.number().int().min(0, 'Rank must be non-negative'),
   commaseparatedlist: z.string().optional(),
   selectedanswer: z.string().optional(),
-  qty: z.number().min(0, 'Quantity must be non-negative'),
+  qty: z.union([z.number().min(0, 'Quantity must be non-negative'), z.null()]),
   price: z.number().min(0, 'Price must be non-negative'),
   description: z.string().optional(),
   model: z.string().optional(),

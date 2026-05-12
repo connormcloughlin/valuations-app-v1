@@ -343,6 +343,17 @@ const appointmentsApi = {
           const surveyor_due_date = appointmentData.surveyor_due_date ?? appointmentData.surveyorDueDate ?? orderDetails.surveyor_due_date ?? orderDetails.surveyorDueDate ?? null;
           const surveyor_status = appointmentData.surveyor_status ?? appointmentData.surveyorStatus ?? orderDetails.surveyor_status ?? orderDetails.surveyorStatus ?? null;
           const completed_at = appointmentData.completed_at ?? appointmentData.completedAt ?? orderDetails.completed_at ?? orderDetails.completedAt ?? null;
+
+          const clientCell =
+            orderDetails.clientCell ??
+            orderDetails.ClientCell ??
+            appointmentData.cell ??
+            null;
+          const clientLandline =
+            orderDetails.clientPhoneNo ??
+            orderDetails.ClientPhoneNo ??
+            appointmentData.clientPhoneNo ??
+            null;
           
           // Update the appointment data with normalized fields
           appointmentData = {
@@ -387,6 +398,10 @@ const appointmentsApi = {
             surveyor_due_date,
             surveyor_status,
             completed_at,
+            // Top-level contact mirrors ordersList for consumers that read cell/phone only
+            cell: clientCell ?? undefined,
+            phone: clientLandline ?? appointmentData.phone ?? undefined,
+            templates: appointmentData.templates ?? undefined,
             // Preserve original data
             originalAppointment: appointmentData,
             originalOrdersList: orderDetails
@@ -542,6 +557,18 @@ const appointmentsApi = {
                                appointmentData.OrderID ||
                                appointmentData.order_id || 
                                'Unknown order';
+
+            const fbOrder = appointmentData.ordersList || {};
+            const fbCell =
+              fbOrder.clientCell ??
+              fbOrder.ClientCell ??
+              appointmentData.cell ??
+              null;
+            const fbLandline =
+              fbOrder.clientPhoneNo ??
+              fbOrder.ClientPhoneNo ??
+              appointmentData.clientPhoneNo ??
+              null;
             
             // Update the appointment data with normalized fields
             appointmentData = {
@@ -552,6 +579,9 @@ const appointmentsApi = {
               client,
               date,
               orderNumber,
+              cell: fbCell ?? undefined,
+              phone: fbLandline ?? appointmentData.phone ?? undefined,
+              templates: appointmentData.templates ?? undefined,
               // Preserve the original Invite_Status if available
               Invite_Status: appointmentData.Invite_Status || appointmentData.status || 'booked',
               // Keep the status field as a backup

@@ -149,6 +149,13 @@ module.exports = {
       "bundleIdentifier": getBundleIdentifier(),
       "runtimeVersion": {
         "policy": "appVersion"
+      },
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "comgooglemaps",
+          "waze",
+          "maps"
+        ]
       }
     },
     "android": {

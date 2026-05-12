@@ -10,17 +10,13 @@ import { formatDateForSA } from '../../../utils/dateUtils';
 
 interface SurveyHeaderProps {
   address: string;
-  completedCategories: number;
-  totalCategories: number;
-  /** Surveyor SLA status (from appointment). Optional; when provided, badge is shown below progress bar. */
+  /** Surveyor SLA status (from appointment). Optional. */
   surveyorStatus?: string | null;
   /** Surveyor segment due date (ISO). Optional. */
   surveyorDueDate?: string | null;
 }
 
-export default function SurveyHeader({ address, completedCategories, totalCategories, surveyorStatus, surveyorDueDate }: SurveyHeaderProps) {
-  const progress = Math.floor((completedCategories / totalCategories) * 100);
-
+export default function SurveyHeader({ address, surveyorStatus, surveyorDueDate }: SurveyHeaderProps) {
   return (
     <Card style={styles.headerCard}>
       <Card.Content>
@@ -28,29 +24,17 @@ export default function SurveyHeader({ address, completedCategories, totalCatego
           <MaterialCommunityIcons name="map-marker" size={20} color={colors.warning} />
           <Text style={styles.addressText}>{address}</Text>
         </View>
-        
-        <View style={styles.progressContainer}>
-          <View style={styles.progressInfo}>
-            <Text style={styles.progressTitle}>Survey Progress</Text>
-            <Text style={styles.progressPercentage}>{progress}%</Text>
-          </View>
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { width: `${progress}%` }]} />
-          </View>
-          <Text style={styles.progressDetails}>
-            {completedCategories} of {totalCategories} categories completed
-          </Text>
-          <View style={styles.slaBadgeContainer}>
-            <View style={styles.slaRow}>
-              <SlaStatusBadge
-                surveyorStatus={surveyorStatus}
-                surveyorDueDate={surveyorDueDate}
-                compact={true}
-              />
-              <Text style={styles.surveyorDueLabel}>
-                Surveyor due date: {surveyorDueDate ? formatDateForSA(surveyorDueDate) : '—'}
-              </Text>
-            </View>
+
+        <View style={styles.slaBadgeContainer}>
+          <View style={styles.slaRow}>
+            <SlaStatusBadge
+              surveyorStatus={surveyorStatus}
+              surveyorDueDate={surveyorDueDate}
+              compact={true}
+            />
+            <Text style={styles.surveyorDueLabel}>
+              Surveyor due date: {surveyorDueDate ? formatDateForSA(surveyorDueDate) : '—'}
+            </Text>
           </View>
         </View>
       </Card.Content>
@@ -74,42 +58,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginLeft: spacing.sm,
   },
-  progressContainer: {
-    marginTop: spacing.xs,
-  },
-  progressInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  progressTitle: {
-    fontSize: typography.sm,
-    color: colors.textSecondary,
-  },
-  progressPercentage: {
-    fontSize: typography.sm,
-    fontWeight: 'bold',
-    color: colors.warning,
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: colors.borderLight,
-    borderRadius: borderRadius.xs,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: colors.warning,
-  },
-  progressDetails: {
-    fontSize: typography.xs,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-    textAlign: 'right',
-  },
   slaBadgeContainer: {
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
   slaRow: {
     flexDirection: 'row',

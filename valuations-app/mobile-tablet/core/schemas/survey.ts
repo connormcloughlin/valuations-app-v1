@@ -22,7 +22,7 @@ export const SurveyMetaSchema = z.object({
   photo: z.string().optional(),
   commaseparatedlist: z.string().optional(),
   // Database fields
-  qty: z.number().min(0).optional(),
+  qty: z.union([z.number().min(0), z.null()]).optional(),
   selectedanswer: z.string().optional(),
   rank: z.number().int().min(0).optional(),
   itemtype: z.number().int().min(0).optional()
@@ -43,7 +43,7 @@ export const SurveyItemSchema = z.object({
   photo: z.string().optional(),
   commaseparatedlist: z.string().optional(),
   // Additional fields for data validation
-  qty: z.number().min(0).optional(),
+  qty: z.union([z.number().min(0), z.null()]).optional(),
   selectedanswer: z.string().optional(),
   rank: z.number().int().min(0).optional(),
   itemtype: z.number().int().min(0).optional()

@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { qtyFromApiScalar } from '../components/survey/items/dynamic/itemFieldMapping';
 import { API_BASE_URL } from '../constants/apiConfig';
 import transportClient from '../core/transport/transportClient';
 import { requestDeduplication } from '../core/requestDeduplication';
@@ -506,7 +507,7 @@ class PrefetchService {
       commaseparatedlist:
         item.commaSeparatedList ?? item.CommaseparatedList ?? item.comma_separated_list ?? '',
       selectedanswer: item.selectedAnswer ?? item.SelectedAnswer ?? '',
-      qty: Number(item.qty ?? item.Qty ?? 0) || 0,
+      qty: qtyFromApiScalar(item.qty ?? item.Qty),
       price: Number(item.price ?? item.Price ?? 0) || 0,
       description: item.description ?? item.Description ?? '',
       model: item.model ?? item.Model ?? '',

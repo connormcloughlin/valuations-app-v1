@@ -15,7 +15,6 @@ This guide helps migrate the remaining files to use the new theme system from `G
 - `SurveyActions.tsx` - ✅ **NEWLY MIGRATED** - Migrated to use theme constants
 - `RiskAssessmentTemplates.tsx` - ✅ **NEWLY MIGRATED** - Migrated to use theme constants
 - `CategoriesList.tsx` - ✅ **NEWLY MIGRATED** - Migrated to use theme constants
-- `[id] copy.tsx` (survey summary copy) - ✅ **NEWLY MIGRATED** - Migrated to use theme constants
 
 ### 🎉 **MIGRATION COMPLETE!**
 All files listed in the original migration guide have been successfully migrated to use GlobalStyles constants.

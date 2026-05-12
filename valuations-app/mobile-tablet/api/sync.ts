@@ -18,6 +18,10 @@ function handleApiError(error: any): ApiResponse {
   return { success: false, message: error.message || 'Unknown error occurred' };
 }
 
+/**
+ * POST /sync/batch. Server contract: persist and return `qty: null` (or omit) for unset quantity;
+ * do not coerce blank qty to `1` in `results.riskAssessmentItems.updatedItems` or DB defaults.
+ */
 export async function syncChanges(syncData: {
   riskAssessmentItems?: any[];
   riskAssessmentMasters?: any[];

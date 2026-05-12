@@ -6,6 +6,7 @@ import { getData } from '../api/cache';
 import { riskAssessmentHierarchyCacheKey } from '../api/hierarchy';
 import * as hierarchyApi from '../api/hierarchy';
 import { getAssessmentMastersFromHierarchyPayload } from '../utils/completeHierarchyPayload';
+import { declaredLineValue } from '../components/survey/items/dynamic/itemFieldMapping';
 import {
   batchInsertRiskAssessmentItems,
   deleteOfflineMaterializedSectionClone,
@@ -147,7 +148,7 @@ export function buildOfflineStructureFromHierarchySection(
         rank: Number(it.rank) || 0,
         commaseparatedlist: it.commaSeparatedList ?? it.commaseparatedlist ?? '',
         selectedanswer: '',
-        qty: 0,
+        qty: null,
         price: 0,
         description: '',
         model: '',
@@ -371,7 +372,7 @@ export async function reconcileOfflineMaterializedSection(
             merged.rank || 0,
             merged.commaseparatedlist || '',
             merged.selectedanswer || '',
-            merged.qty || 0,
+            merged.qty ?? null,
             merged.price || 0,
             merged.description || '',
             merged.model || '',
@@ -509,7 +510,7 @@ export async function categoriesForLocalOfflineSection(
         i.riskassessmentcategoryid === cat.provisionalCategoryId &&
         !i.isDeleted
     );
-    const totalValue = catItems.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
+    const totalValue = catItems.reduce((s, i) => s + declaredLineValue(i.price), 0);
     out.push({
       id: String(cat.provisionalCategoryId),
       name: cat.categoryName,

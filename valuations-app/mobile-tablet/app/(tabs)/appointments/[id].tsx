@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
-import { Card, Button, Divider, List } from 'react-native-paper';
+import {
+  View,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  Linking,
+  Alert,
+  Platform,
+  ActionSheetIOS
+} from 'react-native';
+import { Card, Button, Divider, List, Chip } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../../utils/logger';
@@ -10,14 +20,28 @@ import { PrefetchProgressIndicator } from '../../../components/PrefetchProgressI
 import { appointmentDetailsStyles } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { formatDateTimeForSA } from '../../../utils/dateUtils';
-import { SurveyorSlaCard } from '../../../components/sla/SurveyorSlaCard';
-import { FullSlaCard } from '../../../components/sla/FullSlaCard';
+import { formatZarCurrency } from '../../../utils/currencyFormat';
+import { AppointmentSlaCompact } from '../../../components/sla/AppointmentSlaCompact';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../../types/api';
 
 // Cast the API client to the ApiClient interface to fix TypeScript errors
 const typedApi = api as unknown as ApiClient;
+
+function extractRiskTemplateNames(data: Record<string, unknown>): string[] {
+  const raw = data.templates;
+  if (!Array.isArray(raw)) return [];
+  const names: string[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const n = o.TemplateName ?? o.templateName;
+    const s = n != null ? String(n).trim() : '';
+    if (s) names.push(s);
+  }
+  return names;
+}
 
 // Interface for appointment data
 interface Appointment {
@@ -75,6 +99,7 @@ interface Appointment {
   surveyor_due_date?: string | null;
   surveyor_status?: string | null;
   completed_at?: string | null;
+  riskTemplateNames?: string[];
 }
 
 export default function AppointmentDetails() {
@@ -101,9 +126,11 @@ export default function AppointmentDetails() {
           appointmentId: response.data.appointmentId ? String(response.data.appointmentId) : undefined,
           address: response.data.address || response.data.location || response.data.property_address || 'No address provided',
           client: response.data.client || response.data.clientName || 'Unknown client',
-          phone: response.data.cell || response.data.phone || response.data.phoneNumber || 
+          phone: response.data.cell || response.data.phone || response.data.phoneNumber ||
                  response.data.Phone || response.data.PhoneNo || response.data.PhoneNumber ||
-                 response.data.clientPhone || response.data.client_phone || 
+                 response.data.clientPhone || response.data.client_phone ||
+                 response.data.ordersList?.clientCell || response.data.ordersList?.ClientCell ||
+                 response.data.ordersList?.clientPhoneNo || response.data.ordersList?.ClientPhoneNo ||
                  response.data.ordersList?.clientPhone || response.data.ordersList?.Phone || 'N/A',
           email: response.data.email || response.data.emailAddress || response.data.Email || 
                  response.data.EmailAddress || response.data.clientEmail || response.data.client_email ||
@@ -114,6 +141,7 @@ export default function AppointmentDetails() {
           broker: response.data.broker || 'N/A',
           notes: response.data.notes || response.data.comments || 'No notes available',
           orderNumber: String(response.data.orderNumber || response.data.orderID || 'N/A'),
+          riskTemplateNames: extractRiskTemplateNames(response.data as Record<string, unknown>),
           status: response.data.status,
           Invite_Status: response.data.Invite_Status,
           lastEdited: response.data.lastEdited,
@@ -269,6 +297,63 @@ export default function AppointmentDetails() {
   
   // Format date and time from UTC date string
   const { date: formattedDate, time: formattedTime } = formatDateTimeForSA(appointment.date);
+
+  const openInMaps = async () => {
+    const addr = (appointment.address || '').trim();
+    if (!addr) {
+      console.warn('[AppointmentDetails] No address to open in maps');
+      return;
+    }
+
+    const openUrl = async (url: string) => {
+      try {
+        const supported = await Linking.canOpenURL(url);
+        if (supported) {
+          await Linking.openURL(url);
+        } else {
+          Alert.alert('Maps', 'That app may not be installed. Try another option.');
+        }
+      } catch (e) {
+        console.warn('[AppointmentDetails] openURL failed', e, url);
+        Alert.alert('Maps', 'Could not open maps.');
+      }
+    };
+
+    // Android: geo intent shows the system chooser (Google Maps, Waze, etc.)
+    if (Platform.OS === 'android') {
+      const geo = `geo:0,0?q=${encodeURIComponent(addr)}`;
+      try {
+        await Linking.openURL(geo);
+      } catch (e) {
+        console.warn('[AppointmentDetails] geo intent failed', e);
+        Alert.alert('Maps', 'Could not open maps.');
+      }
+      return;
+    }
+
+    if (Platform.OS === 'ios' && ActionSheetIOS) {
+      const q = encodeURIComponent(addr);
+      const appleMaps = `http://maps.apple.com/?q=${q}`;
+      const googleMaps = `comgooglemaps://?q=${q}`;
+      const waze = `waze://?q=${encodeURIComponent(addr)}`;
+
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Apple Maps', 'Google Maps', 'Waze', 'Cancel'],
+          cancelButtonIndex: 3
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 3) return;
+          const urls = [appleMaps, googleMaps, waze];
+          void openUrl(urls[buttonIndex]);
+        }
+      );
+      return;
+    }
+
+    // Web / unknown: browser maps
+    await openUrl(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`);
+  };
   
   return (
     <>
@@ -340,8 +425,8 @@ export default function AppointmentDetails() {
                 <Divider />
                 <List.Item
                   title="Sum Insured"
-                  description={appointment.sumInsured}
-                  left={props => <List.Icon {...props} icon="currency-usd" />}
+                  description={formatZarCurrency(appointment.sumInsured)}
+                  left={props => <List.Icon {...props} icon="cash-multiple" />}
                 />
                 <Divider />
                 <List.Item
@@ -353,38 +438,61 @@ export default function AppointmentDetails() {
             </Card>
           </View>
 
-          {/* Surveyor SLA (5-day segment) */}
-          <SurveyorSlaCard
+          {appointment.riskTemplateNames && appointment.riskTemplateNames.length > 0 && (
+            <View style={appointmentDetailsStyles.templatesSection}>
+              <Card style={appointmentDetailsStyles.templatesCard}>
+                <Card.Title
+                  title="Assessment Types"
+                  left={(props) => (
+                    <MaterialCommunityIcons name="file-document-multiple-outline" {...props} size={22} color="#4a90e2" />
+                  )}
+                />
+                <Card.Content style={appointmentDetailsStyles.templatesChipRow}>
+                  {appointment.riskTemplateNames.map((name, idx) => (
+                    <Chip
+                      key={`${name}-${idx}`}
+                      mode="outlined"
+                      compact
+                      style={appointmentDetailsStyles.templateChip}
+                      textStyle={appointmentDetailsStyles.templateChipText}
+                    >
+                      {name}
+                    </Chip>
+                  ))}
+                </Card.Content>
+              </Card>
+            </View>
+          )}
+
+          {/* Combined compact SLA summary (surveyor 5d + order 10d) */}
+          <AppointmentSlaCompact
             surveyorStatus={appointment.surveyor_status}
             surveyorDueDate={appointment.surveyor_due_date}
             surveyorStartDate={appointment.surveyor_start_date}
-          />
-
-          {/* Full order SLA (10 days) - optional context */}
-          <FullSlaCard
             slaStatus={appointment.sla_status}
             slaDueDate={appointment.sla_due_date}
             slaStartDate={appointment.sla_start_date}
             completedAt={appointment.completed_at}
           />
           
-          {/* Location */}
+          {/* Location — open in device maps (no API key) */}
           <View style={appointmentDetailsStyles.mapContainer}>
             <Text style={appointmentDetailsStyles.sectionTitle}>Location</Text>
             <Card style={appointmentDetailsStyles.mapCard}>
-              <Card.Content style={appointmentDetailsStyles.mapContent}>
-                <Image 
-                  source={{ uri: 'https://maps.googleapis.com/maps/api/staticmap?center=' + 
-                    encodeURIComponent(appointment.address) + 
-                    '&zoom=14&size=600x300&maptype=roadmap&markers=color:red%7C' + 
-                    encodeURIComponent(appointment.address) + 
-                    '&key=YOUR_API_KEY' }}
-                  style={appointmentDetailsStyles.mapImage}
-                  resizeMode="cover"
-                />
-                <TouchableOpacity style={appointmentDetailsStyles.mapButton}>
+              <Card.Content style={appointmentDetailsStyles.locationCardContent}>
+                <View style={appointmentDetailsStyles.locationAddressRow}>
+                  <MaterialCommunityIcons name="map-marker" size={22} color="#4a90e2" />
+                  <Text style={appointmentDetailsStyles.locationAddressText}>
+                    {appointment.address || 'No address provided'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={appointmentDetailsStyles.openMapsButton}
+                  onPress={openInMaps}
+                  activeOpacity={0.85}
+                >
                   <MaterialCommunityIcons name="directions" size={20} color="#fff" />
-                  <Text style={appointmentDetailsStyles.mapButtonText}>Get Directions</Text>
+                  <Text style={appointmentDetailsStyles.openMapsButtonText}>Open in Maps</Text>
                 </TouchableOpacity>
               </Card.Content>
             </Card>

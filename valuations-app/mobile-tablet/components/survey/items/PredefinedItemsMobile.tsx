@@ -113,6 +113,8 @@ function PredefinedItemsListContent({
     updateField,
     markSaved,
     removeDraft,
+    removeSavedItem,
+    restoreSavedItem,
     getItemValues,
   } = useDynamicItemDrafts(propsItems, String(categoryId));
 
@@ -280,25 +282,46 @@ function PredefinedItemsListContent({
       if (item.isDraft) {
         markSaved(item.id, saved);
         setExpandedItemId(saved.id);
-        await onRefresh?.();
       } else {
         setExpandedItemId(item.id);
       }
     },
-    [markSaved, onRefresh, saveItem]
+    [markSaved, saveItem]
   );
 
   const handleDelete = useCallback(
     async (item: ItemViewModel) => {
+      const itemId = String(item.id);
       if (item.isDraft) {
-        removeDraft(item.id);
+        removeDraft(itemId);
+        if (expandedItemId === itemId) setExpandedItemId(null);
         return;
       }
-      await deleteItem(item);
-      if (expandedItemId === item.id) setExpandedItemId(null);
-      await onRefresh?.();
+
+      removeSavedItem(itemId);
+      setLocallyPendingItemIds(prev => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
+      setItemPhotos(prev => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      if (expandedItemId === itemId) setExpandedItemId(null);
+
+      try {
+        await deleteItem(item);
+        await onRefresh?.();
+      } catch (error) {
+        restoreSavedItem(itemId);
+        errorLog('Failed to delete item', error);
+        Alert.alert('Delete Failed', 'Could not delete the item. Please refresh and try again.');
+        await onRefresh?.();
+      }
     },
-    [deleteItem, expandedItemId, onRefresh, removeDraft]
+    [deleteItem, expandedItemId, onRefresh, removeDraft, removeSavedItem, restoreSavedItem]
   );
 
   const handleDuplicate = useCallback(
@@ -488,7 +511,6 @@ function PredefinedItemsListContent({
           addSavedItems(savedItems);
           closeModal();
           if (savedItems[0]) openDraftInGroup(savedItems[0]);
-          await onRefresh?.();
         } catch (error) {
           errorLog('Failed to copy nested item structure', error);
           Alert.alert('Copy Failed', 'Could not copy the item structure. Please try again.');
@@ -533,7 +555,6 @@ function PredefinedItemsListContent({
     nestedStructureOptions,
     newItemType,
     newPrimaryValue,
-    onRefresh,
     openDraftInGroup,
     saveItems,
   ]);

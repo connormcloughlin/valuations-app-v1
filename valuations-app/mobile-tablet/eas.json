@@ -31,7 +31,7 @@
     "production": {
       "distribution": "internal",
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "env": {
         "APP_ENV": "production",

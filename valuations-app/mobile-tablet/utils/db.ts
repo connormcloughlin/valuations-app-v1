@@ -650,7 +650,8 @@ export interface RiskAssessmentItem {
   rank: number;
   commaseparatedlist: string;
   selectedanswer: string;
-  qty: number;
+  /** null = quantity not set / blank in UI */
+  qty: number | null;
   price: number;
   description: string;
   model: string;
@@ -904,7 +905,7 @@ export async function insertRiskAssessmentItem(i: RiskAssessmentItem) {
       i.rank || 0,
       i.commaseparatedlist || '',
       i.selectedanswer || '',
-      i.qty || 0,
+      i.qty ?? null,
       i.price || 0,
       i.description || '',
       i.model || '',
@@ -1953,7 +1954,7 @@ async function executeRiskAssessmentItemsStatementLoop(
         item.rank || 0,
         item.commaseparatedlist || '',
         item.selectedanswer || '',
-        item.qty || 0,
+        item.qty ?? null,
         item.price || 0,
         item.description || '',
         item.model || '',

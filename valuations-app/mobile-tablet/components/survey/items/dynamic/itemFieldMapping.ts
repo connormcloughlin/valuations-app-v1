@@ -89,6 +89,28 @@ export const parseIntegerValue = (value: unknown): number => {
   return Number.isFinite(n) ? Math.trunc(n) : 0;
 };
 
+/** Declared currency for one line; do not multiply by qty (price is the line total). */
+export const declaredLineValue = (price: unknown): number => parseNumberValue(price);
+
+/**
+ * Persisted quantity for SQLite: blank UI -> null (not 0), so sync/API can distinguish from default qty.
+ * Non-empty strings parse to integer (including 0 for explicit "0").
+ */
+export const persistedQtyFromQuantity = (quantity: unknown): number | null => {
+  if (quantity === null || quantity === undefined) return null;
+  const s = String(quantity).trim();
+  if (s === '') return null;
+  return parseIntegerValue(quantity);
+};
+
+/** Map API/sync scalar qty to SQLite: missing -> null; numeric string -> int. */
+export const qtyFromApiScalar = (raw: unknown): number | null => {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const n = Number(String(raw).trim());
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+};
+
 export const booleanToDb = (value: unknown): number => {
   const s = String(value ?? '').trim().toLowerCase();
   return value === true || value === 1 || s === 'true' || s === '1' || s === 'yes' ? 1 : 0;
@@ -148,7 +170,7 @@ export const toRiskAssessmentItem = (
     rank: existing?.rank ?? merged.rank ?? 0,
     commaseparatedlist: existing?.commaseparatedlist ?? merged.commaseparatedlist ?? '',
     selectedanswer: merged.selectedanswer || '',
-    qty: parseIntegerValue(merged.quantity),
+    qty: persistedQtyFromQuantity(merged.quantity),
     price: parseNumberValue(merged.price),
     description: merged.description || '',
     model: merged.model || '',

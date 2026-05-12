@@ -6,7 +6,6 @@ import { Button } from 'react-native-paper';
 import { colors, spacing } from '../../GlobalStyles';
 
 interface SurveyActionsProps {
-  progress: number;
   onContinueSurvey: () => void;
   onFinishSurvey: () => void;
   onSync?: () => void | Promise<void>;
@@ -14,7 +13,7 @@ interface SurveyActionsProps {
   pendingChangesCount?: number;
 }
 
-export default function SurveyActions({ progress, onContinueSurvey, onFinishSurvey, onSync, syncing, pendingChangesCount = 0 }: SurveyActionsProps) {
+export default function SurveyActions({ onContinueSurvey, onFinishSurvey, onSync, syncing, pendingChangesCount = 0 }: SurveyActionsProps) {
   const hasPendingChanges = pendingChangesCount > 0;
 
   return (

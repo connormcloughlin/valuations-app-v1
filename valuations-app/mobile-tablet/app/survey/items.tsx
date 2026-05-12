@@ -231,25 +231,6 @@ export default function ItemsScreen() {
     }
   };
 
-  // Helper function to check if quantity field is visible
-  const isQuantityFieldVisible = useCallback(() => {
-    // Check dynamic field configuration first
-    if (dynamicFieldConfig && dynamicFieldConfig.length > 0) {
-      const quantityField = dynamicFieldConfig.find(f => f.item_fields === 'quantity');
-      return quantityField && quantityField.display_on_ui === 1;
-    }
-    
-    // Fall back to legacy field configuration
-    if (!useCustomFields || !fieldConfig || fieldConfig.length === 0) {
-      // No custom configuration, show all fields
-      return true;
-    }
-    
-    // Check legacy field configuration for 'Qty' field
-    const qtyField = fieldConfig.find(f => f.fieldName === 'Qty');
-    return qtyField && qtyField.visible !== false;
-  }, [dynamicFieldConfig, useCustomFields, fieldConfig]);
-
   // Fetch items from SQLite first, then API (following ItemComponents.tsx pattern)
   const fetchCategoryItems = useCallback(async () => {
     // Make sure we have a category ID
@@ -285,7 +266,8 @@ export default function ItemsScreen() {
       
       
       const categoryItems = localItems.filter(item => 
-        String(item.riskassessmentcategoryid) === String(currentCategoryId)
+        String(item.riskassessmentcategoryid) === String(currentCategoryId) &&
+        Number(item.isDeleted || 0) !== 1
       );
       
       console.log(`📂 FETCH: Found ${categoryItems.length} items for category ${currentCategoryId}`);
@@ -317,7 +299,7 @@ export default function ItemsScreen() {
               description: item.description || '',
               model: item.model || '',
               selection: '',
-              quantity: ((item.qty === 0 || item.qty === null) && isQuantityFieldVisible()) ? '1' : String(item.qty || 0),
+              quantity: item.qty === null || item.qty === 0 || item.qty === undefined ? '' : String(item.qty),
               price: String(item.price) || '',
               room: item.location || '',
               notes: item.notes || '',
@@ -325,11 +307,14 @@ export default function ItemsScreen() {
               commaseparatedlist: item.commaseparatedlist || '',
               multiSelectAnswer: !!(item.multiSelectAnswer ?? item.multiselectanswer),
               // Add original database values for hasDataCaptured function
-              qty: item.qty === null ? 0 : (item.qty || 0),
+              qty: item.qty == null ? null : item.qty,
               selectedanswer: item.selectedanswer || '',
               rank: item.rank || 0, // Include rank field from database
               itemtype: item.itemtype || 0, // Include itemtype field from database
               excludefromreport: item.excludefromreport ?? 0, // 0 = not excluded, 1 = excluded (for checkbox)
+              pending_sync: item.pending_sync ?? 0,
+              issynced: item.issynced ?? 0,
+              isDeleted: item.isDeleted ?? 0,
             };
           
           // Only log items with issues for debugging
@@ -356,7 +341,7 @@ export default function ItemsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [categoryId, isQuantityFieldVisible]); // Dependencies for useCallback
+  }, [categoryId]); // Dependencies for useCallback
 
   // Listen for prefetch completion to refresh items
   useEffect(() => {
@@ -625,4 +610,3 @@ export default function ItemsScreen() {
     </AppLayout>
   );
 }
-

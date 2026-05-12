@@ -34,29 +34,47 @@ export function useDynamicItemDrafts(
   const [drafts, setDrafts] = useState<ItemViewModel[]>([]);
   const [localSavedItems, setLocalSavedItems] = useState<ItemViewModel[]>([]);
   const [edits, setEdits] = useState<Record<string, Record<string, any>>>({});
+  const [removedItemIds, setRemovedItemIds] = useState<Set<string>>(() => new Set());
 
   const savedItems = useMemo<ItemViewModel[]>(
     () =>
-      propsItems.map(item => ({
-        ...item,
-        lifecycle:
-          item.excludefromreport === -1
-            ? 'sync_error'
-            : (item as any).pending_sync === 1
-              ? 'pending_sync'
-              : 'saved_local',
-        isDraft: false,
-      })),
-    [propsItems]
+      propsItems
+        .filter(item => Number((item as any).isDeleted || 0) !== 1)
+        .filter(item => !removedItemIds.has(String(item.id)))
+        .map(item => ({
+          ...item,
+          lifecycle:
+            item.excludefromreport === -1
+              ? 'sync_error'
+              : (item as any).pending_sync === 1
+                ? 'pending_sync'
+                : 'saved_local',
+          isDraft: false,
+        })),
+    [propsItems, removedItemIds]
   );
 
   useEffect(() => {
-    const savedIds = new Set(propsItems.map(item => String(item.id)));
-    setLocalSavedItems(prev => prev.filter(item => !savedIds.has(String(item.id))));
+    const visibleSavedIds = new Set(
+      propsItems
+        .filter(item => Number((item as any).isDeleted || 0) !== 1)
+        .map(item => String(item.id))
+    );
+    const deletedIds = new Set(
+      propsItems
+        .filter(item => Number((item as any).isDeleted || 0) === 1)
+        .map(item => String(item.id))
+    );
+    setLocalSavedItems(prev =>
+      prev.filter(item =>
+        !visibleSavedIds.has(String(item.id)) &&
+        !deletedIds.has(String(item.id))
+      )
+    );
     setEdits(prev => {
       const next: Record<string, Record<string, any>> = {};
       for (const [id, value] of Object.entries(prev)) {
-        if (savedIds.has(id) || isDraftId(id)) {
+        if ((visibleSavedIds.has(id) || isDraftId(id)) && !deletedIds.has(id)) {
           next[id] = value;
         }
       }
@@ -144,6 +162,28 @@ export function useDynamicItemDrafts(
     });
   }, []);
 
+  const removeSavedItem = useCallback((itemId: string) => {
+    setRemovedItemIds(prev => {
+      const next = new Set(prev);
+      next.add(String(itemId));
+      return next;
+    });
+    setLocalSavedItems(prev => prev.filter(item => String(item.id) !== String(itemId)));
+    setEdits(prev => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+  }, []);
+
+  const restoreSavedItem = useCallback((itemId: string) => {
+    setRemovedItemIds(prev => {
+      const next = new Set(prev);
+      next.delete(String(itemId));
+      return next;
+    });
+  }, []);
+
   const clearEditsForItem = useCallback((itemId: string) => {
     setEdits(prev => {
       const next = { ...prev };
@@ -169,6 +209,8 @@ export function useDynamicItemDrafts(
     updateField,
     markSaved,
     removeDraft,
+    removeSavedItem,
+    restoreSavedItem,
     clearEditsForItem,
     getItemValues,
   };

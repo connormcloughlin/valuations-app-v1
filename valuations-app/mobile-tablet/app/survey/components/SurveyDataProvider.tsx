@@ -6,6 +6,38 @@ import {
   categoriesForLocalOfflineSection,
   isLocalOfflineSectionId
 } from '../../../services/offlineSectionMaterialization';
+import { declaredLineValue } from '../../../components/survey/items/dynamic/itemFieldMapping';
+
+function clientContactFromAppointment(appointment: Record<string, any>, ordersList: Record<string, any>) {
+  const ol = ordersList || {};
+  const phone =
+    appointment.cell ??
+    appointment.phone ??
+    appointment.phoneNumber ??
+    appointment.Phone ??
+    appointment.PhoneNo ??
+    appointment.PhoneNumber ??
+    appointment.clientPhone ??
+    appointment.client_phone ??
+    ol.clientCell ??
+    ol.ClientCell ??
+    ol.clientPhoneNo ??
+    ol.ClientPhoneNo ??
+    ol.clientPhone ??
+    ol.Phone ??
+    'N/A';
+  const email =
+    appointment.email ??
+    appointment.emailAddress ??
+    appointment.Email ??
+    appointment.EmailAddress ??
+    appointment.clientEmail ??
+    appointment.client_email ??
+    ol.clientEmail ??
+    ol.Email ??
+    'N/A';
+  return { clientPhone: String(phone), clientEmail: String(email) };
+}
 
 // Types
 export interface Category {
@@ -46,6 +78,9 @@ export interface Survey {
   surveyor_due_date?: string | null;
   sla_status?: string | null;
   sla_due_date?: string | null;
+  /** Client cellphone / email for survey details (from with-order / ordersList). */
+  clientPhone?: string;
+  clientEmail?: string;
 }
 
 // Context
@@ -160,6 +195,8 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
               broker: 'Not specified',
               appointmentId: String(sqliteAppointment.appointmentID || surveyId),
               status: sqliteAppointment.inviteStatus || 'unknown',
+              clientPhone: 'N/A',
+              clientEmail: 'N/A',
               categories: [],
               totalValue: 0,
               completedCategories: 0
@@ -190,6 +227,8 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
         const sla_status = appointment.sla_status ?? appointment.slaStatus ?? ordersList.sla_status ?? ordersList.slaStatus ?? null;
         const sla_due_date = appointment.sla_due_date ?? appointment.slaDueDate ?? ordersList.sla_due_date ?? ordersList.slaDueDate ?? null;
 
+        const { clientPhone, clientEmail } = clientContactFromAppointment(appointment, ordersList);
+
         // Map appointment data to Survey interface using the same pattern as appointment details
         const surveyData: Survey = {
           id: surveyId,
@@ -203,6 +242,8 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
           broker: String(appointment.broker || ordersList.broker || 'Not specified'),
           appointmentId: String(appointment.appointmentID || appointment.appointmentId || appointment.id || surveyId),
           status: appointment.Invite_Status || appointment.inviteStatus || appointment.status || 'unknown',
+          clientPhone,
+          clientEmail,
           // Categories load on-demand through component interactions
           categories: [],
           totalValue: 0,
@@ -345,11 +386,10 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
                 // Calculate totals from items in composite data
                 const items = category.items || [];
                 const itemCount = items.length;
-                const totalValue = items.reduce((sum: number, item: any) => {
-                  const price = Number(item.price) || 0;
-                  const qty = Number(item.qty) || 1;
-                  return sum + (price * qty);
-                }, 0);
+                const totalValue = items.reduce(
+                  (sum: number, item: any) => sum + declaredLineValue(item.price),
+                  0
+                );
                 
                 return {
                   id: categoryId,
@@ -426,9 +466,7 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       for (const item of relevantItems) {
         const catId = String(item.riskassessmentcategoryid);
         if (!byCategory[catId]) byCategory[catId] = { value: 0, items: 0 };
-        const price = Number(item.price) || 0;
-        const qty = Number(item.qty) ?? 1;
-        byCategory[catId].value += price * qty;
+        byCategory[catId].value += declaredLineValue(item.price);
         byCategory[catId].items += 1;
       }
       const updated = currentList.map((c) => {

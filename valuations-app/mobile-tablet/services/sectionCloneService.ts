@@ -4,6 +4,7 @@
  */
 import NetInfo from '@react-native-community/netinfo';
 import * as Crypto from 'expo-crypto';
+import { qtyFromApiScalar } from '../components/survey/items/dynamic/itemFieldMapping';
 import * as hierarchyApi from '../api/hierarchy';
 import {
   batchInsertRiskAssessmentItems,
@@ -46,7 +47,7 @@ function mapApiItemToSqlRow(item: any, categoryId: number, appointmentId: string
     rank: Number(item.rank) || 0,
     commaseparatedlist: item.commaSeparatedList ?? item.commaseparatedlist ?? '',
     selectedanswer: item.selectedAnswer ?? item.selectedanswer ?? '',
-    qty: Number(item.qty) || 0,
+    qty: qtyFromApiScalar(item.qty ?? item.Qty),
     price: Number(item.price) || 0,
     description: item.description ?? '',
     model: item.model ?? '',

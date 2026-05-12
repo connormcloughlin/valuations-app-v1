@@ -46,6 +46,7 @@ export const AppointmentSchema = z.object({
   clientName: z.string().optional(),
   phone: z.string().optional(),
   phoneNumber: z.string().optional(),
+  cell: z.string().optional().nullable(),
   email: z.string().optional(),
   emailAddress: z.string().optional(),
   date: z.string().optional(),
@@ -98,7 +99,8 @@ export const AppointmentSchema = z.object({
   surveyor_start_date: z.string().optional().nullable(),
   surveyor_due_date: z.string().optional().nullable(),
   surveyor_status: z.string().optional().nullable(),
-  completed_at: z.string().optional().nullable()
+  completed_at: z.string().optional().nullable(),
+  templates: z.array(z.any()).optional()
 });
 
 // Appointment list schema (for API responses)

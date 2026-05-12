@@ -410,38 +410,19 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
         : survey.categories;
   const displayTotalValue = displayCategories.reduce((sum, cat) => sum + cat.value, 0);
 
-  // Calculate progress: when a section is selected but list not loaded yet, don't use stale survey.category counts
-  const totalCategories =
-    displayCategories.length > 0
-      ? displayCategories.length
-      : selectedSectionId != null
-        ? 0
-        : survey.categories.length || 1;
-  const completedCategories =
-    displayCategories.length > 0
-      ? displayCategories.filter((cat) => cat.items > 0).length
-      : selectedSectionId != null
-        ? 0
-        : survey.completedCategories;
-  
-  const progress = totalCategories > 0 ? 
-    Math.floor((completedCategories / totalCategories) * 100) : 
-    // If no categories loaded yet, allow completion (user can still finish survey)
-    100;
-
   return (
     <>
       <ScrollView style={styles.scrollView}>
-        <SurveyHeader 
+        <SurveyHeader
           address={survey.address}
-          completedCategories={survey.completedCategories}
-          totalCategories={survey.categories.length || 1} // Avoid division by zero
           surveyorStatus={survey.surveyor_status}
           surveyorDueDate={survey.surveyor_due_date}
         />
         
         <SurveyDetails
           client={survey.client}
+          clientPhone={survey.clientPhone}
+          clientEmail={survey.clientEmail}
           orderNumber={survey.orderNumber}
           policyNo={survey.policyNo}
           sumInsured={survey.sumInsured}
@@ -491,7 +472,6 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
       </ScrollView>
       
       <SurveyActions
-        progress={progress}
         onContinueSurvey={continueSurvey}
         onFinishSurvey={finishSurvey}
         onSync={handleSync}

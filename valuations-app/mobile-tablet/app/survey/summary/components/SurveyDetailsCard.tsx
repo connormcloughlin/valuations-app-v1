@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { Card } from 'react-native-paper';
 import { surveyDetailsCardStyles } from '../../../GlobalStyles';
+import { formatZarCurrency } from '../../../../utils/currencyFormat';
 
 interface SurveyDetailsCardProps {
   orderNumber: string;
@@ -27,7 +28,7 @@ export default function SurveyDetailsCard({ orderNumber, policyNo, sumInsured, b
           </View>
           <View style={surveyDetailsCardStyles.detailRow}>
             <Text style={surveyDetailsCardStyles.detailLabel}>Sum Insured:</Text>
-            <Text style={surveyDetailsCardStyles.detailValue}>{sumInsured}</Text>
+            <Text style={surveyDetailsCardStyles.detailValue}>{formatZarCurrency(sumInsured)}</Text>
           </View>
           <View style={surveyDetailsCardStyles.detailRow}>
             <Text style={surveyDetailsCardStyles.detailLabel}>Broker:</Text>

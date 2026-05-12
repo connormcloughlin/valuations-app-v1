@@ -21,6 +21,12 @@ import {
   MediaFile
 } from '../utils/db';
 import sectionCloneService from './sectionCloneService';
+import { qtyFromApiScalar } from '../components/survey/items/dynamic/itemFieldMapping';
+
+/** Qty from batch sync `updatedItems` (supports `Qty` casing; omitted -> null). Server must not default blank qty to 1 in persisted rows. */
+function qtyFromUpdatedItemRow(row: any): number | null {
+  return qtyFromApiScalar(row.qty ?? row.Qty);
+}
 
 /**
  * Service for handling synchronization of risk assessment data between local storage and server
@@ -406,6 +412,7 @@ const riskAssessmentSyncService = {
           
           for (const updatedItem of updatedItems) {
             try {
+              const normalizedQty = qtyFromUpdatedItemRow(updatedItem);
               // Check if this was a new item (has _localId different from backend ID)
               const isNewItem = updatedItem._localId && updatedItem._localId !== updatedItem.riskassessmentitemid;
               
@@ -433,7 +440,7 @@ const riskAssessmentSyncService = {
                 `, [
                   updatedItem.riskassessmentitemid, updatedItem.riskassessmentcategoryid, updatedItem.itemprompt,
                   updatedItem.itemtype, updatedItem.rank, updatedItem.commaseparatedlist, updatedItem.selectedanswer,
-                  updatedItem.qty, updatedItem.price, updatedItem.description, updatedItem.model, updatedItem.location,
+                  normalizedQty, updatedItem.price, updatedItem.description, updatedItem.model, updatedItem.location,
                   updatedItem.assessmentregisterid, updatedItem.assessmentregistertypeid, updatedItem.datecreated,
                   updatedItem.createdbyid, updatedItem.dateupdated, updatedItem.updatedbyid, 1, // issynced = 1
                   updatedItem.syncversion || 1, updatedItem.deviceid, updatedItem.syncstatus, updatedItem.synctimestamp,
@@ -456,7 +463,7 @@ const riskAssessmentSyncService = {
                 rank: updatedItem.rank,
                 commaseparatedlist: updatedItem.commaseparatedlist,
                 selectedanswer: updatedItem.selectedanswer,
-                qty: updatedItem.qty,
+                qty: normalizedQty,
                 price: updatedItem.price,
                 description: updatedItem.description,
                 model: updatedItem.model,
@@ -788,7 +795,15 @@ const riskAssessmentSyncService = {
         }),
         deletedEntities: (() => {
           const deletedItems = pendingRiskAssessmentItems
-            .filter(item => item.qty === 0 && item.price === 0 && item.description === '' && item.model === '' && item.location === '' && item.notes === '')
+            .filter(
+              item =>
+                (item.qty == null || item.qty === 0) &&
+                item.price === 0 &&
+                item.description === '' &&
+                item.model === '' &&
+                item.location === '' &&
+                item.notes === ''
+            )
             .map(item => ({
               riskassessmentitemid: item.riskassessmentitemid,
               riskassessmentcategoryid: item.riskassessmentcategoryid,
@@ -896,6 +911,7 @@ const riskAssessmentSyncService = {
           
           for (const updatedItem of updatedItems) {
             try {
+              const normalizedQty = qtyFromUpdatedItemRow(updatedItem);
               // Check if this was a new item (has _localId different from backend ID)
               const isNewItem = updatedItem._localId && updatedItem._localId !== updatedItem.riskassessmentitemid;
               
@@ -923,7 +939,7 @@ const riskAssessmentSyncService = {
                 `, [
                   updatedItem.riskassessmentitemid, updatedItem.riskassessmentcategoryid, updatedItem.itemprompt,
                   updatedItem.itemtype, updatedItem.rank, updatedItem.commaseparatedlist, updatedItem.selectedanswer,
-                  updatedItem.qty, updatedItem.price, updatedItem.description, updatedItem.model, updatedItem.location,
+                  normalizedQty, updatedItem.price, updatedItem.description, updatedItem.model, updatedItem.location,
                   updatedItem.assessmentregisterid, updatedItem.assessmentregistertypeid, updatedItem.datecreated,
                   updatedItem.createdbyid, updatedItem.dateupdated, updatedItem.updatedbyid, 1, // issynced = 1
                   updatedItem.syncversion || 1, updatedItem.deviceid, updatedItem.syncstatus, updatedItem.synctimestamp,
@@ -946,7 +962,7 @@ const riskAssessmentSyncService = {
                   rank: updatedItem.rank,
                   commaseparatedlist: updatedItem.commaseparatedlist,
                   selectedanswer: updatedItem.selectedanswer,
-                  qty: updatedItem.qty,
+                  qty: normalizedQty,
                   price: updatedItem.price,
                   description: updatedItem.description,
                   model: updatedItem.model,

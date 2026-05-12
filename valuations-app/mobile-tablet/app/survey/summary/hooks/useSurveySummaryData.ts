@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../../../api';
 import appointmentsApi from '../../../../api/appointments';
+import { declaredLineValue } from '../../../../components/survey/items/dynamic/itemFieldMapping';
 
 interface CategorySummary {
   id: string;
@@ -123,11 +124,10 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
                       // Calculate totals from items in composite data
                       const items = category.items || [];
                       const itemCount = items.length;
-                      const categoryValue = items.reduce((sum: number, item: any) => {
-                        const price = Number(item.price) || 0;
-                        const qty = Number(item.qty) || 1;
-                        return sum + (price * qty);
-                      }, 0);
+                      const categoryValue = items.reduce(
+                        (sum: number, item: any) => sum + declaredLineValue(item.price),
+                        0
+                      );
                       
                       categorySummaries.push({
                         id: categoryId,
@@ -199,7 +199,7 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
               
               const categoryData = categoryMap.get(categoryId)!;
               categoryData.items.push(item);
-              categoryData.totalValue += (Number(item.price) || 0) * (Number(item.qty) || 1);
+              categoryData.totalValue += declaredLineValue(item.price);
             }
             
             const fallbackCategories: CategorySummary[] = [];

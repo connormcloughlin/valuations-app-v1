@@ -27,10 +27,12 @@ export interface Item {
   multiSelectAnswer?: boolean;
   rank?: number; // Add rank property for item ordering
   itemtype?: number; // Add itemtype property for database compatibility
-  qty?: number; // Add original database qty value for hasDataCaptured function
+  /** SQLite / API: null means quantity unset (blank in UI). */
+  qty?: number | null;
   excludefromreport?: number; // 0 = not excluded, 1 = excluded (syncs to backend ExcludeFromReport)
   pending_sync?: number; // Local sync queue flag from SQLite
   issynced?: number; // Backend sync state from SQLite/API
+  isDeleted?: number; // Local tombstone used for delete sync
 }
 
 // Define the API response type
@@ -92,12 +94,6 @@ export interface ItemFormProps {
   onDelete?: () => void; // Optional delete callback
   onOpenCamera: () => void;
   onOpenHandwriting: (field: keyof Item) => void;
-}
-
-export interface UserItemsTableProps {
-  items: Item[];
-  totalValue: number;
-  onDeleteItem: (itemId: string) => void;
 }
 
 export interface HandwritingModalProps {

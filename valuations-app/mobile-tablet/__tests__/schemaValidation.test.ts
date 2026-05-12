@@ -163,6 +163,11 @@ describe('Schema Validation', () => {
       expect(result.success).toBe(true);
     });
 
+    it('should validate risk assessment item with null qty', () => {
+      const result = validateOrReject(RiskAssessmentItemSchema, { ...validRiskItem, qty: null }, 'test');
+      expect(result.success).toBe(true);
+    });
+
     it('should reject item with invalid coordinates', () => {
       const invalidItem = { ...validRiskItem, latitude: 200, longitude: 300 };
       const result = validateOrReject(RiskAssessmentItemSchema, invalidItem, 'test');

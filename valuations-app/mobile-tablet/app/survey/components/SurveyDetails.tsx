@@ -11,9 +11,12 @@ import Animated, {
 
 // Import GlobalStyles constants
 import { colors, spacing, borderRadius, typography } from '../../GlobalStyles';
+import { formatZarCurrency } from '../../../utils/currencyFormat';
 
 interface SurveyDetailsProps {
   client: string;
+  clientPhone?: string;
+  clientEmail?: string;
   orderNumber: string;
   policyNo: string;
   sumInsured: string;
@@ -28,6 +31,8 @@ interface SurveyDetailsProps {
 
 export default function SurveyDetails({ 
   client, 
+  clientPhone = 'N/A',
+  clientEmail = 'N/A',
   orderNumber, 
   policyNo, 
   sumInsured, 
@@ -54,7 +59,7 @@ export default function SurveyDetails({
     const height = interpolate(
       animationProgress.value,
       [0, 1],
-      [0, 200] // Approximate height of the content
+      [0, 300]
     );
     
     return {
@@ -131,6 +136,14 @@ export default function SurveyDetails({
               <Text style={styles.detailValue}>{client}</Text>
             </View>
             <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Phone:</Text>
+              <Text style={styles.detailValue}>{clientPhone}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Email:</Text>
+              <Text style={styles.detailValue}>{clientEmail}</Text>
+            </View>
+            <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Order Number:</Text>
               <Text style={styles.detailValue}>{orderNumber}</Text>
             </View>
@@ -140,7 +153,7 @@ export default function SurveyDetails({
             </View>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Sum Insured:</Text>
-              <Text style={styles.detailValue}>{sumInsured}</Text>
+              <Text style={styles.detailValue}>{formatZarCurrency(sumInsured)}</Text>
             </View>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Broker:</Text>

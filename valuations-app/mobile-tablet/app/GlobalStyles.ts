@@ -684,30 +684,37 @@ export const appointmentDetailsStyles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
   },
-  mapContent: {
-    padding: 0,
+  locationCardContent: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
-  mapImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    backgroundColor: '#e0e0e0',
+  locationAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
-  mapButton: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
-    backgroundColor: '#4a90e2',
-    borderRadius: 20,
+  locationAddressText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#2c3e50',
+  },
+  openMapsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#4a90e2',
+    borderRadius: 8,
+    paddingVertical: 12,
     paddingHorizontal: 16,
   },
-  mapButtonText: {
+  openMapsButtonText: {
     color: '#fff',
     marginLeft: 8,
     fontWeight: '600',
+    fontSize: 15,
   },
   buttonContainer: {
     flexDirection: 'column',
@@ -748,6 +755,32 @@ export const appointmentDetailsStyles = StyleSheet.create({
     flex: 1,
     margin: 0,
     marginHorizontal: 4,
+  },
+  templatesSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  templatesCard: {
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+  },
+  templatesChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingTop: 4,
+  },
+  templateChip: {
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: '#dbeafe',
+    borderColor: '#93c5fd',
+  },
+  templateChipText: {
+    color: '#1e3a8a',
+    fontSize: 13,
   },
 });
 
