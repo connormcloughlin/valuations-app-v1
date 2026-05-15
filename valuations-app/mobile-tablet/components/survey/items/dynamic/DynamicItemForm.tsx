@@ -26,6 +26,7 @@ interface DynamicItemFormProps {
   fields: FieldConfiguration[];
   values: Record<string, any>;
   itemPhotos: { [key: string]: any[] };
+  isPhone?: boolean;
   onChange: (itemId: string, fieldName: PersistedItemField, value: any) => void;
   onSave: (item: ItemViewModel, values: Record<string, any>) => Promise<void>;
   onDelete: (item: ItemViewModel) => Promise<void>;
@@ -40,6 +41,7 @@ export default function DynamicItemForm({
   fields,
   values,
   itemPhotos,
+  isPhone = false,
   onChange,
   onSave,
   onDelete,
@@ -64,10 +66,13 @@ export default function DynamicItemForm({
     [fields, hasKnownDraftType, item]
   );
 
-  const rows = useMemo(
-    () => buildPairedRows(buildLayoutCells(preparedFields)),
-    [preparedFields]
-  );
+  const rows = useMemo(() => {
+    const cells = buildLayoutCells(preparedFields);
+    if (isPhone) {
+      return cells.map(cell => [cell]);
+    }
+    return buildPairedRows(cells);
+  }, [preparedFields, isPhone]);
 
   const validate = () => {
     const validationFields = preparedFields.reduce<FieldConfiguration[]>((acc, field) => {
@@ -107,8 +112,8 @@ export default function DynamicItemForm({
     const fieldType = String(field.field_type || '').toLowerCase().replace(/-/g, '_');
     const value = values[persistedName] ?? '';
     return (
-      <View key={key} style={styles.fieldSegment}>
-        <Text style={styles.fieldLabel} numberOfLines={2}>
+      <View key={key} style={[styles.fieldSegment, isPhone && styles.fieldSegmentPhone]}>
+        <Text style={[styles.fieldLabel, isPhone && styles.fieldLabelPhone]} numberOfLines={2}>
           {field.field_label || persistedName}
           {field.is_required ? <Text style={styles.required}> *</Text> : null}
         </Text>
@@ -149,7 +154,7 @@ export default function DynamicItemForm({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.formWrap}
+      style={[styles.formWrap, isPhone && styles.formWrapPhone]}
     >
       {item.isDraft && !hasKnownDraftType ? (
         <View style={styles.draftBanner}>
@@ -169,7 +174,7 @@ export default function DynamicItemForm({
       ) : null}
 
       {rows.map((row, rowIndex) => (
-        <View key={`row-${rowIndex}`} style={styles.formRow}>
+        <View key={`row-${rowIndex}`} style={[styles.formRow, isPhone && styles.formRowPhone]}>
           {row.map((cell, cellIndex) => {
             if (cell.kind === 'answerWithNotes') {
               return (
@@ -184,10 +189,10 @@ export default function DynamicItemForm({
         </View>
       ))}
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, isPhone && styles.actionsPhone]}>
         {item.isDraft ? (
           <TouchableOpacity
-            style={[styles.saveButton, saving && styles.disabledButton]}
+            style={[styles.saveButton, isPhone && styles.saveButtonPhone, saving && styles.disabledButton]}
             onPress={save}
             disabled={saving}
           >
@@ -195,7 +200,10 @@ export default function DynamicItemForm({
             <Text style={styles.saveButtonText}>Save New Item</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.duplicateButton} onPress={() => onDuplicate(item)}>
+          <TouchableOpacity
+            style={[styles.duplicateButton, isPhone && styles.duplicateButtonPhone]}
+            onPress={() => onDuplicate(item)}
+          >
             <MaterialCommunityIcons name="content-duplicate" size={20} color="#4a90e2" />
             <Text style={styles.duplicateButtonText} numberOfLines={1}>
               Add Another {values.type || item.type}
@@ -203,7 +211,10 @@ export default function DynamicItemForm({
           </TouchableOpacity>
         )}
         {!item.isDraft ? (
-          <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(item)}>
+          <TouchableOpacity
+            style={[styles.deleteButton, isPhone && styles.deleteButtonPhone]}
+            onPress={() => onDelete(item)}
+          >
             <MaterialCommunityIcons name="delete-outline" size={18} color="#c0392b" />
             <Text style={styles.deleteButtonText}>Delete</Text>
           </TouchableOpacity>
@@ -219,6 +230,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     borderBottomWidth: 1,
     borderBottomColor: '#e9ecef',
+  },
+  formWrapPhone: {
+    padding: 12,
   },
   draftBanner: {
     marginBottom: 12,
@@ -251,12 +265,22 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
+  formRowPhone: {
+    flexDirection: 'column',
+    gap: 0,
+    marginBottom: 10,
+  },
   fieldSegment: {
     flex: 1,
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  fieldSegmentPhone: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 4,
   },
   fieldLabel: {
     width: 92,
@@ -265,6 +289,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
+  },
+  fieldLabelPhone: {
+    width: '100%',
+    textAlign: 'left',
+    fontSize: 11,
   },
   required: {
     color: '#e74c3c',
@@ -284,6 +313,11 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 8,
   },
+  actionsPhone: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
+  },
   saveButton: {
     height: 42,
     minWidth: 160,
@@ -294,6 +328,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingHorizontal: 14,
+  },
+  saveButtonPhone: {
+    width: '100%',
+    minWidth: 0,
+    height: 46,
   },
   saveButtonText: {
     color: '#fff',
@@ -316,6 +355,11 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 14,
   },
+  duplicateButtonPhone: {
+    flex: 0,
+    width: '100%',
+    height: 46,
+  },
   duplicateButtonText: {
     flexShrink: 1,
     color: '#4a90e2',
@@ -333,6 +377,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 12,
+  },
+  deleteButtonPhone: {
+    width: '100%',
+    height: 44,
   },
   deleteButtonText: {
     color: '#c0392b',

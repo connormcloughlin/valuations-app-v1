@@ -35,6 +35,12 @@ export const policies = new Map<string, TransportPolicy>([
     interpretEmptyPolicyKey: 'appointments_empty'
   }],
 
+  ['mobile.appointment.site-address', {
+    timeoutMs: 20000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    interpretEmptyPolicyKey: 'appointments_empty'
+  }],
+
   ['appointments.list-view', {
     timeoutMs: 45000,
     retry: { attempts: 2, strategy: 'exponential' },

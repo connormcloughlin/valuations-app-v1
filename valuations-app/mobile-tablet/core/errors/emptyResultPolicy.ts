@@ -128,6 +128,14 @@ export const EMPTY_RESULT_POLICIES: Record<string, EmptyResultPolicy> = {
     treat404: false,
     treatEmptyArray: false,
     reason: 'Sync media delete - 204 success; 400 Invalid media ID is a real error'
+  },
+
+  /** PATCH site address — mutation; 404 is a real error; body is not a list */
+  'mobile.appointment.site-address': {
+    treatStatus: [204],
+    treat404: false,
+    treatEmptyArray: false,
+    reason: 'Site address update is a write; failures must surface (see transport retry policy)'
   }
 };
 

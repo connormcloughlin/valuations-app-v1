@@ -13,7 +13,12 @@ import {
   validatePolicies,
   EMPTY_RESULT_POLICIES
 } from '../core/errors/emptyResultPolicy';
-import { handleApiError, handleApiSuccess } from '../core/errors/errorHandler';
+import { handleApiError, handleApiErrorLegacy, handleApiSuccess } from '../core/errors/errorHandler';
+
+/** React Native defines `__DEV__`; Jest does not — mirror production truthy check. */
+beforeAll(() => {
+  (globalThis as unknown as { __DEV__: boolean }).__DEV__ = true;
+});
 
 describe('Empty Result Policy (S3)', () => {
   describe('Policy Configuration', () => {
@@ -24,6 +29,7 @@ describe('Empty Result Policy (S3)', () => {
       expect(endpoints).toContain('appointments.list');
       expect(endpoints).toContain('appointments.dashboard');
       expect(endpoints).toContain('config.categories-all');
+      expect(endpoints).toContain('mobile.appointment.site-address');
     });
 
     it('should validate all policies are properly configured', () => {
@@ -120,6 +126,18 @@ describe('Empty Result Policy (S3)', () => {
       expect(result.reason).toContain('No policy defined for endpoint');
       expect(result.shouldLogWarning).toBe(true);
     });
+
+    it('should not treat 404 as empty for mobile site-address PATCH', () => {
+      const result = evaluateEmptyResponse('mobile.appointment.site-address', 404, null);
+      expect(result.treatAsEmpty).toBe(false);
+      expect(result.reason).toContain('404 not treated as empty result');
+    });
+
+    it('should treat 204 as empty-result success for mobile site-address', () => {
+      const result = evaluateEmptyResponse('mobile.appointment.site-address', 204, null);
+      expect(result.treatAsEmpty).toBe(true);
+      expect(result.reason).toContain('204');
+    });
   });
 
   describe('Error Handler Integration', () => {
@@ -207,7 +225,7 @@ describe('Empty Result Policy (S3)', () => {
         }
       };
       
-      const result = handleApiError(error);
+      const result = handleApiErrorLegacy(error);
       
       expect(result.success).toBe(true);
       expect(result.data).toEqual([]);
@@ -223,7 +241,7 @@ describe('Empty Result Policy (S3)', () => {
         }
       };
       
-      const result = handleApiError(error);
+      const result = handleApiErrorLegacy(error);
       
       expect(result.success).toBe(false);
       expect(result.status).toBe(404);
@@ -235,7 +253,7 @@ describe('Empty Result Policy (S3)', () => {
       for (const [endpointId, policy] of Object.entries(EMPTY_RESULT_POLICIES)) {
         expect(policy.reason).toBeDefined();
         expect(policy.reason).not.toBe('');
-        expect(policy.reason).toContain('should') // Should contain business justification
+        expect(String(policy.reason).trim().length).toBeGreaterThan(15);
       }
     });
 

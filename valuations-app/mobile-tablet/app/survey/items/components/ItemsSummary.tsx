@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, useWindowDimensions } from 'react-native';
 import { Button } from 'react-native-paper';
 import { ItemsSummaryProps } from './types';
-import { itemsSummaryStyles } from '../../../GlobalStyles';
+import { itemsSummaryStyles, itemsSummaryPhoneStyles } from '../../../GlobalStyles';
 
 export default function ItemsSummary({ 
   userItemsCount, 
@@ -13,25 +13,31 @@ export default function ItemsSummary({
   syncing, 
   onSync 
 }: ItemsSummaryProps) {
+  const { width } = useWindowDimensions();
+  const isPhone = width < 600;
+  const s = isPhone ? itemsSummaryPhoneStyles : itemsSummaryStyles;
+
   return (
-    <View style={itemsSummaryStyles.container}>
+    <View style={s.container}>
       {/* Summary Header */}
-      <View style={itemsSummaryStyles.summaryHeader}>
-        <Text style={itemsSummaryStyles.summaryTitle}>Items ({userItemsCount})</Text>
-        <Text style={itemsSummaryStyles.summaryTotal}>Total: R{totalValue.toLocaleString()}</Text>
+      <View style={s.summaryHeader}>
+        <Text style={s.summaryTitle}>Items ({userItemsCount})</Text>
+        <Text style={s.summaryTotal}>Total: R{totalValue.toLocaleString()}</Text>
       </View>
       
       {/* Buttons Row */}
-      <View style={itemsSummaryStyles.buttonRow}>
+      <View style={s.buttonRow}>
         <Button
           mode="contained"
           onPress={onAddItem}
-          style={itemsSummaryStyles.addButton}
-          contentStyle={itemsSummaryStyles.addButtonContent}
-          labelStyle={itemsSummaryStyles.addButtonText}
+          style={s.addButton}
+          contentStyle={s.addButtonContent}
+          labelStyle={s.addButtonText}
           icon="plus"
+          compact={isPhone}
+          uppercase={false}
         >
-          Add Item
+          {isPhone ? 'Add' : 'Add Item'}
         </Button>
         
         <Button
@@ -40,28 +46,34 @@ export default function ItemsSummary({
           disabled={syncing || pendingChangesCount === 0}
           loading={syncing}
           style={[
-            itemsSummaryStyles.syncButton,
+            s.syncButton,
             { 
               borderColor: pendingChangesCount > 0 ? '#4CAF50' : '#ccc'
             }
           ]}
-          contentStyle={itemsSummaryStyles.syncButtonContent}
+          contentStyle={s.syncButtonContent}
           labelStyle={[
-            itemsSummaryStyles.syncButtonText,
+            s.syncButtonText,
             { 
               color: pendingChangesCount > 0 ? '#4CAF50' : '#ccc'
             }
           ]}
           icon="cloud-upload"
+          compact={isPhone}
+          uppercase={false}
         >
-          {syncing ? 'Syncing...' : `Sync (${pendingChangesCount})`}
+          {syncing
+            ? (isPhone ? 'Sync...' : 'Syncing...')
+            : `Sync (${pendingChangesCount})`}
         </Button>
         
         <Button
           mode="contained"
-          style={itemsSummaryStyles.doneButton}
+          style={s.doneButton}
           onPress={onDone}
-          labelStyle={itemsSummaryStyles.doneButtonText}
+          labelStyle={s.doneButtonText}
+          compact={isPhone}
+          uppercase={false}
         >
           Done
         </Button>

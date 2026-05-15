@@ -319,6 +319,22 @@ class TransportClient {
   }
 
   /**
+   * PATCH request
+   */
+  async patch<T = any>(
+    endpointId: string,
+    path: string,
+    data?: any,
+    options?: RequestOptions
+  ): Promise<T> {
+    return this.request<T>({
+      method: 'PATCH',
+      url: path,
+      data
+    }, { ...options, endpointId });
+  }
+
+  /**
    * DELETE request
    */
   async delete<T = any>(

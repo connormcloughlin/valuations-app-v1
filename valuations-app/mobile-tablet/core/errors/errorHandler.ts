@@ -28,6 +28,15 @@ export function handleApiError(
   endpointId?: string,
   cachedData?: any
 ): ErrorHandlerResult {
+  if (error == null) {
+    return {
+      success: false,
+      message: 'Unknown error occurred',
+      data: null,
+      status: 0
+    };
+  }
+
   const status = error.response?.status;
   const url = error.config?.url ?? error.request?.responseURL ?? 'unknown';
   const method = error.config?.method?.toUpperCase() ?? 'GET';

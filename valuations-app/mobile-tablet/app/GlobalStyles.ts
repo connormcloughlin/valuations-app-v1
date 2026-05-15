@@ -995,6 +995,78 @@ export const itemsSummaryStyles = StyleSheet.create({
   },
 });
 
+export const itemsSummaryPhoneStyles = StyleSheet.create({
+  container: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  summaryTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  summaryTotal: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#27ae60',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  addButton: {
+    height: 38,
+    justifyContent: 'center',
+    backgroundColor: '#4a90e2',
+    flex: 1,
+  },
+  addButtonContent: {
+    height: 38,
+  },
+  addButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginVertical: 0,
+    marginHorizontal: 4,
+  },
+  syncButton: {
+    height: 38,
+    justifyContent: 'center',
+    flex: 1,
+  },
+  syncButtonContent: {
+    height: 38,
+  },
+  syncButtonText: {
+    fontWeight: '700',
+    fontSize: 11,
+    marginVertical: 0,
+    marginHorizontal: 4,
+  },
+  doneButton: {
+    height: 38,
+    justifyContent: 'center',
+    backgroundColor: '#2c3e50',
+    flex: 1,
+  },
+  doneButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginVertical: 0,
+    marginHorizontal: 4,
+  },
+});
+
 export const cameraModalStyles = StyleSheet.create({
   modalContainer: commonStyles.modalContainer,
   modalContent: {

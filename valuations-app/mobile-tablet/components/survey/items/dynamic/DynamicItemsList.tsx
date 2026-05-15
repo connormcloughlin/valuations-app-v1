@@ -16,6 +16,7 @@ interface DynamicItemsListProps {
   editsByItemId: Record<string, Record<string, any>>;
   locallyPendingItemIds: Set<string>;
   itemPhotos: { [key: string]: any[] };
+  isPhone?: boolean;
   onToggleItem: (itemId: string) => void;
   onToggleGroup: (key: string) => void;
   onChange: (itemId: string, fieldName: PersistedItemField, value: any) => void;
@@ -37,6 +38,7 @@ export default function DynamicItemsList({
   editsByItemId,
   locallyPendingItemIds,
   itemPhotos,
+  isPhone = false,
   onToggleItem,
   onToggleGroup,
   onChange,
@@ -116,7 +118,11 @@ export default function DynamicItemsList({
   ) {
     return (
       <TouchableOpacity
-        style={[styles.groupHeader, level === 'secondary' && styles.secondaryHeader]}
+        style={[
+          styles.groupHeader,
+          level === 'secondary' && styles.secondaryHeader,
+          isPhone && (level === 'secondary' ? styles.secondaryHeaderPhone : styles.groupHeaderPhone),
+        ]}
         onPress={onPress}
         activeOpacity={0.75}
       >
@@ -162,7 +168,11 @@ export default function DynamicItemsList({
         : 'No captured value yet';
     return (
       <View key={item.id} style={[styles.itemWrap, item.isDraft && styles.draftWrap]}>
-        <TouchableOpacity style={styles.itemRow} onPress={() => onToggleItem(item.id)} activeOpacity={0.75}>
+        <TouchableOpacity
+          style={[styles.itemRow, isPhone && styles.itemRowPhone]}
+          onPress={() => onToggleItem(item.id)}
+          activeOpacity={0.75}
+        >
           <View style={styles.itemText}>
             <Text style={styles.itemTitle} numberOfLines={1}>{title}</Text>
             <Text style={styles.itemSubtitle} numberOfLines={1}>{subtitle}</Text>
@@ -188,6 +198,7 @@ export default function DynamicItemsList({
             fields={fieldsByItemId[item.id] || []}
             values={values}
             itemPhotos={itemPhotos}
+            isPhone={isPhone}
             onChange={onChange}
             onSave={onSave}
             onDelete={onDelete}
@@ -224,12 +235,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#d0e8f0',
   },
+  groupHeaderPhone: {
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+  },
   secondaryHeader: {
     paddingVertical: 10,
     paddingHorizontal: 24,
     backgroundColor: '#f0f4f7',
     borderBottomColor: '#e0e8f0',
     marginLeft: 8,
+  },
+  secondaryHeaderPhone: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginLeft: 4,
   },
   groupTitle: {
     flex: 1,
@@ -275,6 +295,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     backgroundColor: '#fafafa',
+  },
+  itemRowPhone: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   itemText: {
     flex: 1,

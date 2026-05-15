@@ -716,6 +716,38 @@ const appointmentsApi = {
   },
 
   /**
+   * Surveyor: update site address via mobile BFF → PATCH /api/mobile/appointment/:id/site-address
+   */
+  patchSiteAddress: async (appointmentId: string, body: Record<string, unknown>) => {
+    try {
+      const numericId = String(appointmentId).replace(/\D/g, "") || appointmentId;
+      const response = await transportClient.patch(
+        "mobile.appointment.site-address",
+        `/mobile/appointment/${numericId}/site-address`,
+        body,
+        { timeout: 20000 }
+      );
+      try {
+        await offlineStorage.removeDataForKey("appointmentsByListView");
+        await offlineStorage.removeDataForKey("appointments");
+      } catch (e) {
+        console.warn("Could not clear appointment offline caches", e);
+      }
+      return { success: true, data: response };
+    } catch (error: any) {
+      const data = error.response?.data;
+      const serverMessage =
+        (typeof data?.error === "string" && data.error) ||
+        data?.message ||
+        error?.message;
+      return {
+        success: false,
+        message: serverMessage || "Failed to update site address",
+      };
+    }
+  },
+
+  /**
    * Update risk assessment master status
    * @param {number} orderId - The order ID
    * @param {string} status - The status to set
@@ -1256,14 +1288,19 @@ const appointmentsApi = {
    * @param {number} orderId - The order ID to submit for QA review
    * @returns {Promise<Object>} Response with updated assessments
    */
-  submitRiskAssessmentForQA: async (orderId: number) => {
+  submitRiskAssessmentForQA: async (orderId: number, totalMileageKm?: number) => {
     try {
       console.log(`Submitting risk assessment for QA review - Order ID: ${orderId}`);
       
+      const body: { orderId: number; totalMileageKm?: number } = { orderId };
+      if (typeof totalMileageKm === 'number') {
+        body.totalMileageKm = totalMileageKm;
+      }
+
       const response = await transportClient.put(
         'risk-assessment.qa-submit',
         '/risk-assessment-master/submit-for-qa',
-        { orderId }
+        body
       );
       
       // Transport client returns data directly, not wrapped in success object

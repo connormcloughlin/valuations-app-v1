@@ -3,6 +3,7 @@ import {
   View,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   Linking,
@@ -111,6 +112,8 @@ export default function AppointmentDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [appointment, setAppointment] = useState<Appointment | null>(null);
+  const [siteAddressDraft, setSiteAddressDraft] = useState('');
+  const [siteAddressSaving, setSiteAddressSaving] = useState(false);
   
   const fetchAppointmentDetails = async () => {
     try {
@@ -181,6 +184,12 @@ export default function AppointmentDetails() {
           completed_at: response.data.completed_at ?? response.data.completedAt ?? response.data.ordersList?.completed_at ?? response.data.ordersList?.completedAt ?? null
         };
         setAppointment(appointmentData);
+        const rawAddr =
+          (response.data as { address?: string; location?: string; property_address?: string }).address ||
+          (response.data as { location?: string }).location ||
+          (response.data as { property_address?: string }).property_address ||
+          '';
+        setSiteAddressDraft(String(rawAddr).trim());
       } else {
         setError('Failed to fetch appointment details');
       }
@@ -354,6 +363,37 @@ export default function AppointmentDetails() {
     // Web / unknown: browser maps
     await openUrl(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`);
   };
+
+  const inviteNorm = (
+    (appointment?.inviteStatus || appointment?.Invite_Status || appointment?.status || "") as string
+  )
+    .toString()
+    .toLowerCase();
+  const canEditSiteAddress = inviteNorm === "booked" || inviteNorm === "in-progress";
+
+  const handleSaveSiteAddress = async () => {
+    if (!id || !appointment) return;
+    const trimmed = siteAddressDraft.trim();
+    if (!trimmed) {
+      Alert.alert("Site address", "Please enter a site address.");
+      return;
+    }
+    setSiteAddressSaving(true);
+    try {
+      const res = await typedApi.patchAppointmentSiteAddress(String(id), { location: trimmed });
+      if (res.success) {
+        await fetchAppointmentDetails();
+        Alert.alert("Saved", "Site address was updated.");
+      } else {
+        Alert.alert("Update failed", (res as { message?: string }).message || "Could not save site address.");
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not save site address.";
+      Alert.alert("Update failed", msg);
+    } finally {
+      setSiteAddressSaving(false);
+    }
+  };
   
   return (
     <>
@@ -494,6 +534,38 @@ export default function AppointmentDetails() {
                   <MaterialCommunityIcons name="directions" size={20} color="#fff" />
                   <Text style={appointmentDetailsStyles.openMapsButtonText}>Open in Maps</Text>
                 </TouchableOpacity>
+                {canEditSiteAddress && (
+                  <View style={{ marginTop: 16 }}>
+                    <Text style={{ fontSize: 13, color: "#555", marginBottom: 6 }}>Edit site address</Text>
+                    <TextInput
+                      value={siteAddressDraft}
+                      onChangeText={setSiteAddressDraft}
+                      placeholder="Street, suburb, city…"
+                      multiline
+                      style={{
+                        borderWidth: 1,
+                        borderColor: "#ccc",
+                        borderRadius: 6,
+                        padding: 10,
+                        minHeight: 88,
+                        textAlignVertical: "top",
+                        fontSize: 15,
+                        backgroundColor: "#fafafa",
+                      }}
+                    />
+                    <Button
+                      mode="contained-tonal"
+                      style={{ marginTop: 10 }}
+                      loading={siteAddressSaving}
+                      disabled={siteAddressSaving}
+                      onPress={() => {
+                        void handleSaveSiteAddress();
+                      }}
+                    >
+                      Save site address
+                    </Button>
+                  </View>
+                )}
               </Card.Content>
             </Card>
           </View>

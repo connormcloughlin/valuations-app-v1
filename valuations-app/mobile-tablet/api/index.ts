@@ -39,6 +39,7 @@ export default {
   getAppointmentsWithOrdersByStatus: appointmentsApi.getAppointmentsWithOrdersByStatus,
   getAppointmentsByListView: appointmentsApi.getAppointmentsByListView,
   updateAppointment: appointmentsApi.updateAppointment,
+  patchAppointmentSiteAddress: appointmentsApi.patchSiteAddress,
   updateRiskAssessmentMasterStatus: appointmentsApi.updateRiskAssessmentMasterStatus,
   
   getRiskAssessmentMasterByOrder: hierarchyApi.getRiskAssessmentMasterByOrder,

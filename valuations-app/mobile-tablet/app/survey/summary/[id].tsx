@@ -13,6 +13,7 @@ import SurveySummaryHeader from './components/SurveySummaryHeader';
 import SurveyDetailsCard from './components/SurveyDetailsCard';
 import ValuationSummaryCard from './components/ValuationSummaryCard';
 import SurveySummaryActions from './components/SurveySummaryActions';
+import SubmitForQaModal from './components/SubmitForQaModal';
 
 // Import custom hook
 import { useSurveySummaryData } from './hooks/useSurveySummaryData';
@@ -30,6 +31,7 @@ export default function SurveySummaryScreen() {
   
   // State for completion action
   const [completing, setCompleting] = useState(false);
+  const [qaModalVisible, setQaModalVisible] = useState(false);
   
   const shareSummary = async () => {
     if (!survey) return;
@@ -57,16 +59,82 @@ Completed on ${survey.completionDate}
     // In a real app, this would generate and download a PDF
     console.log('Downloading PDF for survey:', surveyId);
   };
+
+  const submitForQa = async (totalMileageKm?: number) => {
+    if (!survey) return;
+    try {
+      setCompleting(true);
+      const appointmentsApi = await import('../../../api/appointments');
+
+      const orderId = parseInt(survey.orderNumber, 10);
+      if (!orderId || isNaN(orderId)) {
+        throw new Error('Invalid order number for QA submission');
+      }
+
+      console.log('🔄 Submitting risk assessment for QA review...');
+      const qaResponse = await appointmentsApi.default.submitRiskAssessmentForQA(orderId, totalMileageKm);
+
+      if (qaResponse && qaResponse.success) {
+        console.log('🔄 Updating appointment status to Complete...');
+        const appointmentResponse = await appointmentsApi.default.updateAppointment(surveyId, {
+          inviteStatus: 'Completed',
+        });
+
+        console.log('🔄 Updating risk assessment master status to RISK_ASSESSMENT_COMPLETED...');
+        const riskAssessmentUpdateResponse = await appointmentsApi.default.updateRiskAssessmentMasterStatus(
+          orderId,
+          'RISK_ASSESSMENT_COMPLETED'
+        );
+
+        if (appointmentResponse.success && riskAssessmentUpdateResponse.success) {
+          try {
+            await db.deleteAllDataForOrder(orderId);
+          } catch (dbError) {
+            console.warn('Failed to clear local SQLite data for order:', dbError);
+          }
+          setQaModalVisible(false);
+          Alert.alert('Survey Completed', 'The survey has been successfully submitted for QA review and marked as Complete.', [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.push('/(tabs)');
+              },
+            },
+          ]);
+        } else {
+          throw new Error('Failed to update appointment or risk assessment status');
+        }
+      } else {
+        throw new Error(qaResponse?.message || 'Failed to submit for QA review');
+      }
+    } catch (error: any) {
+      console.error('❌ Error submitting for QA:', error);
+      const serverMessage =
+        error?.response?.data?.error?.message ??
+        error?.response?.data?.message ??
+        error?.message;
+      const displayMessage =
+        typeof serverMessage === 'string' && serverMessage !== 'Request failed with status code 400'
+          ? serverMessage
+          : 'An error occurred while submitting for QA review. Please try again.';
+      Alert.alert('Error', displayMessage, [{ text: 'OK' }]);
+    } finally {
+      setCompleting(false);
+    }
+  };
   
   const completeSurvey = async () => {
     if (!survey) return;
+
+    if (survey.inviteStatus === 'Finalise') {
+      setQaModalVisible(true);
+      return;
+    }
     
     // Determine confirmation message based on appointment status
     const getConfirmationMessage = () => {
       if (survey.inviteStatus === 'In-Progress') {
         return 'Are you sure you want to complete the appointment and finalise the assessments? This action will move the appointment to the Finalise status.';
-      } else if (survey.inviteStatus === 'Finalise') {
-        return 'Are you sure you want to submit this survey for QA review? This action will submit the completed survey for quality assurance.';
       } else {
         return 'Are you sure you want to complete this survey? This action will finalize the survey and cannot be undone.';
       }
@@ -75,8 +143,6 @@ Completed on ${survey.completionDate}
     const getButtonText = () => {
       if (survey.inviteStatus === 'In-Progress') {
         return 'Complete';
-      } else if (survey.inviteStatus === 'Finalise') {
-        return 'Submit for QA';
       } else {
         return 'Complete';
       }
@@ -101,7 +167,6 @@ Completed on ${survey.completionDate}
               
               // Import the API
               const api = await import('../../../api');
-              const appointmentsApi = await import('../../../api/appointments');
               
               // Determine the next status based on current status
               let nextStatus: string;
@@ -117,45 +182,6 @@ Completed on ${survey.completionDate}
                 response = await api.default.updateAppointment(surveyId, {
                   inviteStatus: nextStatus
                 });
-              } else if (survey.inviteStatus === 'Finalise') {
-                // For Finalise status, submit for QA using the new API
-                console.log('🔄 Submitting risk assessment for QA review...');
-                
-                // Get the order number from the survey data
-                const orderId = parseInt(survey.orderNumber);
-                if (!orderId || isNaN(orderId)) {
-                  throw new Error('Invalid order number for QA submission');
-                }
-                
-                // Call the new QA submission API
-                const qaResponse = await appointmentsApi.default.submitRiskAssessmentForQA(orderId);
-                
-                if (qaResponse && qaResponse.success) {
-                  // Update the appointment status to Complete after successful QA submission
-                  console.log('🔄 Updating appointment status to Complete...');
-                  const appointmentResponse = await appointmentsApi.default.updateAppointment(surveyId, {
-                    inviteStatus: 'Completed'
-                  });
-                  
-                  // Update the risk assessment master status
-                  console.log('🔄 Updating risk assessment master status to RISK_ASSESSMENT_COMPLETED...');
-                  const riskAssessmentUpdateResponse = await appointmentsApi.default.updateRiskAssessmentMasterStatus(orderId, 'RISK_ASSESSMENT_COMPLETED');
-                  
-                  if (appointmentResponse.success && riskAssessmentUpdateResponse.success) {
-                    // Clear all SQLite data for this order now that it has been submitted for QA
-                    try {
-                      await db.deleteAllDataForOrder(orderId);
-                    } catch (dbError) {
-                      console.warn('Failed to clear local SQLite data for order:', dbError);
-                    }
-                    response = { success: true };
-                    successMessage = 'The survey has been successfully submitted for QA review and marked as Complete.';
-                  } else {
-                    throw new Error('Failed to update appointment or risk assessment status');
-                  }
-                } else {
-                  throw new Error(qaResponse?.message || 'Failed to submit for QA review');
-                }
               } else {
                 nextStatus = 'Finalise';
                 successMessage = 'The survey has been successfully completed and finalized.';
@@ -300,6 +326,14 @@ Completed on ${survey.completionDate}
           onComplete={completeSurvey}
           completing={completing}
           inviteStatus={survey.inviteStatus}
+        />
+
+        <SubmitForQaModal
+          visible={qaModalVisible}
+          onCancel={() => !completing && setQaModalVisible(false)}
+          onSubmit={(km) => void submitForQa(km)}
+          submitting={completing}
+          initialMileage={survey.qaMileagePrefill}
         />
       </View>
     </AppLayout>

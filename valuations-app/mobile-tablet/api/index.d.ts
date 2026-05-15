@@ -95,6 +95,10 @@ export interface ApiClient {
   getAppointmentsWithOrdersByStatus: (status: string, options?: { page?: number; pageSize?: number }) => Promise<ApiResponse<Appointment[]>>;
   getAppointmentsByListView: (options?: { status?: string; page?: number; pageSize?: number; surveyor?: string | null }) => Promise<ApiResponse<Appointment[]>>;
   updateAppointment: (appointmentId: string, updates: { inviteStatus?: string }) => Promise<ApiResponse<Appointment>>;
+  patchAppointmentSiteAddress: (
+    appointmentId: string,
+    body: Record<string, unknown>
+  ) => Promise<ApiResponse<unknown>>;
   updateRiskAssessmentMasterStatus: (orderId: number, status: string) => Promise<ApiResponse<any>>;
   syncChanges: (syncData: any) => Promise<ApiResponse<any>>;
   getSyncChanges: (params: { lastSync?: string; deviceId?: string; entities?: string[] }) => Promise<ApiResponse<any>>;

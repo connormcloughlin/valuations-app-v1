@@ -24,6 +24,10 @@ interface AssessmentTypeSummary {
   sections: SectionSummary[];
   totalItems: number;
   totalValue: number;
+  /** dbo.Risk_Assessment_Master.AssessmentTypeID (RiskTemplateID); 5 = Domestic Risk */
+  riskTemplateId?: number | null;
+  /** dbo.Risk_Assessment_Master.Totalmileage (prefill on QA re-submit) */
+  prefillTotalMileage?: string | null;
 }
 
 interface CompletedSurvey {
@@ -41,6 +45,8 @@ interface CompletedSurvey {
   totalValue: number;
   notes?: string;
   inviteStatus?: string;
+  /** Prefill for optional mileage on Submit for QA (first non–template-5 master, else first). */
+  qaMileagePrefill?: string;
 }
 
 export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: string) {
@@ -98,10 +104,21 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
             
             // Process all assessment masters from composite data
             for (const master of compositeResponse.data.assessmentMasters) {
-              const assessmentTypeName = master.assessmenttypename || master.templateName || 'Unknown Assessment';
-              const assessmentTypeId = master.riskassessmentid;
-              
-              console.log(`📋 Processing assessment type: ${assessmentTypeName} (ID: ${assessmentTypeId})`);
+              const assessmentTypeName =
+                master.assessmenttypename ||
+                master.assessmentTypeName ||
+                master.templateName ||
+                'Unknown Assessment';
+              const masterRowId = String(master.riskAssessmentId ?? master.riskassessmentid ?? '');
+              const rawTemplateId = master.assessmentTypeId ?? master.assessmenttypeid ?? master.AssessmentTypeID;
+              const riskTemplateIdParsed =
+                rawTemplateId == null || rawTemplateId === '' ? NaN : Number(rawTemplateId);
+              const riskTemplateId = Number.isFinite(riskTemplateIdParsed) ? riskTemplateIdParsed : null;
+              const rawMileage = master.totalmileage ?? master.Totalmileage;
+              const prefillTotalMileage =
+                rawMileage != null && String(rawMileage).trim() !== '' ? String(rawMileage).trim() : null;
+
+              console.log(`📋 Processing assessment type: ${assessmentTypeName} (master ${masterRowId})`);
               
               const sectionSummaries: SectionSummary[] = [];
               
@@ -161,11 +178,13 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
               const assessmentTypeTotalValue = sectionSummaries.reduce((sum, section) => sum + section.totalValue, 0);
               
               assessmentTypeSummaries.push({
-                id: assessmentTypeId,
+                id: masterRowId,
                 name: assessmentTypeName,
                 sections: sectionSummaries,
                 totalItems: assessmentTypeTotalItems,
-                totalValue: assessmentTypeTotalValue
+                totalValue: assessmentTypeTotalValue,
+                riskTemplateId,
+                prefillTotalMileage,
               });
               
               console.log(`📊 Assessment Type ${assessmentTypeName}: ${assessmentTypeTotalItems} items, value: ${assessmentTypeTotalValue}`);
@@ -239,6 +258,16 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
           }
         }
 
+        const DOMESTIC_RISK_TEMPLATE_ID = 5;
+        const mileageTargetMaster =
+          assessmentTypeSummaries.find((at) => at.riskTemplateId !== DOMESTIC_RISK_TEMPLATE_ID) ??
+          assessmentTypeSummaries[0];
+        const qaMileagePrefill =
+          mileageTargetMaster?.prefillTotalMileage != null &&
+          String(mileageTargetMaster.prefillTotalMileage).trim() !== ''
+            ? String(mileageTargetMaster.prefillTotalMileage).trim()
+            : '';
+
         // 3. Map data to CompletedSurvey interface
         const completedSurvey: CompletedSurvey = {
           id: surveyId,
@@ -255,6 +284,7 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
           totalValue: totalValue,
           notes: appointmentData.notes || '',
           inviteStatus: appointmentData.inviteStatus || 'Unknown',
+          qaMileagePrefill,
         };
 
         setSurvey(completedSurvey);

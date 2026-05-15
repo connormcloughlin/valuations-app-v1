@@ -13,6 +13,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -85,6 +86,8 @@ function PredefinedItemsListContent({
   onSyncRequest,
   onTotalsChange,
 }: PredefinedItemsListProps) {
+  const { width } = useWindowDimensions();
+  const isPhone = width < 600;
   const scrollRef = useRef<ScrollView>(null);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -645,7 +648,7 @@ function PredefinedItemsListContent({
 
   return (
     <>
-      <Card style={styles.card}>
+      <Card style={[styles.card, isPhone && styles.cardPhone]}>
         <Card.Title title={categoryTitle} />
         <Divider />
         <Card.Content style={styles.content}>
@@ -670,7 +673,7 @@ function PredefinedItemsListContent({
               <ScrollView
                 ref={scrollRef}
                 style={styles.scroll}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, isPhone && styles.scrollContentPhone]}
                 keyboardShouldPersistTaps="always"
                 nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
@@ -686,6 +689,7 @@ function PredefinedItemsListContent({
                   editsByItemId={edits}
                   locallyPendingItemIds={locallyPendingItemIds}
                   itemPhotos={itemPhotos}
+                  isPhone={isPhone}
                   onToggleItem={(itemId) => setExpandedItemId(prev => (prev === itemId ? null : itemId))}
                   onToggleGroup={(key) => setExpandedGroups(prev => ({ ...prev, [key]: !(prev[key] ?? false) }))}
                   onChange={(itemId: string, fieldName: PersistedItemField, value: any) => updateField(itemId, fieldName, value)}
@@ -859,6 +863,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
   },
+  cardPhone: {
+    margin: 6,
+    borderRadius: 6,
+  },
   content: {
     padding: 0,
     paddingVertical: 8,
@@ -905,6 +913,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
+  },
+  scrollContentPhone: {
+    paddingHorizontal: 4,
+    paddingBottom: 24,
   },
   empty: {
     padding: 28,

@@ -163,6 +163,10 @@ export interface ApiClient {
   getAppointmentsWithOrders: (options?: any) => Promise<ApiResponse<AppointmentData[]>>;
   getAppointmentsWithOrdersByStatus: (status: string, options?: any) => Promise<ApiResponse<AppointmentData[]>>;
   getAppointmentsByListView: (options?: any) => Promise<ApiResponse<AppointmentData[]>>;
+  patchAppointmentSiteAddress: (
+    appointmentId: string,
+    body: Record<string, unknown>
+  ) => Promise<ApiResponse<unknown>>;
   
   // Offline storage methods
   clearAllCachedData: () => Promise<ApiResponse<any>>;
