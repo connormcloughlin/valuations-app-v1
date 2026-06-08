@@ -1,30 +1,36 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   ListRenderItem,
+  Modal,
   Pressable,
-  ScrollView,
-  StyleSheet,
   Text,
   useWindowDimensions,
-  View
+  View,
 } from 'react-native';
-import { Button, Card, Chip, TextInput, useTheme } from 'react-native-paper';
+import { Button, Card, Chip, IconButton, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 
 import { useAuth } from '../../context/AuthContext';
-import { colors } from '../GlobalStyles';
-import { currencyFormat, dateFormat } from '../../utils/formatting';
+import { colors, commissionStyles as s } from '../GlobalStyles';
+import {
+  assessmentCountLabel,
+  currencyFormat,
+  dateFormat,
+  formatPeriodShortYYMM,
+  formatPeriodYYMM,
+} from '../../utils/formatting';
 import { getCommissionPayroll } from '../../api/payroll';
 import type { MobilePayrollLine, MobilePayrollResponse } from '../../types/payroll';
+import { SkeletonLoader } from '../../components/LoadingStates';
 
-/** Spec: SLA multiplier chip colours */
+const PHONE_BREAKPOINT = 600;
+
 const SLA_CHIP = {
   success: colors.success,
   amber: '#FFBF00',
-  critical: '#D32F2F'
+  critical: '#D32F2F',
 } as const;
 
 function yymmFromDate(d: Date): string {
@@ -43,6 +49,25 @@ function shiftPeriodYYMM(period: string, deltaMonths: number): string {
   return yymmFromDate(date);
 }
 
+function parsePeriodParts(period: string): { year: number; month: number } {
+  if (!/^\d{4}$/.test(period)) {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  }
+  return { year: 2000 + Number(period.slice(0, 2)), month: Number(period.slice(2, 4)) };
+}
+
+function buildPeriodYYMM(year: number, month: number): string {
+  const yy = String(year).slice(-2).padStart(2, '0');
+  const mm = String(month).padStart(2, '0');
+  return `${yy}${mm}`;
+}
+
+const MONTH_LABELS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
 function normalizeSurveyorGroup(payload: MobilePayrollResponse): {
   surveyorName?: string;
   lines: MobilePayrollLine[];
@@ -50,14 +75,12 @@ function normalizeSurveyorGroup(payload: MobilePayrollResponse): {
   const group = payload.surveyor ?? payload.surveyors?.[0];
   return {
     surveyorName: group?.surveyorName,
-    lines: group?.lines ?? []
+    lines: group?.lines ?? [],
   };
 }
 
-function normStatus(s: string | null | undefined): string {
-  return String(s ?? '')
-    .trim()
-    .toLowerCase();
+function normStatus(v: string | null | undefined): string {
+  return String(v ?? '').trim().toLowerCase();
 }
 
 function hasLineStatusMetadata(line: MobilePayrollLine): boolean {
@@ -71,55 +94,45 @@ function hasLineStatusMetadata(line: MobilePayrollLine): boolean {
 }
 
 function isCompletedNotReplacedCommissionLine(line: MobilePayrollLine): boolean {
-  if (line.isReplaced === true) {
-    return false;
-  }
+  if (line.isReplaced === true) return false;
 
   const statusValues = [
     line.riskAssessmentStatus,
     line.status,
     line.lineStatus,
-    line.assessmentStatus
+    line.assessmentStatus,
   ]
     .map(normStatus)
-    .filter((s) => s.length > 0);
+    .filter((x) => x.length > 0);
 
-  for (const s of statusValues) {
-    if (s === 'replaced' || s.includes('replaced')) {
-      return false;
-    }
+  for (const status of statusValues) {
+    if (status === 'replaced' || status.includes('replaced')) return false;
   }
 
-  if (!hasLineStatusMetadata(line)) {
-    return true;
-  }
+  if (!hasLineStatusMetadata(line)) return true;
 
   const primary = statusValues[0] ?? '';
-  if (!primary) {
-    return true;
-  }
+  if (!primary) return true;
 
   return primary === 'completed' || primary === 'complete';
 }
 
 function classifySlaMultiplier(m: number | null | undefined): '0' | '0.5' | '1' | 'unknown' {
-  if (m == null || Number.isNaN(Number(m))) {
-    return 'unknown';
-  }
+  if (m == null || Number.isNaN(Number(m))) return 'unknown';
   const mult = Number(m);
-  if (mult <= 0) {
-    return '0';
-  }
-  if (Math.abs(mult - 0.5) < 0.001) {
-    return '0.5';
-  }
-  if (Math.abs(mult - 1) < 0.001 || mult >= 1) {
-    return '1';
-  }
-  if (mult < 0.5) {
-    return '0';
-  }
+  if (mult <= 0) return '0';
+  if (Math.abs(mult - 0.5) < 0.001) return '0.5';
+  if (Math.abs(mult - 1) < 0.001 || mult >= 1) return '1';
+  if (mult < 0.5) return '0';
   return '0.5';
+}
+
+function slaAccessibilityLabel(multiplier: number | null | undefined): string {
+  const tier = classifySlaMultiplier(multiplier);
+  if (tier === '1') return 'SLA multiplier 1, full commission';
+  if (tier === '0.5') return 'SLA multiplier 0.5, half commission';
+  if (tier === '0') return 'SLA multiplier 0, no commission';
+  return 'SLA multiplier unknown';
 }
 
 function SlaMultiplierChip({ multiplier }: { multiplier: number | null | undefined }) {
@@ -149,8 +162,9 @@ function SlaMultiplierChip({ multiplier }: { multiplier: number | null | undefin
     <Chip
       compact
       mode="flat"
-      style={[styles.slaChip, { backgroundColor: bg }]}
-      textStyle={[styles.slaChipText, { color: textColor }]}
+      style={[s.slaChip, { backgroundColor: bg }]}
+      textStyle={[s.slaChipText, { color: textColor }]}
+      accessibilityLabel={slaAccessibilityLabel(multiplier)}
     >
       {label}
     </Chip>
@@ -161,7 +175,6 @@ function moneyClose(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.005;
 }
 
-/** Backend may send camelCase, snake_case, or omit in favour of original vs final commission. */
 function getCommissionReductionAmount(line: MobilePayrollLine): number | null {
   const raw = line as MobilePayrollLine & Record<string, unknown>;
   const directKeys = [
@@ -169,32 +182,60 @@ function getCommissionReductionAmount(line: MobilePayrollLine): number | null {
     'commission_reduction_amount',
     'CommissionReductionAmount',
     'commReduction',
-    'comm_reduction'
+    'comm_reduction',
   ] as const;
   for (const key of directKeys) {
     const v = raw[key];
     if (v != null && v !== '') {
       const n = Number(v);
-      if (Number.isFinite(n) && Math.abs(n) > 1e-9) {
-        return n;
-      }
+      if (Number.isFinite(n) && Math.abs(n) > 1e-9) return n;
     }
   }
   const orig = line.commissionAmountOriginal;
   const fin = line.commissionAmountFinal ?? line.commissionAmount;
   if (orig != null && fin != null) {
     const n = Number(orig) - Number(fin);
-    if (Number.isFinite(n) && Math.abs(n) > 1e-9) {
-      return n;
-    }
+    if (Number.isFinite(n) && Math.abs(n) > 1e-9) return n;
   }
   return null;
 }
 
+function CommissionSkeleton({ isPhone }: { isPhone: boolean }) {
+  return (
+    <View style={[s.listContent, isPhone && s.listContentPhone]}>
+      <Card style={[s.summaryBar, isPhone && s.summaryBarPhone]}>
+        <Card.Content>
+          <SkeletonLoader height={14} width="40%" />
+          <View style={{ marginTop: 8 }}>
+            <SkeletonLoader height={28} width="55%" />
+          </View>
+          <View style={{ marginTop: 8 }}>
+            <SkeletonLoader height={12} width="35%" />
+          </View>
+        </Card.Content>
+      </Card>
+      {[1, 2].map((i) => (
+        <Card key={i} style={[s.lineCardCompact, s.skeletonBlock]}>
+          <Card.Content>
+            <SkeletonLoader height={16} width="75%" />
+            <View style={{ marginTop: 8 }}>
+              <SkeletonLoader height={12} width="55%" />
+            </View>
+            <View style={{ marginTop: 12 }}>
+              <SkeletonLoader height={48} />
+            </View>
+          </Card.Content>
+        </Card>
+      ))}
+    </View>
+  );
+}
+
 export default function CommissionScreen() {
   const theme = useTheme();
-  const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
+  const { width } = useWindowDimensions();
+  const isPhone = width < PHONE_BREAKPOINT;
+  const isTablet = width >= PHONE_BREAKPOINT;
 
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
 
@@ -205,7 +246,9 @@ export default function CommissionScreen() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<MobilePayrollResponse | null>(null);
-  const [selectedLine, setSelectedLine] = useState<MobilePayrollLine | null>(null);
+  const [expandedLineId, setExpandedLineId] = useState<number | null>(null);
+  const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState<number>(() => parsePeriodParts(yymmFromDate(new Date())).year);
 
   const summary = payload?.summary;
   const { surveyorName, lines } = useMemo(
@@ -217,9 +260,7 @@ export default function CommissionScreen() {
 
   const displaySummary = useMemo(() => {
     if (!summary) return null;
-    if (filteredLines.length === lines.length) {
-      return summary;
-    }
+    if (filteredLines.length === lines.length) return summary;
     const totalCommission = filteredLines.reduce(
       (acc, l) => acc + (l.commissionAmountFinal ?? l.commissionAmount ?? 0),
       0
@@ -231,22 +272,20 @@ export default function CommissionScreen() {
       totalCommission,
       totalMileagePay,
       totalPayroll,
-      assessmentCount: filteredLines.length
+      assessmentCount: filteredLines.length,
     };
   }, [summary, lines.length, filteredLines]);
 
   useEffect(() => {
-    if (filteredLines.length === 0) {
-      setSelectedLine(null);
-      return;
+    if (expandedLineId == null) return;
+    if (!filteredLines.some((l) => l.payrollLineId === expandedLineId)) {
+      setExpandedLineId(null);
     }
-    setSelectedLine((prev) => {
-      if (prev && filteredLines.some((l) => l.payrollLineId === prev.payrollLineId)) {
-        return prev;
-      }
-      return filteredLines[0];
-    });
-  }, [filteredLines]);
+  }, [filteredLines, expandedLineId]);
+
+  const toggleLineExpanded = useCallback((lineId: number) => {
+    setExpandedLineId((prev) => (prev === lineId ? null : lineId));
+  }, []);
 
   const fetchData = async () => {
     if (!isAuthenticated) return;
@@ -283,167 +322,174 @@ export default function CommissionScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, authLoading, period, page]);
 
-  const canPrev = (payload?.pagination?.page ?? page) > 1;
-  const canNext = (payload?.pagination?.page ?? page) < (payload?.pagination?.totalPages ?? 1);
+  const totalPages = payload?.pagination?.totalPages ?? 1;
+  const currentPage = payload?.pagination?.page ?? page;
+  const canPrev = currentPage > 1;
+  const canNext = currentPage < totalPages;
+  const showPagination = totalPages > 1;
 
-  const onChangePeriodText = (text: string) => {
-    const cleaned = text.replace(/[^\d]/g, '').slice(0, 4);
-    setPeriod(cleaned);
+  const shiftPeriod = (delta: number) => {
+    setPeriod((p) => shiftPeriodYYMM(p, delta));
     setPage(1);
   };
+
+  const openPeriodPicker = () => {
+    setPickerYear(parsePeriodParts(period).year);
+    setPeriodPickerOpen(true);
+  };
+
+  const selectPeriod = (year: number, month: number) => {
+    setPeriod(buildPeriodYYMM(year, month));
+    setPage(1);
+    setPeriodPickerOpen(false);
+  };
+
+  const nowParts = parsePeriodParts(yymmFromDate(new Date()));
+  const selectedParts = parsePeriodParts(period);
+  const isFutureMonth = (year: number, month: number) =>
+    year > nowParts.year || (year === nowParts.year && month > nowParts.month);
 
   const commissionTotal = displaySummary?.totalCommission ?? 0;
   const payrollTotal = displaySummary?.totalPayroll ?? 0;
   const commissionMatchesTotal = moneyClose(commissionTotal, payrollTotal);
+  const assessmentCount = displaySummary?.assessmentCount ?? filteredLines.length;
 
-  const renderDetailBreakdown = useCallback((item: MobilePayrollLine) => {
+  const renderInlineBreakdown = useCallback((item: MobilePayrollLine) => {
     const commissionShown = item.commissionAmountFinal ?? item.commissionAmount ?? 0;
     const red = getCommissionReductionAmount(item);
     const showReduction = red != null;
     return (
-      <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent}>
-        <Text style={styles.detailTitle}>
-          {item.assessmentNo ?? `Assessment #${item.riskAssessmentId}`}
-        </Text>
-        <Text style={styles.detailSubtitle}>{item.clientName ?? 'Unknown client'}</Text>
-        <Text style={styles.detailMeta}>Surveyed {dateFormat(item.surveyDate)}</Text>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabelEmphasis}>Total earned</Text>
-          <Text style={styles.detailValueEmphasis}>{currencyFormat(item.totalPayrollAmount ?? 0)}</Text>
+      <View style={s.inlineDetailPanel}>
+        <View style={s.detailRow}>
+          <Text style={s.detailLabel}>Base fee</Text>
+          <Text style={s.detailValueMuted}>{currencyFormat(item.baseFee ?? 0)}</Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Base fee</Text>
-          <Text style={styles.detailValueMuted}>{currencyFormat(item.baseFee ?? 0)}</Text>
+        <View style={s.detailRow}>
+          <Text style={s.detailLabel}>Commission %</Text>
+          <Text style={s.detailValueMuted}>{(item.commissionPercent ?? 0).toFixed(2)}%</Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Commission %</Text>
-          <Text style={styles.detailValueMuted}>{(item.commissionPercent ?? 0).toFixed(2)}%</Text>
-        </View>
-        <View style={styles.detailRowMulti}>
-          <View style={styles.detailRowLeft}>
-            <Text style={styles.detailLabelEmphasis}>Commission</Text>
-            <Text style={styles.detailValueEmphasis}>{currencyFormat(commissionShown)}</Text>
+        <View style={s.detailRowMulti}>
+          <View style={s.detailRowLeft}>
+            <Text style={s.detailLabelEmphasis}>Commission</Text>
+            <Text style={s.detailValueEmphasis}>{currencyFormat(commissionShown)}</Text>
           </View>
-          <View style={styles.detailSlaWrap}>
+          <View style={s.detailSlaWrap}>
             <SlaMultiplierChip multiplier={item.slaCommissionMultiplier} />
           </View>
         </View>
         {item.commissionAmountOriginal != null && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Commission (original)</Text>
-            <Text style={styles.detailValueMuted}>{currencyFormat(item.commissionAmountOriginal)}</Text>
+          <View style={s.detailRow}>
+            <Text style={s.detailLabel}>Commission (original)</Text>
+            <Text style={s.detailValueMuted}>{currencyFormat(item.commissionAmountOriginal)}</Text>
           </View>
         )}
         {showReduction && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabelEmphasis}>Reduction</Text>
-            <Text style={styles.detailValueEmphasis}>{currencyFormat(red!)}</Text>
+          <View style={s.detailRow}>
+            <Text style={s.detailLabelEmphasis}>Reduction</Text>
+            <Text style={[s.detailValueEmphasis, s.reductionValue]}>{currencyFormat(red!)}</Text>
           </View>
         )}
         {item.slaDaysOver != null && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>SLA days over</Text>
-            <Text style={styles.detailValueMuted}>{String(item.slaDaysOver)}</Text>
+          <View style={s.detailRow}>
+            <Text style={s.detailLabel}>SLA days over</Text>
+            <Text style={s.detailValueMuted}>{String(item.slaDaysOver)}</Text>
           </View>
         )}
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabelEmphasis}>Km</Text>
-          <Text style={styles.detailValueEmphasis}>
-            {(item.totalMileageKm ?? 0).toFixed(0)} km
-          </Text>
+        <View style={s.detailRow}>
+          <Text style={s.detailLabelEmphasis}>Km</Text>
+          <Text style={s.detailValueEmphasis}>{(item.totalMileageKm ?? 0).toFixed(0)} km</Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabelEmphasis}>Travel</Text>
-          <Text style={styles.detailValueEmphasis}>{currencyFormat(item.travelFee ?? 0)}</Text>
+        <View style={[s.detailRow, s.detailRowLast]}>
+          <Text style={s.detailLabelEmphasis}>Travel</Text>
+          <Text style={s.detailValueEmphasis}>{currencyFormat(item.travelFee ?? 0)}</Text>
         </View>
-      </ScrollView>
+      </View>
     );
   }, []);
 
-  const renderPortraitLine: ListRenderItem<MobilePayrollLine> = useCallback(
+  const renderCommissionLine: ListRenderItem<MobilePayrollLine> = useCallback(
     ({ item }) => {
+      const expanded = expandedLineId === item.payrollLineId;
       const commissionShown = item.commissionAmountFinal ?? item.commissionAmount ?? 0;
       const title = item.assessmentNo ?? `Assessment #${item.riskAssessmentId}`;
       const red = getCommissionReductionAmount(item);
       const showReduction = red != null;
-      return (
-        <Card style={styles.lineCardCompact} mode="outlined">
-          <Card.Content style={styles.lineCardContent}>
-            <View style={styles.lineTopRow}>
-              <Text style={styles.lineTitleCompact} numberOfLines={1}>
-                {title}
-              </Text>
-              <Text style={styles.lineEarned}>{currencyFormat(item.totalPayrollAmount ?? 0)}</Text>
-            </View>
-            <Text style={styles.lineClientDate} numberOfLines={1}>
-              {item.clientName ?? 'Unknown client'} · {dateFormat(item.surveyDate)}
-            </Text>
-            <Text style={styles.baseFeeRow}>
-              Base {currencyFormat(item.baseFee ?? 0)} · {(item.commissionPercent ?? 0).toFixed(1)}%
-            </Text>
 
-            <View style={styles.metricsOneRow}>
-              <View style={styles.metricsLeftCluster}>
-                <Text style={styles.metricSegment}>
-                  <Text style={styles.metricLabel}>Comm </Text>
-                  <Text style={styles.metricValue}>{currencyFormat(commissionShown)}</Text>
+      return (
+        <Card
+          style={[s.lineCardCompact, expanded && s.lineCardExpanded]}
+          mode="outlined"
+        >
+          <Pressable
+            onPress={() => toggleLineExpanded(item.payrollLineId)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            accessibilityHint={expanded ? 'Collapse commission breakdown' : 'Expand commission breakdown'}
+          >
+            <Card.Content style={s.lineCardContent}>
+              <View style={s.lineTopRow}>
+                <Text style={s.lineTitleCompact} numberOfLines={1}>
+                  {title}
                 </Text>
-                <Text style={styles.metricDot}>·</Text>
-                <Text style={styles.metricSegment}>
-                  <Text style={styles.metricLabel}>Travel </Text>
-                  <Text style={styles.metricValue}>{currencyFormat(item.travelFee ?? 0)}</Text>
-                </Text>
-                <Text style={styles.metricDot}>·</Text>
-                <Text style={styles.metricSegment}>
-                  <Text style={styles.metricValue}>{(item.totalMileageKm ?? 0).toFixed(0)} km</Text>
-                </Text>
-                {showReduction && (
-                  <>
-                    <Text style={styles.metricDot}>·</Text>
-                    <Text style={styles.metricSegment}>
-                      <Text style={styles.reducedLabel}>Reduced </Text>
-                      <Text style={styles.reducedValue}>{currencyFormat(red!)}</Text>
-                    </Text>
-                  </>
-                )}
+                <View style={s.lineTopMeta}>
+                  <Text style={s.lineEarned}>{currencyFormat(item.totalPayrollAmount ?? 0)}</Text>
+                  <MaterialCommunityIcons
+                    name={expanded ? 'chevron-up' : 'chevron-down'}
+                    size={22}
+                    color={colors.textSecondary}
+                  />
+                </View>
               </View>
-              <View style={styles.metricsSlaRight}>
+              <Text style={s.lineClientDate} numberOfLines={1}>
+                {item.clientName ?? 'Unknown client'} · {dateFormat(item.surveyDate)}
+              </Text>
+              <Text style={s.baseFeeRow}>
+                Base {currencyFormat(item.baseFee ?? 0)} · {(item.commissionPercent ?? 0).toFixed(1)}%
+              </Text>
+
+              <View style={s.metricGrid}>
+                <View style={s.metricCell}>
+                  <Text style={s.metricCellLabel}>Comm</Text>
+                  <Text style={s.metricCellValue} numberOfLines={1}>
+                    {currencyFormat(commissionShown)}
+                  </Text>
+                </View>
+                <View style={s.metricCell}>
+                  <Text style={s.metricCellLabel}>Travel</Text>
+                  <Text style={s.metricCellValue} numberOfLines={1}>
+                    {currencyFormat(item.travelFee ?? 0)}
+                  </Text>
+                </View>
+                <View style={s.metricCell}>
+                  <Text style={s.metricCellLabel}>Km</Text>
+                  <Text style={s.metricCellValue}>{(item.totalMileageKm ?? 0).toFixed(0)}</Text>
+                </View>
+              </View>
+
+              <View style={s.slaRow}>
+                {showReduction ? (
+                  <Text style={s.reducedInline} numberOfLines={1}>
+                    Reduced {currencyFormat(red!)}
+                  </Text>
+                ) : (
+                  <View style={{ flex: 1 }} />
+                )}
                 <SlaMultiplierChip multiplier={item.slaCommissionMultiplier} />
               </View>
-            </View>
-          </Card.Content>
+            </Card.Content>
+          </Pressable>
+          {expanded ? renderInlineBreakdown(item) : null}
         </Card>
       );
     },
-    []
-  );
-
-  const renderLandscapeRow: ListRenderItem<MobilePayrollLine> = useCallback(
-    ({ item }) => {
-      const selected = selectedLine?.payrollLineId === item.payrollLineId;
-      const title = item.assessmentNo ?? `#${item.riskAssessmentId}`;
-      return (
-        <Pressable
-          onPress={() => setSelectedLine(item)}
-          style={[styles.landRow, selected && styles.landRowSelected]}
-        >
-          <Text style={styles.landTitle} numberOfLines={2}>
-            {title}
-          </Text>
-          <Text style={styles.landDate}>{dateFormat(item.surveyDate)}</Text>
-          <Text style={styles.landAmount}>{currencyFormat(item.totalPayrollAmount ?? 0)}</Text>
-        </Pressable>
-      );
-    },
-    [selectedLine]
+    [expandedLineId, renderInlineBreakdown, toggleLineExpanded]
   );
 
   const filteredEmptyMessage =
     lines.length > 0 && filteredLines.length === 0 ? (
-      <View style={styles.center}>
+      <View style={s.center}>
         <MaterialCommunityIcons name="filter-remove-outline" size={56} color={colors.gray[400]} />
-        <Text style={styles.infoText}>
+        <Text style={s.infoText}>
           No completed commission lines for this view. Replaced or non-completed assessments are hidden.
         </Text>
       </View>
@@ -451,41 +497,58 @@ export default function CommissionScreen() {
 
   const summaryBlock =
     displaySummary != null ? (
-      <Card style={styles.summaryBar} mode="elevated">
-        <Card.Content style={styles.summaryBarContent}>
-          {commissionMatchesTotal ? (
-            <View style={styles.summarySingle}>
-              <Text style={styles.summarySingleLabel}>Total earnings</Text>
-              <View style={styles.summarySingleRow}>
-                <Text style={[styles.summarySingleValue, { color: theme.colors.primary }]}>
-                  {currencyFormat(commissionTotal)}
-                </Text>
-                <Text style={styles.summarySingleCount}>
-                  {displaySummary.assessmentCount ?? filteredLines.length} assessments
-                </Text>
+      <Card style={[s.summaryBar, isPhone && s.summaryBarPhone]} mode="elevated">
+        <Card.Content style={s.summaryBarContent}>
+          {isTablet && !commissionMatchesTotal ? (
+            <View style={s.summaryStrip}>
+              <View style={s.summaryStripCell}>
+                <Text style={s.summaryBarLabel}>Commission</Text>
+                <Text style={s.summaryBarValue}>{currencyFormat(commissionTotal)}</Text>
               </View>
-            </View>
-          ) : (
-            <View style={styles.summaryGrid}>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryBarLabel}>Commission</Text>
-                <Text style={styles.summaryBarValue}>{currencyFormat(commissionTotal)}</Text>
-              </View>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryBarLabel}>Mileage</Text>
-                <Text style={styles.summaryBarValue}>
+              <View style={s.summaryStripCell}>
+                <Text style={s.summaryBarLabel}>Mileage</Text>
+                <Text style={s.summaryBarValue}>
                   {currencyFormat(displaySummary.totalMileagePay ?? 0)}
                 </Text>
               </View>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryBarLabel}>Total</Text>
-                <Text style={styles.summaryBarValue}>{currencyFormat(payrollTotal)}</Text>
+              <View style={s.summaryStripCell}>
+                <Text style={s.summaryBarLabel}>Total</Text>
+                <Text style={s.summaryBarValue}>{currencyFormat(payrollTotal)}</Text>
               </View>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryBarLabel}>Assessments</Text>
-                <Text style={styles.summaryBarValue}>
-                  {displaySummary.assessmentCount ?? filteredLines.length}
+              <View style={[s.summaryStripCell, s.summaryStripCellLast]}>
+                <Text style={s.summaryBarLabel}>Assessments</Text>
+                <Text style={s.summaryBarValue}>{assessmentCount}</Text>
+              </View>
+            </View>
+          ) : commissionMatchesTotal ? (
+            <View style={s.summarySingle}>
+              <Text style={s.summarySingleLabel}>Total earnings</Text>
+              <Text style={[s.summarySingleValue, { color: theme.colors.primary }]}>
+                {currencyFormat(commissionTotal)}
+              </Text>
+              <Text style={s.summarySingleContext}>
+                {assessmentCountLabel(assessmentCount)} · {formatPeriodShortYYMM(period)}
+              </Text>
+            </View>
+          ) : (
+            <View style={s.summaryGrid}>
+              <View style={s.summaryCell}>
+                <Text style={s.summaryBarLabel}>Commission</Text>
+                <Text style={s.summaryBarValue}>{currencyFormat(commissionTotal)}</Text>
+              </View>
+              <View style={s.summaryCell}>
+                <Text style={s.summaryBarLabel}>Mileage</Text>
+                <Text style={s.summaryBarValue}>
+                  {currencyFormat(displaySummary.totalMileagePay ?? 0)}
                 </Text>
+              </View>
+              <View style={s.summaryCell}>
+                <Text style={s.summaryBarLabel}>Total</Text>
+                <Text style={s.summaryBarValue}>{currencyFormat(payrollTotal)}</Text>
+              </View>
+              <View style={s.summaryCell}>
+                <Text style={s.summaryBarLabel}>Assessments</Text>
+                <Text style={s.summaryBarValue}>{assessmentCount}</Text>
               </View>
             </View>
           )}
@@ -495,543 +558,305 @@ export default function CommissionScreen() {
 
   const listSection =
     !displaySummary || !payload ? null : filteredLines.length === 0 ? (
-      <View style={styles.listEmptyWrap}>
+      <View style={s.listEmptyWrap}>
         {filteredEmptyMessage ?? (
-          <View style={styles.center}>
-            <Text style={styles.infoText}>No rows for this period.</Text>
+          <View style={s.center}>
+            <Text style={s.infoText}>No rows for this period.</Text>
+            <Button mode="outlined" icon="chevron-left" onPress={() => shiftPeriod(-1)}>
+              Try previous month
+            </Button>
           </View>
         )}
       </View>
-    ) : isLandscape ? (
-      <View style={styles.landRoot}>
-        <View style={styles.landListPane}>
-          <FlatList
-            style={styles.flexOne}
-            data={filteredLines}
-            renderItem={renderLandscapeRow}
-            keyExtractor={(item) => `payroll-${item.payrollLineId}`}
-            contentContainerStyle={styles.landListContent}
-            onRefresh={fetchData}
-            refreshing={loading}
-            initialNumToRender={12}
-            windowSize={5}
-          />
-        </View>
-        <View style={styles.landDetailPane}>
-          {selectedLine ? (
-            renderDetailBreakdown(selectedLine)
-          ) : (
-            <View style={styles.center}>
-              <Text style={styles.infoText}>Select an assessment</Text>
-            </View>
-          )}
-        </View>
-      </View>
     ) : (
       <FlatList
-        style={styles.flexOne}
+        style={s.flexOne}
         data={filteredLines}
-        renderItem={renderPortraitLine}
+        renderItem={renderCommissionLine}
         keyExtractor={(item) => `payroll-${item.payrollLineId}`}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[s.listContent, isPhone && s.listContentPhone]}
         onRefresh={fetchData}
-        refreshing={loading}
-        initialNumToRender={8}
-        windowSize={7}
+        refreshing={loading && !!payload}
+        initialNumToRender={isTablet ? 12 : 8}
+        windowSize={isTablet ? 7 : 5}
       />
     );
+
+  const phonePeriodControls = (
+    <View style={s.periodRow}>
+      <IconButton
+        icon="chevron-left"
+        mode="outlined"
+        size={22}
+        onPress={() => shiftPeriod(-1)}
+        disabled={loading}
+        style={s.periodNavButton}
+        accessibilityLabel="Previous month"
+      />
+      <Pressable
+        style={s.periodLabelWrap}
+        onPress={openPeriodPicker}
+        disabled={loading}
+        accessibilityRole="button"
+        accessibilityHint="Choose a specific month"
+      >
+        <View style={s.periodLabelButton}>
+          <Text style={s.periodLabel}>{formatPeriodYYMM(period)}</Text>
+          <MaterialCommunityIcons name="menu-down" size={20} color={colors.textSecondary} />
+        </View>
+        <Text style={s.periodHint}>{period}</Text>
+      </Pressable>
+      <IconButton
+        icon="chevron-right"
+        mode="outlined"
+        size={22}
+        onPress={() => shiftPeriod(1)}
+        disabled={loading}
+        style={s.periodNavButton}
+        accessibilityLabel="Next month"
+      />
+    </View>
+  );
+
+  const tabletToolbar = (
+    <View style={s.toolbarRow}>
+      <View style={s.toolbarTitleBlock}>
+        <Text style={s.title}>My Commission</Text>
+        {surveyorName ? (
+          <Text style={s.subtitle} numberOfLines={1}>
+            {surveyorName}
+          </Text>
+        ) : null}
+      </View>
+      <View style={s.periodGroupInline}>
+        <Button
+          mode="outlined"
+          onPress={() => shiftPeriod(-1)}
+          disabled={loading}
+          icon="chevron-left"
+          compact
+        >
+          Prev
+        </Button>
+        <Pressable
+          style={s.periodLabelWrapInline}
+          onPress={openPeriodPicker}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityHint="Choose a specific month"
+        >
+          <View style={s.periodLabelButton}>
+            <Text style={s.periodLabel}>{formatPeriodYYMM(period)}</Text>
+            <MaterialCommunityIcons name="menu-down" size={20} color={colors.textSecondary} />
+          </View>
+          <Text style={s.periodHint}>{period}</Text>
+        </Pressable>
+        <Button
+          mode="outlined"
+          onPress={() => shiftPeriod(1)}
+          disabled={loading}
+          icon="chevron-right"
+          contentStyle={{ flexDirection: 'row-reverse' }}
+          compact
+        >
+          Next
+        </Button>
+      </View>
+      <IconButton
+        icon="refresh"
+        mode="outlined"
+        size={22}
+        onPress={fetchData}
+        disabled={loading}
+        accessibilityLabel="Refresh commission"
+      />
+    </View>
+  );
 
   return (
     <>
       <Stack.Screen options={{ title: 'My Commission', headerTitleStyle: { fontWeight: '600' } }} />
 
-      <View style={styles.container}>
+      <View style={s.container}>
         {!isAuthenticated || !user ? (
-          <View style={styles.center}>
-            <Text style={styles.infoText}>Sign in to view your commission.</Text>
+          <View style={s.center}>
+            <Text style={s.infoText}>Sign in to view your commission.</Text>
           </View>
         ) : (
-          <View style={styles.authenticatedBody}>
-            <Card style={styles.controlsCard}>
+          <View style={[s.authenticatedBody, s.contentWrap]}>
+            <Card style={[s.controlsCard, isPhone && s.controlsCardPhone]}>
               <Card.Content>
-                <View style={styles.controlsHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.title}>My Commission</Text>
-                    {surveyorName ? (
-                      <Text style={styles.subtitle} numberOfLines={1}>
-                        {surveyorName}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Button
-                    mode="outlined"
-                    onPress={fetchData}
-                    disabled={loading}
-                    icon="refresh"
-                  >
-                    Refresh
-                  </Button>
-                </View>
-
-                <View style={styles.periodRow}>
-                  <Button
-                    mode="outlined"
-                    onPress={() => {
-                      setPeriod((p) => shiftPeriodYYMM(p, -1));
-                      setPage(1);
-                    }}
-                    disabled={loading}
-                    icon="chevron-left"
-                  >
-                    Prev
-                  </Button>
-
-                  <TextInput
-                    label="Period (YYMM)"
-                    value={period}
-                    onChangeText={onChangePeriodText}
-                    mode="outlined"
-                    keyboardType="number-pad"
-                    style={styles.periodInput}
-                    maxLength={4}
-                    disabled={loading}
-                  />
-
-                  <Button
-                    mode="outlined"
-                    onPress={() => {
-                      setPeriod((p) => shiftPeriodYYMM(p, 1));
-                      setPage(1);
-                    }}
-                    disabled={loading}
-                    icon="chevron-right"
-                    contentStyle={{ flexDirection: 'row-reverse' }}
-                  >
-                    Next
-                  </Button>
-                </View>
+                {isPhone ? (
+                  <>
+                    <View style={s.controlsHeader}>
+                      <View style={{ flex: 1 }}>
+                        {surveyorName ? (
+                          <Text style={s.subtitle} numberOfLines={1}>
+                            {surveyorName}
+                          </Text>
+                        ) : (
+                          <Text style={s.subtitle}>Commission period</Text>
+                        )}
+                      </View>
+                      <IconButton
+                        icon="refresh"
+                        mode="outlined"
+                        size={22}
+                        onPress={fetchData}
+                        disabled={loading}
+                        accessibilityLabel="Refresh commission"
+                      />
+                    </View>
+                    {phonePeriodControls}
+                  </>
+                ) : (
+                  tabletToolbar
+                )}
               </Card.Content>
             </Card>
 
             {loading && !payload ? (
-              <View style={styles.center}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={styles.infoText}>Loading commission...</Text>
-              </View>
+              <CommissionSkeleton isPhone={isPhone} />
             ) : error ? (
-              <View style={styles.center}>
+              <View style={s.center}>
                 <MaterialCommunityIcons name="alert-circle-outline" size={44} color={colors.error} />
-                <Text style={styles.errorText}>{error}</Text>
+                <Text style={s.errorText}>{error}</Text>
                 <Button mode="contained" onPress={fetchData} buttonColor={colors.primary}>
                   Retry
                 </Button>
               </View>
             ) : !payload || !summary ? (
-              <View style={styles.center}>
+              <View style={s.center}>
                 <MaterialCommunityIcons name="cash-remove" size={64} color={colors.gray[400]} />
-                <Text style={styles.infoText}>No commission has been generated for this period yet.</Text>
+                <Text style={s.infoText}>No commission has been generated for this period yet.</Text>
+                <Button mode="outlined" icon="chevron-left" onPress={() => shiftPeriod(-1)}>
+                  Try previous month
+                </Button>
               </View>
             ) : (
-              <View style={styles.mainColumn}>
+              <View style={s.mainColumn}>
                 {summaryBlock}
-                <View style={styles.listFlex}>{listSection}</View>
+                <View style={s.listFlex}>{listSection}</View>
 
-                <View style={styles.paginationRow}>
-                  <Button
-                    mode="outlined"
-                    onPress={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={loading || !canPrev}
-                  >
-                    Previous
-                  </Button>
-                  <Text style={styles.pageText}>
-                    Page {payload.pagination?.page ?? page} of {payload.pagination?.totalPages ?? 1}
-                  </Text>
-                  <Button
-                    mode="outlined"
-                    onPress={() => setPage((p) => p + 1)}
-                    disabled={loading || !canNext}
-                  >
-                    Next
-                  </Button>
-                </View>
+                {showPagination ? (
+                  <View style={[s.paginationRow, isPhone && s.paginationRowPhone]}>
+                    {isPhone ? (
+                      <>
+                        <IconButton
+                          icon="chevron-left"
+                          mode="outlined"
+                          size={20}
+                          onPress={() => setPage((p) => Math.max(1, p - 1))}
+                          disabled={loading || !canPrev}
+                          accessibilityLabel="Previous page"
+                        />
+                        <Text style={s.pageText}>
+                          {currentPage} / {totalPages}
+                        </Text>
+                        <IconButton
+                          icon="chevron-right"
+                          mode="outlined"
+                          size={20}
+                          onPress={() => setPage((p) => p + 1)}
+                          disabled={loading || !canNext}
+                          accessibilityLabel="Next page"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          mode="outlined"
+                          onPress={() => setPage((p) => Math.max(1, p - 1))}
+                          disabled={loading || !canPrev}
+                          compact
+                        >
+                          Previous
+                        </Button>
+                        <Text style={s.pageText}>
+                          Page {currentPage} of {totalPages}
+                        </Text>
+                        <Button
+                          mode="outlined"
+                          onPress={() => setPage((p) => p + 1)}
+                          disabled={loading || !canNext}
+                          compact
+                        >
+                          Next
+                        </Button>
+                      </>
+                    )}
+                  </View>
+                ) : null}
               </View>
             )}
           </View>
         )}
       </View>
+
+      <Modal
+        visible={periodPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPeriodPickerOpen(false)}
+      >
+        <Pressable style={s.pickerBackdrop} onPress={() => setPeriodPickerOpen(false)}>
+          <Pressable style={s.pickerCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={s.pickerTitle}>Select period</Text>
+            <View style={s.pickerYearRow}>
+              <IconButton
+                icon="chevron-left"
+                mode="outlined"
+                size={22}
+                onPress={() => setPickerYear((y) => y - 1)}
+                accessibilityLabel="Previous year"
+              />
+              <Text style={s.pickerYearText}>{pickerYear}</Text>
+              <IconButton
+                icon="chevron-right"
+                mode="outlined"
+                size={22}
+                onPress={() => setPickerYear((y) => y + 1)}
+                disabled={pickerYear >= nowParts.year}
+                accessibilityLabel="Next year"
+              />
+            </View>
+            <View style={s.monthGrid}>
+              {MONTH_LABELS.map((label, idx) => {
+                const month = idx + 1;
+                const selected = pickerYear === selectedParts.year && month === selectedParts.month;
+                const disabled = isFutureMonth(pickerYear, month);
+                return (
+                  <Pressable
+                    key={label}
+                    style={[
+                      s.monthCell,
+                      selected && s.monthCellSelected,
+                      disabled && s.monthCellDisabled,
+                    ]}
+                    onPress={() => selectPeriod(pickerYear, month)}
+                    disabled={disabled}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled }}
+                    accessibilityLabel={`${label} ${pickerYear}`}
+                  >
+                    <Text style={[s.monthCellText, selected && s.monthCellTextSelected]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={s.pickerActions}>
+              <Button mode="text" onPress={() => selectPeriod(nowParts.year, nowParts.month)}>
+                This month
+              </Button>
+              <Button mode="contained" onPress={() => setPeriodPickerOpen(false)} buttonColor={colors.primary}>
+                Close
+              </Button>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  /** Fills space above tab bar so period card + list column layout stays predictable */
-  authenticatedBody: {
-    flex: 1,
-    minHeight: 0
-  },
-  mainColumn: {
-    flex: 1,
-    minHeight: 0
-  },
-  listFlex: {
-    flex: 1,
-    minHeight: 0
-  },
-  listEmptyWrap: {
-    flex: 1,
-    minHeight: 0,
-    justifyContent: 'center'
-  },
-  flexOne: {
-    flex: 1
-  },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 12
-  },
-  controlsCard: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
-    borderRadius: 12
-  },
-  controlsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  subtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    color: colors.textSecondary
-  },
-  periodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
-  },
-  periodInput: {
-    flex: 1,
-    backgroundColor: colors.cardBackground,
-    minHeight: 48
-  },
-  summaryBar: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    backgroundColor: colors.cardBackground
-  },
-  summaryBarContent: {
-    paddingVertical: 8,
-    paddingHorizontal: 4
-  },
-  summarySingle: {
-    alignItems: 'center',
-    paddingVertical: 4
-  },
-  summarySingleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 4
-  },
-  summarySingleLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5
-  },
-  summarySingleValue: {
-    fontSize: 22,
-    fontWeight: '800'
-  },
-  summarySingleCount: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textSecondary
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8
-  },
-  summaryCell: {
-    width: '47%',
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    backgroundColor: colors.gray[50],
-    borderRadius: 8
-  },
-  summaryBarLabel: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    marginBottom: 2,
-    textTransform: 'uppercase'
-  },
-  summaryBarValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16
-  },
-  lineCardCompact: {
-    marginBottom: 8,
-    borderRadius: 10,
-    backgroundColor: colors.cardBackground
-  },
-  lineCardContent: {
-    paddingVertical: 8,
-    paddingHorizontal: 10
-  },
-  lineTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 2
-  },
-  lineTitleCompact: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  lineEarned: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  lineClientDate: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginBottom: 4
-  },
-  /** Base + % — same weight as former “Comm” label line (muted) */
-  baseFeeRow: {
-    fontSize: 10,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    marginBottom: 6
-  },
-  metricsOneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 2
-  },
-  metricsLeftCluster: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    columnGap: 6,
-    rowGap: 4,
-    minWidth: 0
-  },
-  metricsSlaRight: {
-    flexShrink: 0
-  },
-  metricSegment: {
-    flexShrink: 0
-  },
-  reducedLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.error
-  },
-  reducedValue: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.error
-  },
-  metricDot: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    marginHorizontal: 2
-  },
-  metricLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  metricValue: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  slaChip: {
-    height: 28,
-    marginVertical: 0
-  },
-  slaChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginVertical: 0
-  },
-  landRoot: {
-    flex: 1,
-    flexDirection: 'row',
-    minHeight: 0
-  },
-  landListPane: {
-    width: '33%',
-    minWidth: 140,
-    borderRightWidth: 1,
-    borderRightColor: colors.borderLight,
-    backgroundColor: colors.cardBackground
-  },
-  landListContent: {
-    paddingBottom: 16
-  },
-  landRow: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight
-  },
-  landRowSelected: {
-    backgroundColor: colors.statusInfo
-  },
-  landTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 2
-  },
-  landDate: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    marginBottom: 2
-  },
-  landAmount: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary
-  },
-  landDetailPane: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: colors.background
-  },
-  detailScroll: {
-    flex: 1
-  },
-  detailScrollContent: {
-    padding: 16,
-    paddingBottom: 24
-  },
-  detailTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    marginBottom: 4
-  },
-  detailSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 4
-  },
-  detailMeta: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 16
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight
-  },
-  detailLabel: {
-    fontSize: 13,
-    color: colors.textSecondary
-  },
-  /** Bold labels for priority metrics (matches portrait Comm / Travel / Km) */
-  detailLabelEmphasis: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  detailValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textPrimary
-  },
-  detailValueEmphasis: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  detailValueMuted: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: colors.textSecondary
-  },
-  detailRowMulti: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight
-  },
-  detailRowLeft: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  detailSlaWrap: {
-    flexShrink: 0
-  },
-  infoText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 24
-  },
-  errorText: {
-    fontSize: 14,
-    color: colors.error,
-    textAlign: 'center'
-  },
-  paginationRow: {
-    flexShrink: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: colors.cardBackground,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  pageText: {
-    fontSize: 11,
-    color: colors.textSecondary
-  }
-});

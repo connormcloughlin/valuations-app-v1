@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Modal, ScrollView, Dimensions, Alert, Switch } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView, Dimensions, Alert, Switch } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { FieldConfiguration, DropdownOption, FieldValidationError } from '../../../../types/dynamicUI';
@@ -468,10 +468,30 @@ function ComboboxField({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredOptions, setFilteredOptions] = useState(sortedDropdownOptions);
   const selectingOption = useRef(false);
+  const selectingOptionResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setInputText(value || '');
-  }, [value]);
+    const selectedOption = (field.dropdownOptions || []).find(
+      (option: DropdownOption) => String(option.option_value) === String(value ?? '')
+    );
+    setInputText(selectedOption?.option_label || value || '');
+  }, [field.dropdownOptions, value]);
+
+  useEffect(() => () => {
+    if (selectingOptionResetTimer.current) {
+      clearTimeout(selectingOptionResetTimer.current);
+    }
+  }, []);
+
+  const markSelectingOption = () => {
+    selectingOption.current = true;
+    if (selectingOptionResetTimer.current) {
+      clearTimeout(selectingOptionResetTimer.current);
+    }
+    selectingOptionResetTimer.current = setTimeout(() => {
+      selectingOption.current = false;
+    }, 250);
+  };
 
   const handleTextChange = (text: string) => {
     setInputText(text);
@@ -484,6 +504,7 @@ function ComboboxField({
   };
 
   const handleSelectSuggestion = (optionValue: string) => {
+    markSelectingOption();
     const selectedOption = sortedDropdownOptions.find((option: DropdownOption) => option.option_value === optionValue);
     const displayText = selectedOption ? selectedOption.option_label : optionValue;
     setInputText(displayText);
@@ -496,8 +517,8 @@ function ComboboxField({
     setTimeout(() => {
       if (!selectingOption.current) {
         setShowSuggestions(false);
+        onBlur?.();
       }
-      onBlur?.();
     }, 100);
   };
 
@@ -509,9 +530,8 @@ function ComboboxField({
           value={inputText}
           onChangeText={handleTextChange}
           onFocus={() => {
-            if (inputText.length > 0) {
-              setShowSuggestions(true);
-            }
+            setFilteredOptions(sortedDropdownOptions);
+            setShowSuggestions(sortedDropdownOptions.length > 0);
           }}
           onBlur={handleBlur}
           placeholder={field.placeholder || field.field_label}
@@ -528,15 +548,27 @@ function ComboboxField({
         )}
       </View>
       {showSuggestions && (
-        <View style={dynamicFieldRendererStyles.suggestionsContainer}>
-          <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
+        <View
+          style={dynamicFieldRendererStyles.suggestionsContainer}
+          onTouchStart={() => {
+            markSelectingOption();
+          }}
+        >
+          <ScrollView
+            style={dynamicFieldRendererStyles.suggestionsScrollList}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="none"
+            onScrollBeginDrag={markSelectingOption}
+          >
             {filteredOptions.map((item: DropdownOption) => (
               <TouchableOpacity
-                key={item.option_value}
+                key={String(item.option_value)}
                 style={dynamicFieldRendererStyles.suggestionItem}
+                onPressIn={markSelectingOption}
                 onPress={() => handleSelectSuggestion(item.option_value)}
-                onPressIn={() => { selectingOption.current = true; }}
-                onPressOut={() => { setTimeout(() => { selectingOption.current = false; }, 150); }}
+                activeOpacity={0.7}
               >
                 <Text style={dynamicFieldRendererStyles.suggestionText}>{item.option_label}</Text>
               </TouchableOpacity>

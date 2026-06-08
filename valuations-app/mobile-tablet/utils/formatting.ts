@@ -47,4 +47,39 @@ export const dateFormat = (date: Date | string): string => {
 export const truncateText = (text: string, maxLength: number): string => {
   if (!text || text.length <= maxLength) return text;
   return text.slice(0, maxLength) + '...';
-}; 
+};
+
+/** Parse YYMM (e.g. 2603) to a Date at the first of that month. */
+function dateFromYYMM(period: string): Date | null {
+  if (!/^\d{4}$/.test(period)) return null;
+  const yy = Number(period.slice(0, 2));
+  const mm = Number(period.slice(2, 4));
+  if (mm < 1 || mm > 12) return null;
+  return new Date(2000 + yy, mm - 1, 1);
+}
+
+/** Human-readable payroll period, e.g. "March 2026". */
+export function formatPeriodYYMM(period: string): string {
+  const date = dateFromYYMM(period);
+  if (!date) return period;
+  return new Intl.DateTimeFormat('en-ZA', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Africa/Johannesburg',
+  }).format(date);
+}
+
+/** Short payroll period label, e.g. "Mar 2026". */
+export function formatPeriodShortYYMM(period: string): string {
+  const date = dateFromYYMM(period);
+  if (!date) return period;
+  return new Intl.DateTimeFormat('en-ZA', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Africa/Johannesburg',
+  }).format(date);
+}
+
+export function assessmentCountLabel(count: number): string {
+  return count === 1 ? '1 assessment' : `${count} assessments`;
+} 

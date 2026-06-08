@@ -782,6 +782,46 @@ export const appointmentDetailsStyles = StyleSheet.create({
     color: '#1e3a8a',
     fontSize: 13,
   },
+  rowContainerPhone: {
+    flexDirection: 'column',
+    padding: 10,
+    paddingBottom: 6,
+  },
+  halfWidthPhone: {
+    flex: 0,
+    width: '100%',
+    marginHorizontal: 0,
+    marginBottom: 8,
+  },
+  listItemTitlePhone: {
+    fontSize: 13,
+  },
+  listItemDescriptionPhone: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  phoneLink: {
+    color: '#4a90e2',
+  },
+  buttonContainerPhone: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  buttonRowPhone: {
+    gap: 6,
+  },
+  footerButtonPhone: {
+    height: 40,
+  },
+  mapContainerPhone: {
+    paddingHorizontal: 10,
+    paddingTop: 0,
+    paddingBottom: 12,
+  },
+  templatesSectionPhone: {
+    paddingHorizontal: 10,
+    paddingBottom: 6,
+  },
 });
 
 export const userItemsTableStyles = StyleSheet.create({
@@ -1526,6 +1566,7 @@ export const statsCardsStyles = StyleSheet.create({
     margin: '2.5%',
     borderRadius: 12,
     elevation: 2,
+    backgroundColor: '#fff',
   },
   cardTitle: {
     fontSize: 14,
@@ -1570,6 +1611,7 @@ export const todaysAppointmentsStyles = StyleSheet.create({
   appointmentCard: {
     borderRadius: 12,
     marginBottom: 10,
+    backgroundColor: '#fff',
   },
   appointmentItem: {
     flexDirection: 'row',
@@ -1640,6 +1682,7 @@ export const surveysInProgressStyles = StyleSheet.create({
   appointmentCard: {
     borderRadius: 12,
     marginBottom: 10,
+    backgroundColor: '#fff',
   },
   appointmentItem: {
     flexDirection: 'row',
@@ -2365,7 +2408,586 @@ export const dashboardStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f6fa',
   },
-}); 
+});
+
+export const commissionStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  contentWrap: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 1100,
+    alignSelf: 'center',
+  },
+  authenticatedBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  mainColumn: {
+    flex: 1,
+    minHeight: 0,
+  },
+  listFlex: {
+    flex: 1,
+    minHeight: 0,
+  },
+  listEmptyWrap: {
+    flex: 1,
+    minHeight: 0,
+    justifyContent: 'center',
+  },
+  flexOne: {
+    flex: 1,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  controlsCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.cardBackground,
+  },
+  controlsCardPhone: {
+    marginHorizontal: 10,
+  },
+  controlsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  title: {
+    fontSize: typography.xl,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  subtitle: {
+    marginTop: 2,
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+  },
+  periodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  periodNavButton: {
+    margin: 0,
+  },
+  periodLabelWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+  },
+  toolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  toolbarTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  periodGroupInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: spacing.xs,
+  },
+  periodLabelWrapInline: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 120,
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+  },
+  periodLabel: {
+    fontSize: typography.lg,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  periodHint: {
+    marginTop: 2,
+    fontSize: typography.xs,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  periodInput: {
+    flex: 1,
+    backgroundColor: colors.cardBackground,
+    minHeight: 48,
+  },
+  periodInputLabel: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  summaryBar: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.cardBackground,
+  },
+  summaryBarPhone: {
+    marginHorizontal: 10,
+  },
+  summaryBarContent: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  summarySingle: {
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  summarySingleValue: {
+    fontSize: typography.xxxl,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  summarySingleLabel: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  summarySingleContext: {
+    marginTop: 6,
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  summaryStrip: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  summaryStripCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: colors.borderLight,
+  },
+  summaryStripCellLast: {
+    borderRightWidth: 0,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  summaryCell: {
+    width: '47%',
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.gray[50],
+    borderRadius: borderRadius.md,
+  },
+  summaryBarLabel: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  summaryBarValue: {
+    fontSize: typography.base,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  listContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  listContentPhone: {
+    paddingHorizontal: 10,
+  },
+  lineCardCompact: {
+    marginBottom: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: colors.cardBackground,
+  },
+  lineCardExpanded: {
+    borderColor: colors.primary,
+    borderWidth: 1,
+  },
+  lineCardContent: {
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  lineTopMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  inlineDetailPanel: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    paddingTop: spacing.xs,
+    backgroundColor: colors.gray[50],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderLight,
+  },
+  detailRowLast: {
+    borderBottomWidth: 0,
+  },
+  reductionValue: {
+    color: colors.error,
+  },
+  lineTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: 2,
+  },
+  lineTitleCompact: {
+    flex: 1,
+    fontSize: typography.base,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  lineEarned: {
+    fontSize: typography.base,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  lineClientDate: {
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  baseFeeRow: {
+    fontSize: typography.sm,
+    fontWeight: typography.normal,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  metricGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  metricCell: {
+    flex: 1,
+    backgroundColor: colors.gray[50],
+    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  metricCellLabel: {
+    fontSize: typography.xs,
+    fontWeight: typography.bold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  metricCellValue: {
+    fontSize: typography.sm,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  slaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  reducedInline: {
+    flex: 1,
+    fontSize: typography.sm,
+    fontWeight: typography.bold,
+    color: colors.error,
+  },
+  slaChip: {
+    height: 28,
+    marginVertical: 0,
+  },
+  slaChipText: {
+    fontSize: typography.sm,
+    fontWeight: typography.bold,
+    marginVertical: 0,
+  },
+  landRoot: {
+    flex: 1,
+    flexDirection: 'row',
+    minHeight: 0,
+  },
+  landListPane: {
+    width: '42%',
+    minWidth: 220,
+    maxWidth: 420,
+    borderRightWidth: 1,
+    borderRightColor: colors.borderLight,
+    backgroundColor: colors.cardBackground,
+  },
+  landListContent: {
+    paddingBottom: spacing.lg,
+  },
+  landRow: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  landRowSelected: {
+    backgroundColor: colors.statusInfo,
+  },
+  landTitle: {
+    fontSize: typography.sm,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  landClient: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  landDate: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  landAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  landAmount: {
+    fontSize: typography.sm,
+    fontWeight: typography.bold,
+    color: colors.primary,
+  },
+  landDetailPane: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: colors.background,
+  },
+  detailScroll: {
+    flex: 1,
+  },
+  detailScrollContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  detailTitle: {
+    fontSize: typography.lg,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  detailSubtitle: {
+    fontSize: typography.base,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  detailMeta: {
+    fontSize: typography.sm,
+    color: colors.textMuted,
+    marginBottom: spacing.lg,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderLight,
+  },
+  detailLabel: {
+    fontSize: typography.base,
+    color: colors.textSecondary,
+  },
+  detailLabelEmphasis: {
+    fontSize: typography.base,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  detailValueEmphasis: {
+    fontSize: typography.base,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  detailValueMuted: {
+    fontSize: typography.base,
+    fontWeight: typography.normal,
+    color: colors.textSecondary,
+  },
+  detailRowMulti: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderLight,
+  },
+  detailRowLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  detailSlaWrap: {
+    flexShrink: 0,
+  },
+  infoText: {
+    fontSize: typography.base,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xxl,
+  },
+  errorText: {
+    fontSize: typography.base,
+    color: colors.error,
+    textAlign: 'center',
+  },
+  paginationRow: {
+    flexShrink: 0,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    backgroundColor: colors.cardBackground,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  paginationRowPhone: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 10,
+  },
+  pageText: {
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+  },
+  skeletonBlock: {
+    marginBottom: spacing.sm,
+  },
+  periodLabelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  periodCaret: {
+    margin: 0,
+    marginLeft: -2,
+  },
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  pickerCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: colors.cardBackground,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+  },
+  pickerTitle: {
+    fontSize: typography.lg,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  pickerYearRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  pickerYearText: {
+    fontSize: typography.xl,
+    fontWeight: typography.bold,
+    color: colors.textPrimary,
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  monthCell: {
+    width: '30%',
+    flexGrow: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthCellSelected: {
+    backgroundColor: colors.primary,
+  },
+  monthCellDisabled: {
+    opacity: 0.35,
+  },
+  monthCellText: {
+    fontSize: typography.base,
+    fontWeight: typography.semibold,
+    color: colors.textPrimary,
+  },
+  monthCellTextSelected: {
+    color: colors.white,
+  },
+  pickerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.cardBackground,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '85%',
+    paddingBottom: spacing.xxl,
+  },
+  modalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.gray[300],
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  modalCloseRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+});
 
 export const exploreStyles = StyleSheet.create({
   headerImage: {
@@ -3033,13 +3655,16 @@ export const dynamicFieldRendererStyles = StyleSheet.create({
     borderTopWidth: 0,
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
-    maxHeight: 150,
+    maxHeight: 264,
     zIndex: 1001,
     elevation: 5, // Android shadow
     shadowColor: '#000', // iOS shadow
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+  },
+  suggestionsScrollList: {
+    maxHeight: 264,
   },
   suggestionText: {
     fontSize: 14,

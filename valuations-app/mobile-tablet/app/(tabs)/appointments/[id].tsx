@@ -9,7 +9,8 @@ import {
   Linking,
   Alert,
   Platform,
-  ActionSheetIOS
+  ActionSheetIOS,
+  useWindowDimensions,
 } from 'react-native';
 import { Card, Button, Divider, List, Chip } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -23,6 +24,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { formatDateTimeForSA } from '../../../utils/dateUtils';
 import { formatZarCurrency } from '../../../utils/currencyFormat';
 import { AppointmentSlaCompact } from '../../../components/sla/AppointmentSlaCompact';
+import { isDialablePhone, openPhoneDialer } from '../../../utils/openPhoneDialer';
 
 // Import types for TypeScript support
 import { ApiClient, ApiResponse, AppointmentData } from '../../../types/api';
@@ -107,6 +109,8 @@ export default function AppointmentDetails() {
   logNavigation('Appointment Details');
   const params = useLocalSearchParams();
   const { id } = params;
+  const { width } = useWindowDimensions();
+  const isPhone = width < 600;
   const { isAuthenticated, user } = useAuth();
   
   const [loading, setLoading] = useState(true);
@@ -306,6 +310,10 @@ export default function AppointmentDetails() {
   
   // Format date and time from UTC date string
   const { date: formattedDate, time: formattedTime } = formatDateTimeForSA(appointment.date);
+  const phoneDialable = isDialablePhone(appointment.phone);
+  const listTitleStyle = isPhone ? appointmentDetailsStyles.listItemTitlePhone : undefined;
+  const listDescriptionStyle = isPhone ? appointmentDetailsStyles.listItemDescriptionPhone : undefined;
+  const listDescriptionLines = isPhone ? 2 : 1;
 
   const openInMaps = async () => {
     const addr = (appointment.address || '').trim();
@@ -409,69 +417,102 @@ export default function AppointmentDetails() {
           {/* Prefetch Progress Indicator */}
           <PrefetchProgressIndicator />
 
-          {/* Client Information and Appointment Details in a row */}
-          <View style={appointmentDetailsStyles.rowContainer}>
+          {/* Client Information and Appointment Details in a row (tablet) or stack (phone) */}
+          <View style={[appointmentDetailsStyles.rowContainer, isPhone && appointmentDetailsStyles.rowContainerPhone]}>
             {/* Client Information */}
-            <Card style={[appointmentDetailsStyles.card, appointmentDetailsStyles.halfWidth]}>
-              <Card.Title 
-                title="Client Information" 
+            <Card style={[appointmentDetailsStyles.card, appointmentDetailsStyles.halfWidth, isPhone && appointmentDetailsStyles.halfWidthPhone]}>
+              <Card.Title
+                title="Client Information"
+                titleNumberOfLines={isPhone ? 2 : 1}
                 left={(props) => <MaterialCommunityIcons name="account" {...props} size={24} color="#4a90e2" />}
               />
               <Card.Content>
                 <List.Item
                   title="Client Name"
                   description={appointment.client}
+                  titleStyle={listTitleStyle}
+                  descriptionStyle={listDescriptionStyle}
+                  descriptionNumberOfLines={listDescriptionLines}
                   left={props => <List.Icon {...props} icon="account" />}
                 />
                 <Divider />
                 <List.Item
                   title="Phone"
                   description={appointment.phone}
+                  titleStyle={listTitleStyle}
+                  descriptionStyle={[
+                    listDescriptionStyle,
+                    phoneDialable && appointmentDetailsStyles.phoneLink,
+                  ]}
+                  descriptionNumberOfLines={listDescriptionLines}
                   left={props => <List.Icon {...props} icon="phone" />}
+                  onPress={phoneDialable ? () => void openPhoneDialer(appointment.phone) : undefined}
+                  disabled={!phoneDialable}
+                  accessibilityRole={phoneDialable ? 'link' : undefined}
+                  accessibilityHint={phoneDialable ? 'Opens phone dialer' : undefined}
                 />
                 <Divider />
                 <List.Item
                   title="Email"
                   description={appointment.email}
+                  titleStyle={listTitleStyle}
+                  descriptionStyle={listDescriptionStyle}
+                  descriptionNumberOfLines={listDescriptionLines}
                   left={props => <List.Icon {...props} icon="email" />}
                 />
               </Card.Content>
             </Card>
             
             {/* Appointment Details */}
-            <Card style={[appointmentDetailsStyles.card, appointmentDetailsStyles.halfWidth]}>
-              <Card.Title 
-                title="Appointment Details" 
+            <Card style={[appointmentDetailsStyles.card, appointmentDetailsStyles.halfWidth, isPhone && appointmentDetailsStyles.halfWidthPhone]}>
+              <Card.Title
+                title="Appointment Details"
+                titleNumberOfLines={isPhone ? 2 : 1}
                 left={(props) => <MaterialCommunityIcons name="calendar-clock" {...props} size={24} color="#4a90e2" />}
               />
               <Card.Content>
                 <List.Item
                   title="Date"
                   description={formattedDate}
+                  titleStyle={listTitleStyle}
+                  descriptionStyle={listDescriptionStyle}
+                  descriptionNumberOfLines={listDescriptionLines}
                   left={props => <List.Icon {...props} icon="calendar" />}
                 />
                 <Divider />
                 <List.Item
                   title="Time"
                   description={formattedTime}
+                  titleStyle={listTitleStyle}
+                  descriptionStyle={listDescriptionStyle}
+                  descriptionNumberOfLines={listDescriptionLines}
                   left={props => <List.Icon {...props} icon="clock-outline" />}
                 />
                 <Divider />
                 <List.Item
                   title="Policy Number"
                   description={appointment.policyNo}
+                  titleStyle={listTitleStyle}
+                  descriptionStyle={listDescriptionStyle}
+                  descriptionNumberOfLines={listDescriptionLines}
                   left={props => <List.Icon {...props} icon="file-document-outline" />}
                 />
                 <Divider />
                 <List.Item
                   title="Sum Insured"
                   description={formatZarCurrency(appointment.sumInsured)}
+                  titleStyle={listTitleStyle}
+                  descriptionStyle={listDescriptionStyle}
+                  descriptionNumberOfLines={listDescriptionLines}
                   left={props => <List.Icon {...props} icon="cash-multiple" />}
                 />
                 <Divider />
                 <List.Item
                   title="Broker"
                   description={appointment.broker}
+                  titleStyle={listTitleStyle}
+                  descriptionStyle={listDescriptionStyle}
+                  descriptionNumberOfLines={listDescriptionLines}
                   left={props => <List.Icon {...props} icon="account-tie" />}
                 />
               </Card.Content>
@@ -479,7 +520,7 @@ export default function AppointmentDetails() {
           </View>
 
           {appointment.riskTemplateNames && appointment.riskTemplateNames.length > 0 && (
-            <View style={appointmentDetailsStyles.templatesSection}>
+            <View style={[appointmentDetailsStyles.templatesSection, isPhone && appointmentDetailsStyles.templatesSectionPhone]}>
               <Card style={appointmentDetailsStyles.templatesCard}>
                 <Card.Title
                   title="Assessment Types"
@@ -516,7 +557,7 @@ export default function AppointmentDetails() {
           />
           
           {/* Location — open in device maps (no API key) */}
-          <View style={appointmentDetailsStyles.mapContainer}>
+          <View style={[appointmentDetailsStyles.mapContainer, isPhone && appointmentDetailsStyles.mapContainerPhone]}>
             <Text style={appointmentDetailsStyles.sectionTitle}>Location</Text>
             <Card style={appointmentDetailsStyles.mapCard}>
               <Card.Content style={appointmentDetailsStyles.locationCardContent}>
@@ -571,11 +612,13 @@ export default function AppointmentDetails() {
           </View>
         </ScrollView>
         
-        <View style={appointmentDetailsStyles.buttonContainer}>
-          <View style={appointmentDetailsStyles.buttonRow}>
+        <View style={[appointmentDetailsStyles.buttonContainer, isPhone && appointmentDetailsStyles.buttonContainerPhone]}>
+          <View style={[appointmentDetailsStyles.buttonRow, isPhone && appointmentDetailsStyles.buttonRowPhone]}>
             <Button
               mode="outlined"
-              style={appointmentDetailsStyles.rescheduleButton}
+              style={[appointmentDetailsStyles.rescheduleButton, isPhone && appointmentDetailsStyles.footerButtonPhone]}
+              contentStyle={isPhone ? { height: 40 } : undefined}
+              compact={isPhone}
               icon="calendar-clock"
               onPress={() => router.back()}
             >
@@ -583,7 +626,9 @@ export default function AppointmentDetails() {
             </Button>
             <Button
               mode="contained"
-              style={appointmentDetailsStyles.startButton}
+              style={[appointmentDetailsStyles.startButton, isPhone && appointmentDetailsStyles.footerButtonPhone]}
+              contentStyle={isPhone ? { height: 40 } : undefined}
+              compact={isPhone}
               icon="clipboard-edit-outline"
               onPress={startSurvey}
             >

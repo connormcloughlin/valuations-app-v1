@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -7,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { Provider as PaperProvider } from 'react-native-paper';
+import { MD3LightTheme, Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import ConnectionStatus from '../components/ConnectionStatus';
@@ -19,7 +18,6 @@ import { AuthProvider } from '../context/AuthContext';
 import { DashboardProvider } from '../context/DashboardContext';
 import { bundleOptimization } from '../core/bundleOptimization';
 
-import { useColorScheme } from '../hooks/useColorScheme';
 import { useOrientation } from '../hooks/useOrientation';
 import { logNavigation } from '../utils/logger';
 import SimplePerformanceMonitor from '../components/SimplePerformanceMonitor';
@@ -27,25 +25,9 @@ import SimplePerformanceMonitor from '../components/SimplePerformanceMonitor';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
-// Create simplified theme objects without font customizations
-const customDefaultTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-  }
-};
-
-const customDarkTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-  }
-};
-
 export default function RootLayout() {
   logNavigation('RootLayout');
   
-  const colorScheme = useColorScheme();
   const { orientation } = useOrientation();
   
   // Remove font loading since it might be causing issues
@@ -167,7 +149,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <PaperProvider>
+        <PaperProvider theme={MD3LightTheme}>
           <AuthProvider>
             <DashboardProvider>
               <ConnectionStatus showOffline={true} showOnline={true} />
@@ -198,7 +180,7 @@ export default function RootLayout() {
               {/* Appointment routes removed during cleanup - using tabs navigation instead */}
               <Stack.Screen name="+not-found" options={{ headerShown: true }} />
             </Stack>
-            <StatusBar style="auto" />
+            <StatusBar style="dark" />
             </DashboardProvider>
           </AuthProvider>
         </PaperProvider>
