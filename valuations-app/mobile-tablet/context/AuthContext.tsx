@@ -490,6 +490,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (nextAppState === 'active' && !isAuthenticated) {
         checkAuthStatus();
       }
+      if (nextAppState === 'active' && isAuthenticated) {
+        import('../services/pullSyncService')
+          .then(({ default: pullSyncService }) => pullSyncService.pullServerChanges())
+          .catch((error) => console.warn('Foreground pull sync failed:', error));
+      }
     };
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription?.remove();

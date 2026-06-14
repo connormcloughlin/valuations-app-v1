@@ -37,6 +37,19 @@ export async function getRiskAssessmentMasterByOrder(orderId: string): Promise<A
   }
 }
 
+export async function getRiskAssessmentMasterById(riskAssessmentId: string): Promise<ApiResponse> {
+  try {
+    const data = await transportClient.get(
+      'risk-assessment.masterById',
+      `/risk-assessment-master/${riskAssessmentId}`
+    );
+    return { success: true, data: data ?? null, status: 200 };
+  } catch (error) {
+    console.error('Error fetching risk assessment master by id:', error);
+    return handleApiError(error);
+  }
+}
+
 export async function getRiskAssessmentCompleteHierarchy(orderId: string): Promise<ApiResponse> {
   const cacheKey = `risk_assessment_hierarchy_${orderId}`;
   let isOnline = true;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
 import api from '../../../api';
+import pullSyncService from '../../../services/pullSyncService';
 import { storeDataForKey, getDataForKey } from '../../../utils/offlineStorage';
 import { getAllRiskAssessmentItems } from '../../../utils/db';
 import {
@@ -492,6 +493,7 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       try {
         const prefetchService = await import('../../../services/prefetchService');
         await prefetchService.default.ensureCategoryConfigurationsLoaded();
+        await pullSyncService.pullServerChanges({ appointmentId: surveyId });
         fetchSurveyData();
       } catch (error) {
         console.error('❌ Error ensuring category configurations loaded:', error);
@@ -519,6 +521,7 @@ export const SurveyDataProvider: React.FC<SurveyDataProviderProps> = ({ surveyId
       const startPrefetch = async () => {
         try {
           console.log(`🚀 SURVEY DATA PROVIDER - Starting prefetch for survey ${surveyId}, order ${orderNumber}`);
+          await pullSyncService.pullServerChanges({ appointmentId: surveyId });
           const prefetchService = await import('../../../services/prefetchService');
           const [hierarchyResp, fieldResp] = await Promise.all([
             api.getRiskAssessmentCompleteHierarchy(orderNumber),

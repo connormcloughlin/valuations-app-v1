@@ -199,24 +199,41 @@ export const isDataStale = (timestamp: number, maxAge: number = 24 * 60 * 60 * 1
   return now - timestamp > maxAge;
 };
 
-// Store last sync timestamp
-export const updateLastSyncTimestamp = async (): Promise<void> => {
+// Store last sync high-water mark (ISO timestamp, per device)
+const LAST_SYNC_PREFIX = 'lastSync_';
+
+export const updateLastSyncTimestamp = async (
+  isoTimestamp: string,
+  deviceId?: string
+): Promise<void> => {
   try {
-    await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC, Date.now().toString());
+    const { getDeviceId } = await import('./deviceId');
+    const id = deviceId ?? (await getDeviceId());
+    await AsyncStorage.setItem(`${LAST_SYNC_PREFIX}${id}`, isoTimestamp);
   } catch (e) {
     console.error('Error storing last sync timestamp:', e);
   }
 };
 
-// Get last sync timestamp
-export const getLastSyncTimestamp = async (): Promise<number | null> => {
+// Get last sync high-water mark (ISO string) for a device
+export const getLastSyncTimestamp = async (deviceId?: string): Promise<string | null> => {
   try {
-    const timestamp = await AsyncStorage.getItem(STORAGE_KEYS.LAST_SYNC);
-    return timestamp ? parseInt(timestamp, 10) : null;
+    const { getDeviceId } = await import('./deviceId');
+    const id = deviceId ?? (await getDeviceId());
+    return await AsyncStorage.getItem(`${LAST_SYNC_PREFIX}${id}`);
   } catch (e) {
     console.error('Error retrieving last sync timestamp:', e);
     return null;
   }
+};
+
+/**
+ * Stored high-water mark, or "now" on first pull so legacy Sync_Status rows are not replayed.
+ * Only future web edits should appear after the initial baseline poll.
+ */
+export const resolveLastSyncTimestamp = async (deviceId?: string): Promise<string> => {
+  const stored = await getLastSyncTimestamp(deviceId);
+  return stored ?? new Date().toISOString();
 };
 
 // Store assessment sections data
@@ -277,6 +294,7 @@ export default {
   isDataStale,
   updateLastSyncTimestamp,
   getLastSyncTimestamp,
+  resolveLastSyncTimestamp,
   storeAssessmentSections,
   getAssessmentSections,
   storeAssessmentCategories,

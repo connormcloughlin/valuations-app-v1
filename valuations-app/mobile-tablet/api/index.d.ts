@@ -101,11 +101,19 @@ export interface ApiClient {
   ) => Promise<ApiResponse<unknown>>;
   updateRiskAssessmentMasterStatus: (orderId: number, status: string) => Promise<ApiResponse<any>>;
   syncChanges: (syncData: any) => Promise<ApiResponse<any>>;
-  getSyncChanges: (params: { lastSync?: string; deviceId?: string; entities?: string[] }) => Promise<ApiResponse<any>>;
+  getSyncChanges: (params: {
+    lastSyncTimestamp: string;
+    deviceId: string;
+    userId: string;
+    entities?: string[];
+    excludeDeviceId?: string;
+    limit?: number;
+  }) => Promise<ApiResponse<any>>;
   pushSyncBatch: (syncData: any) => Promise<ApiResponse<any>>;
   getSyncSessions: (deviceId: string) => Promise<ApiResponse<any>>;
   getSyncHealth: () => Promise<ApiResponse<any>>;
   getRiskAssessmentMasterByOrder: (orderId: string) => Promise<ApiResponse<any>>;
+  getRiskAssessmentMasterById: (riskAssessmentId: string) => Promise<ApiResponse<any>>;
   getRiskAssessmentCompleteHierarchy: (orderId: string) => Promise<ApiResponse<any>>;
   getOrderCategoryFieldConfigurations: (orderId: string) => Promise<ApiResponse<any>>;
   uploadMedia: (mediaData: any) => Promise<ApiResponse<any>>;

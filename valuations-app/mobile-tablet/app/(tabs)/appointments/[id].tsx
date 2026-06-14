@@ -18,7 +18,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { logNavigation } from '../../../utils/logger';
 import api from '../../../api';
 import prefetchService from '../../../services/prefetchService';
+import pullSyncService from '../../../services/pullSyncService';
 import { PrefetchProgressIndicator } from '../../../components/PrefetchProgressIndicator';
+import { SyncRefreshIndicator } from '../../../components/SyncRefreshIndicator';
 import { appointmentDetailsStyles } from '../../GlobalStyles';
 import { useAuth } from '../../../context/AuthContext';
 import { formatDateTimeForSA } from '../../../utils/dateUtils';
@@ -225,6 +227,7 @@ export default function AppointmentDetails() {
     console.log(`🔐 User authenticated, starting prefetch for appointment ${appointment.id}, order ${appointment.orderNumber}`);
     const startPrefetch = async () => {
       try {
+        await pullSyncService.pullServerChanges({ appointmentId: appointment.id });
         const result = await prefetchService.startAppointmentPrefetch(appointment.id, appointment.orderNumber);
         console.log(`🔍 APPOINTMENT DETAILS - Prefetch result:`, result);
       } catch (error) {
@@ -414,6 +417,10 @@ export default function AppointmentDetails() {
       
       <View style={appointmentDetailsStyles.container}>
         <ScrollView style={appointmentDetailsStyles.scrollView}>
+          <SyncRefreshIndicator
+            appointmentId={appointment.id?.toString()}
+            onRefreshComplete={fetchAppointmentDetails}
+          />
           {/* Prefetch Progress Indicator */}
           <PrefetchProgressIndicator />
 

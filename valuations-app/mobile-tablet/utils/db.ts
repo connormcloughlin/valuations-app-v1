@@ -598,6 +598,28 @@ export async function migrateDatabase() {
     await db.execAsync(
       `CREATE INDEX IF NOT EXISTS idx_offline_mat_section_appointment ON offline_materialized_section_clones(appointment_id, sync_state);`
     );
+
+    const syncAwareTables = [
+      'appointments',
+      'risk_assessment_master',
+      'risk_assessment_items',
+      'media_files',
+    ];
+    for (const tableName of syncAwareTables) {
+      const cols = (await db.getAllAsync(`PRAGMA table_info(${tableName})`)) as Array<{ name: string }>;
+      if (!cols.some((col) => col.name === 'server_last_modified')) {
+        console.log(`🔄 Adding server_last_modified column to ${tableName}...`);
+        await db.execAsync(
+          `ALTER TABLE ${tableName} ADD COLUMN server_last_modified TEXT`
+        );
+        console.log(`✅ server_last_modified column added to ${tableName}`);
+      }
+      if (!cols.some((col) => col.name === 'conflict')) {
+        console.log(`🔄 Adding conflict column to ${tableName}...`);
+        await db.execAsync(`ALTER TABLE ${tableName} ADD COLUMN conflict INTEGER DEFAULT 0`);
+        console.log(`✅ conflict column added to ${tableName}`);
+      }
+    }
     
     console.log('✅ Database migration completed');
     
@@ -629,6 +651,8 @@ export interface Appointment {
   surveyorEmail: string;
   dateModified: string;
   pending_sync?: number;
+  server_last_modified?: string | null;
+  conflict?: number;
 }
 
 export interface RiskAssessmentMaster {
@@ -640,6 +664,8 @@ export interface RiskAssessmentMaster {
   totalvalue: number;
   iscomplete: number;
   pending_sync?: number;
+  server_last_modified?: string | null;
+  conflict?: number;
 }
 
 export interface RiskAssessmentItem {
@@ -675,6 +701,8 @@ export interface RiskAssessmentItem {
   appointmentid?: string;
   isDeleted?: number;
   excludefromreport?: number;
+  server_last_modified?: string | null;
+  conflict?: number;
 }
 
 /** Queued POST /sections/clone when user was offline (see sectionCloneService). */
@@ -705,6 +733,14 @@ export interface MediaFile {
   Metadata?: string;
   pending_sync?: number;
   LocalPath?: string; // For offline storage
+  server_last_modified?: string | null;
+  conflict?: number;
+}
+
+export interface ServerUpsertResult {
+  applied: boolean;
+  conflict: boolean;
+  skipped: boolean;
 }
 
 // --- CRUD for Appointments ---
@@ -1039,6 +1075,280 @@ export async function hardDeleteRiskAssessmentItem(id: number) {
   const result = await runSql('DELETE FROM risk_assessment_items WHERE riskassessmentitemid = ?', [id]);
   console.log(`🗑️ hardDeleteRiskAssessmentItem: Delete result for item ${id}:`, result);
   return result;
+}
+
+async function getLocalPendingSyncFlag(
+  table: 'appointments' | 'risk_assessment_master' | 'risk_assessment_items' | 'media_files',
+  idColumn: string,
+  id: number | string
+): Promise<number> {
+  const res = await runSql(`SELECT pending_sync FROM ${table} WHERE ${idColumn} = ? LIMIT 1`, [id]);
+  if (res.rows.length === 0) {
+    return 0;
+  }
+  return Number(res.rows._array[0]?.pending_sync) || 0;
+}
+
+async function markLocalConflict(
+  table: 'appointments' | 'risk_assessment_master' | 'risk_assessment_items' | 'media_files',
+  idColumn: string,
+  id: number | string
+): Promise<void> {
+  await runSql(`UPDATE ${table} SET conflict = 1 WHERE ${idColumn} = ?`, [id]);
+}
+
+export async function upsertAppointmentFromServer(
+  appointment: Appointment,
+  serverLastModified: string
+): Promise<ServerUpsertResult> {
+  const pending = await getLocalPendingSyncFlag('appointments', 'appointmentID', appointment.appointmentID);
+  if (pending === 1) {
+    await markLocalConflict('appointments', 'appointmentID', appointment.appointmentID);
+    return { applied: false, conflict: true, skipped: true };
+  }
+
+  await runSql(
+    `INSERT OR REPLACE INTO appointments (
+      appointmentID, orderID, startTime, endTime, followUpDate, arrivalTime, departureTime,
+      inviteStatus, meetingStatus, location, comments, category, outoftown, surveyorComments,
+      eventId, surveyorEmail, dateModified, pending_sync, server_last_modified, conflict
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`,
+    [
+      appointment.appointmentID,
+      appointment.orderID,
+      appointment.startTime,
+      appointment.endTime,
+      appointment.followUpDate,
+      appointment.arrivalTime,
+      appointment.departureTime,
+      appointment.inviteStatus,
+      appointment.meetingStatus,
+      appointment.location,
+      appointment.comments,
+      appointment.category,
+      appointment.outoftown,
+      appointment.surveyorComments,
+      appointment.eventId,
+      appointment.surveyorEmail,
+      appointment.dateModified,
+      serverLastModified,
+    ]
+  );
+  return { applied: true, conflict: false, skipped: false };
+}
+
+export async function upsertRiskAssessmentMasterFromServer(
+  master: RiskAssessmentMaster,
+  serverLastModified: string
+): Promise<ServerUpsertResult> {
+  const pending = await getLocalPendingSyncFlag(
+    'risk_assessment_master',
+    'riskassessmentid',
+    master.riskassessmentid
+  );
+  if (pending === 1) {
+    await markLocalConflict('risk_assessment_master', 'riskassessmentid', master.riskassessmentid);
+    return { applied: false, conflict: true, skipped: true };
+  }
+
+  await runSql(
+    `INSERT OR REPLACE INTO risk_assessment_master (
+      riskassessmentid, assessmenttypename, surveydate, clientnumber, comments, totalvalue,
+      iscomplete, pending_sync, server_last_modified, conflict
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`,
+    [
+      master.riskassessmentid,
+      master.assessmenttypename,
+      master.surveydate,
+      master.clientnumber,
+      master.comments,
+      master.totalvalue,
+      master.iscomplete,
+      serverLastModified,
+    ]
+  );
+  return { applied: true, conflict: false, skipped: false };
+}
+
+export async function upsertRiskAssessmentItemFromServer(
+  item: RiskAssessmentItem,
+  serverLastModified: string
+): Promise<ServerUpsertResult> {
+  const pending = await getLocalPendingSyncFlag(
+    'risk_assessment_items',
+    'riskassessmentitemid',
+    item.riskassessmentitemid
+  );
+  if (pending === 1) {
+    await markLocalConflict('risk_assessment_items', 'riskassessmentitemid', item.riskassessmentitemid);
+    return { applied: false, conflict: true, skipped: true };
+  }
+
+  await runSql(
+    `INSERT OR REPLACE INTO risk_assessment_items (
+      riskassessmentitemid, riskassessmentcategoryid, itemprompt, itemtype, rank,
+      commaseparatedlist, selectedanswer, qty, price, description, model, location,
+      assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
+      dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
+      synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid,
+      excludefromreport, server_last_modified, conflict
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 0)`,
+    [
+      item.riskassessmentitemid,
+      item.riskassessmentcategoryid,
+      item.itemprompt || '',
+      item.itemtype || 0,
+      item.rank || 0,
+      item.commaseparatedlist || '',
+      item.selectedanswer || '',
+      item.qty ?? null,
+      item.price || 0,
+      item.description || '',
+      item.model || '',
+      item.location || '',
+      item.assessmentregisterid || 0,
+      item.assessmentregistertypeid || 0,
+      item.datecreated || new Date().toISOString(),
+      item.createdbyid || '',
+      item.dateupdated || new Date().toISOString(),
+      item.updatedbyid || '',
+      item.issynced ? 1 : 0,
+      item.syncversion || 0,
+      item.deviceid || '',
+      item.syncstatus || '',
+      item.synctimestamp || new Date().toISOString(),
+      item.hasphoto ? 1 : 0,
+      item.latitude || 0,
+      item.longitude || 0,
+      item.notes || '',
+      item.appointmentid || null,
+      item.excludefromreport ? 1 : 0,
+      serverLastModified,
+    ]
+  );
+  return { applied: true, conflict: false, skipped: false };
+}
+
+export async function upsertMediaFileFromServer(
+  media: MediaFile,
+  serverLastModified: string
+): Promise<ServerUpsertResult> {
+  const lookupId = media.BackendMediaID ?? media.MediaID;
+  if (lookupId == null) {
+    return { applied: false, conflict: false, skipped: true };
+  }
+
+  const existing =
+    media.MediaID != null
+      ? await getMediaFileById(media.MediaID)
+      : await getMediaFileByBackendMediaId(Number(lookupId));
+
+  if (existing?.pending_sync === 1) {
+    if (existing.MediaID != null) {
+      await markLocalConflict('media_files', 'MediaID', existing.MediaID);
+    }
+    return { applied: false, conflict: true, skipped: true };
+  }
+
+  if (existing?.MediaID != null) {
+    await runSql(
+      `UPDATE media_files SET
+        FileName = ?, FileType = ?, BlobURL = ?, EntityName = ?, EntityID = ?,
+        UploadedAt = ?, UploadedBy = ?, IsDeleted = ?, Metadata = ?, LocalPath = ?,
+        pending_sync = 0, BackendMediaID = ?, server_last_modified = ?, conflict = 0
+      WHERE MediaID = ?`,
+      [
+        media.FileName,
+        media.FileType,
+        media.BlobURL,
+        media.EntityName,
+        media.EntityID,
+        media.UploadedAt,
+        media.UploadedBy || null,
+        media.IsDeleted ? 1 : 0,
+        media.Metadata || null,
+        media.LocalPath ?? existing.LocalPath ?? null,
+        media.BackendMediaID ?? existing.BackendMediaID ?? null,
+        serverLastModified,
+        existing.MediaID,
+      ]
+    );
+    return { applied: true, conflict: false, skipped: false };
+  }
+
+  await runSql(
+    `INSERT INTO media_files (
+      FileName, FileType, BlobURL, EntityName, EntityID, UploadedAt, UploadedBy,
+      IsDeleted, Metadata, LocalPath, pending_sync, BackendMediaID, server_last_modified, conflict
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)`,
+    [
+      media.FileName,
+      media.FileType,
+      media.BlobURL,
+      media.EntityName,
+      media.EntityID,
+      media.UploadedAt,
+      media.UploadedBy || null,
+      media.IsDeleted ? 1 : 0,
+      media.Metadata || null,
+      media.LocalPath || null,
+      media.BackendMediaID ?? null,
+      serverLastModified,
+    ]
+  );
+  return { applied: true, conflict: false, skipped: false };
+}
+
+export async function getMediaFileByBackendMediaId(
+  backendMediaId: number
+): Promise<MediaFile | undefined> {
+  const res = await runSql('SELECT * FROM media_files WHERE BackendMediaID = ? LIMIT 1', [
+    backendMediaId,
+  ]);
+  return res.rows.length > 0 ? res.rows._array[0] : undefined;
+}
+
+export async function countConflictRows(): Promise<number> {
+  let total = 0;
+  const tables = ['appointments', 'risk_assessment_master', 'risk_assessment_items', 'media_files'];
+  for (const table of tables) {
+    const res = await runSql(`SELECT COUNT(*) AS n FROM ${table} WHERE conflict = 1`);
+    total += Number(res.rows._array[0]?.n) || 0;
+  }
+  return total;
+}
+
+export async function getMaxServerLastModifiedForAppointment(
+  appointmentId: string
+): Promise<string | null> {
+  const res = await runSql(
+    `SELECT MAX(server_last_modified) AS m FROM risk_assessment_items WHERE appointmentid = ?`,
+    [appointmentId]
+  );
+  const value = res.rows._array[0]?.m;
+  return value ? String(value) : null;
+}
+
+export async function getMaxServerLastModifiedForCategory(
+  appointmentId: string,
+  categoryId: number
+): Promise<string | null> {
+  const res = await runSql(
+    `SELECT MAX(server_last_modified) AS m
+     FROM risk_assessment_items
+     WHERE appointmentid = ? AND riskassessmentcategoryid = ?`,
+    [appointmentId, categoryId]
+  );
+  const value = res.rows._array[0]?.m;
+  return value ? String(value) : null;
+}
+
+export async function clearConflictFlag(
+  table: 'appointments' | 'risk_assessment_master' | 'risk_assessment_items' | 'media_files',
+  idColumn: string,
+  id: number | string
+): Promise<void> {
+  await runSql(`UPDATE ${table} SET conflict = 0 WHERE ${idColumn} = ?`, [id]);
 }
 
 export async function cleanupDeletedItems(deletedItemIds: number[]) {
@@ -1938,8 +2248,8 @@ async function executeRiskAssessmentItemsStatementLoop(
       assessmentregisterid, assessmentregistertypeid, datecreated, createdbyid,
       dateupdated, updatedbyid, issynced, syncversion, deviceid, syncstatus,
       synctimestamp, hasphoto, latitude, longitude, notes, pending_sync, appointmentid,
-      excludefromreport
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      excludefromreport, server_last_modified, conflict
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   try {
@@ -1976,7 +2286,9 @@ async function executeRiskAssessmentItemsStatementLoop(
         item.notes || '',
         pendingSync,
         item.appointmentid || null,
-        item.excludefromreport ? 1 : 0
+        item.excludefromreport ? 1 : 0,
+        item.server_last_modified ?? item.dateupdated ?? new Date().toISOString(),
+        item.conflict ?? 0,
       ]);
     }
   } finally {

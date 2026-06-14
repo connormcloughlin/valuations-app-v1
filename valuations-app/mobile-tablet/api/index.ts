@@ -43,6 +43,7 @@ export default {
   updateRiskAssessmentMasterStatus: appointmentsApi.updateRiskAssessmentMasterStatus,
   
   getRiskAssessmentMasterByOrder: hierarchyApi.getRiskAssessmentMasterByOrder,
+  getRiskAssessmentMasterById: hierarchyApi.getRiskAssessmentMasterById,
   getRiskAssessmentCompleteHierarchy: hierarchyApi.getRiskAssessmentCompleteHierarchy,
   getOrderCategoryFieldConfigurations: hierarchyApi.getOrderCategoryFieldConfigurations,
   cloneRiskAssessmentSection: hierarchyApi.cloneRiskAssessmentSection,

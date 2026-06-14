@@ -7,6 +7,7 @@ import { useSurveyData } from './SurveyDataProvider';
 import { useSurveyNavigation } from './SurveyNavigationHandlers';
 import riskAssessmentSyncService from '../../../services/riskAssessmentSyncService';
 import mediaService from '../../../services/mediaService';
+import { SyncRefreshIndicator } from '../../../components/SyncRefreshIndicator';
 import type { MediaFile } from '../../../utils/db';
 import { CameraModal, PhotoGalleryModal } from '../items/components';
 
@@ -34,6 +35,7 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
     selectedSectionId,
     fetchCategories,
     clearSectionSelection,
+    fetchSurveyData,
   } = useSurveyData();
 
   const {
@@ -417,6 +419,14 @@ export const SurveyMainContent: React.FC<SurveyMainContentProps> = ({ surveyId }
           address={survey.address}
           surveyorStatus={survey.surveyor_status}
           surveyorDueDate={survey.surveyor_due_date}
+        />
+
+        <SyncRefreshIndicator
+          appointmentId={surveyId}
+          onRefreshComplete={() => {
+            void fetchSurveyData();
+          }}
+          style={{ marginHorizontal: spacing.md, marginTop: spacing.sm }}
         />
         
         <SurveyDetails

@@ -12,7 +12,9 @@ import {
   upsertMediaFilesBatch,
   MediaFile,
   getCategoryItemCountsForAppointment,
-  countNullCategoryItemsForAppointment
+  countNullCategoryItemsForAppointment,
+  getMaxServerLastModifiedForAppointment,
+  getMaxServerLastModifiedForCategory
 } from '../utils/db';
 import imagePrefetchService from './imagePrefetchService';
 import offlineStorage from '../utils/offlineStorage';
@@ -263,8 +265,24 @@ class PrefetchService {
     this.orderFieldConfigCategoryIdSet = s;
   }
 
-  private computePrefetchSignature(orderNumber: string, sortedCategoryIds: string[]): string {
-    return `${orderNumber}|${sortedCategoryIds.length}|${sortedCategoryIds.join(',')}`;
+  private computePrefetchSignature(
+    orderNumber: string,
+    sortedCategoryIds: string[],
+    maxServerModified?: string | null
+  ): string {
+    const modPart = maxServerModified ?? '';
+    return `${orderNumber}|${sortedCategoryIds.length}|${sortedCategoryIds.join(',')}|${modPart}`;
+  }
+
+  private maxModifiedFromPayloadItems(items: any[]): string | null {
+    let max: string | null = null;
+    for (const item of items) {
+      const candidate = item?.dateUpdated ?? item?.DateUpdated ?? item?.lastModified ?? item?.LastModified;
+      if (candidate && (!max || String(candidate) > max)) {
+        max = String(candidate);
+      }
+    }
+    return max;
   }
 
   private async readStoredPrefetchSignature(appointmentId: string): Promise<string | null> {
@@ -529,7 +547,9 @@ class PrefetchService {
       longitude: Number(item.longitude ?? item.Longitude ?? 0) || 0,
       notes: item.notes ?? item.Notes ?? '',
       appointmentid: appointmentId,
-      excludefromreport: (item.excludeFromReport ?? item.ExcludeFromReport) ? 1 : 0
+      excludefromreport: (item.excludeFromReport ?? item.ExcludeFromReport) ? 1 : 0,
+      pending_sync: 0,
+      server_last_modified: item.dateUpdated ?? item.DateUpdated ?? new Date().toISOString(),
     };
   }
 
@@ -620,7 +640,8 @@ class PrefetchService {
           }
         }
         const sortedIds = [...new Set(categoryIdsFromHierarchy)].sort();
-        const signature = this.computePrefetchSignature(orderNumber, sortedIds);
+        const maxServerModified = await getMaxServerLastModifiedForAppointment(appointmentId);
+        const signature = this.computePrefetchSignature(orderNumber, sortedIds, maxServerModified);
         const storedSig = await this.readStoredPrefetchSignature(appointmentId);
 
         const counts = this.categoryItemCountsMap!;
@@ -1010,7 +1031,27 @@ class PrefetchService {
     }
 
     const existingForCategory = this.categoryItemCountsMap?.get(categoryId) ?? 0;
-    if (existingForCategory === expectedCount) {
+    const appointmentId = String(this.currentStats?.appointmentId || '');
+    const payloadMaxModified = this.maxModifiedFromPayloadItems(items);
+    const localMaxModified = appointmentId
+      ? await getMaxServerLastModifiedForCategory(appointmentId, categoryId)
+      : null;
+
+    if (
+      existingForCategory === expectedCount &&
+      payloadMaxModified &&
+      localMaxModified &&
+      localMaxModified >= payloadMaxModified
+    ) {
+      if (PREFETCH_VERBOSE) {
+        console.log(
+          `📦 PREFETCH - Category ${categoryId} count (${existingForCategory}) and freshness match — skipping upsert`
+        );
+      }
+      return;
+    }
+
+    if (existingForCategory === expectedCount && !payloadMaxModified && !localMaxModified) {
       if (PREFETCH_VERBOSE) {
         console.log(
           `📦 PREFETCH - Category ${categoryId} SQLite count (${existingForCategory}) matches payload (${expectedCount}), skipping upsert`
@@ -1018,8 +1059,6 @@ class PrefetchService {
       }
       return;
     }
-
-    const appointmentId = String(this.currentStats?.appointmentId || '');
     const sqliteItems: RiskAssessmentItem[] = items
       .map((item: any) => this.mapItemPayloadToSqlite(item, categoryId, appointmentId))
       .filter((row): row is RiskAssessmentItem => row !== null);

@@ -143,7 +143,7 @@ export const policies = new Map<string, TransportPolicy>([
 
   // Sync endpoints
   ['sync.changes', {
-    timeoutMs: 20000,
+    timeoutMs: 45000,
     retry: { attempts: 2, strategy: 'exponential' },
     interpretEmptyPolicyKey: 'sync_empty'
   }],

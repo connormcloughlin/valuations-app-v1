@@ -41,9 +41,27 @@ export async function syncChanges(syncData: {
   }
 }
 
-export async function getSyncChanges(params: { lastSync?: string; deviceId?: string; entities?: string[] }): Promise<ApiResponse> {
+export async function getSyncChanges(params: {
+  lastSyncTimestamp: string;
+  deviceId: string;
+  userId: string;
+  entities?: string[];
+  excludeDeviceId?: string;
+  limit?: number;
+}): Promise<ApiResponse> {
   try {
-    const data = await transportClient.get('sync.changes', '/sync/changes', params);
+    const entities =
+      params.entities && params.entities.length > 0
+        ? params.entities.join(',')
+        : undefined;
+    const data = await transportClient.get('sync.changes', '/sync/changes', {
+      deviceId: params.deviceId,
+      userId: params.userId,
+      lastSyncTimestamp: params.lastSyncTimestamp,
+      excludeDeviceId: params.excludeDeviceId ?? params.deviceId,
+      entities,
+      limit: params.limit ?? 200,
+    });
     return { success: true, data, status: 200 };
   } catch (error) {
     console.error('Error fetching sync changes:', error);
