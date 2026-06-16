@@ -1,4 +1,5 @@
 import transportClient from '../core/transport/transportClient';
+import { getDeviceId } from '../utils/deviceId';
 import { 
   isJwtMode, 
   USER_CONTEXT_HEADER_NAME
@@ -126,9 +127,12 @@ const authApi = {
         throw new Error('Azure token is required for token exchange');
       }
       
+      const deviceId = await getDeviceId();
       const requestData = {
         azureToken: azureToken,
-        userInfo: userInfo || {}
+        userInfo: userInfo || {},
+        device_id: deviceId,
+        deviceInfo: { deviceId },
       };
       
       console.log('🔄 Request data structure:', {

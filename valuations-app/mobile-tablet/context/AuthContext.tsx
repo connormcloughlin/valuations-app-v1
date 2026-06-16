@@ -369,7 +369,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const exchangeResponse = await authApi.exchangeToken(authResult.accessToken, userInfo);
           
           const jwtToken = (exchangeResponse as any)?.data?.token || (exchangeResponse as any)?.token;
-          const refreshToken = (exchangeResponse as any)?.data?.refreshToken || (exchangeResponse as any)?.refreshToken || 'dummy_refresh_token';
+          const refreshToken = (exchangeResponse as any)?.data?.refreshToken || (exchangeResponse as any)?.refreshToken;
+
+          if (!refreshToken) {
+            throw new Error('Token exchange did not return a refresh token');
+          }
           
           if ((exchangeResponse as any)?.success && jwtToken) {
             

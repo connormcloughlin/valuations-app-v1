@@ -11,6 +11,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { hashEmail, maskSensitiveData, maskEmail } from './cryptoUtils';
 import { logger } from '../logging';
 
@@ -78,6 +79,11 @@ const DEFAULT_CONFIG: SessionConfig = {
   gracePerioAfterHardExpiry: 15 // 15 seconds
 };
 
+const SESSION_META_KEY = 'secureSessionMeta';
+const SECURE_TOKEN_KEY = 'qv_auth_access_token';
+const SECURE_REFRESH_KEY = 'qv_auth_refresh_token';
+const LEGACY_SESSION_KEY = 'secureSession';
+
 class SessionService {
   private currentSession: SessionState | null = null;
   private refreshPromise: Promise<boolean> | null = null;
@@ -98,13 +104,40 @@ class SessionService {
    */
   async loadSession(): Promise<SessionState | null> {
     try {
-      const sessionData = await AsyncStorage.getItem('secureSession');
+      let sessionData = await AsyncStorage.getItem(SESSION_META_KEY);
+      let token = await SecureStore.getItemAsync(SECURE_TOKEN_KEY);
+      let refreshToken = await SecureStore.getItemAsync(SECURE_REFRESH_KEY);
+
       if (!sessionData) {
+        const legacyData = await AsyncStorage.getItem(LEGACY_SESSION_KEY);
+        if (legacyData) {
+          const legacySession = JSON.parse(legacyData) as SessionState;
+          token = legacySession.token;
+          refreshToken = legacySession.refreshToken;
+          const { token: _t, refreshToken: _r, ...meta } = legacySession;
+          sessionData = JSON.stringify(meta);
+          await AsyncStorage.setItem(SESSION_META_KEY, sessionData);
+          if (token) {
+            await SecureStore.setItemAsync(SECURE_TOKEN_KEY, token);
+          }
+          if (refreshToken) {
+            await SecureStore.setItemAsync(SECURE_REFRESH_KEY, refreshToken);
+          }
+          await AsyncStorage.removeItem(LEGACY_SESSION_KEY);
+        }
+      }
+
+      if (!sessionData || !token) {
         logger.debug('No stored session found', { operation: 'session_load' });
         return null;
       }
 
-      const session: SessionState = JSON.parse(sessionData);
+      const sessionMeta = JSON.parse(sessionData) as Omit<SessionState, 'token' | 'refreshToken'>;
+      const session: SessionState = {
+        ...sessionMeta,
+        token,
+        refreshToken: refreshToken ?? undefined,
+      };
       
       // Validate session integrity
       if (!this.isValidSession(session)) {
@@ -171,7 +204,15 @@ class SessionService {
         lastRefreshed: now
       };
 
-      await AsyncStorage.setItem('secureSession', JSON.stringify(session));
+      const { token: accessToken, refreshToken: storedRefresh, ...meta } = session;
+      await SecureStore.setItemAsync(SECURE_TOKEN_KEY, accessToken);
+      if (storedRefresh) {
+        await SecureStore.setItemAsync(SECURE_REFRESH_KEY, storedRefresh);
+      } else {
+        await SecureStore.deleteItemAsync(SECURE_REFRESH_KEY);
+      }
+      await AsyncStorage.setItem(SESSION_META_KEY, JSON.stringify(meta));
+      await AsyncStorage.removeItem(LEGACY_SESSION_KEY);
       this.currentSession = session;
       this.schedulePreemptiveRefresh();
       
@@ -339,8 +380,10 @@ class SessionService {
    */
   async invalidate(): Promise<void> {
     try {
-      // Clear stored session
-      await AsyncStorage.removeItem('secureSession');
+      await AsyncStorage.removeItem(SESSION_META_KEY);
+      await AsyncStorage.removeItem(LEGACY_SESSION_KEY);
+      await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
+      await SecureStore.deleteItemAsync(SECURE_REFRESH_KEY);
       
       // Clear user context (separate storage)
       await AsyncStorage.removeItem('userContext');
