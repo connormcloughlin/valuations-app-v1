@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, TextInput } from 'react-native-paper';
+import { Button, Checkbox, TextInput } from 'react-native-paper';
 
 const styles = StyleSheet.create({
   overlay: {
@@ -31,7 +31,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7f8c8d',
     marginTop: 4,
+    marginBottom: 8,
+  },
+  valuationHelper: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginTop: 0,
     marginBottom: 16,
+  },
+  valuationSection: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  checkboxItem: {
+    paddingHorizontal: 0,
+    marginLeft: -8,
   },
   error: {
     fontSize: 13,
@@ -48,13 +62,24 @@ const styles = StyleSheet.create({
   },
 });
 
+export interface SubmitForQaPayload {
+  totalMileageKm?: number;
+  electronicsPricing: boolean;
+  artValuation: boolean;
+}
+
 export interface SubmitForQaModalProps {
   visible: boolean;
   onCancel: () => void;
-  /** Called with `undefined` when the field is left empty (optional mileage). */
-  onSubmit: (totalMileageKm: number | undefined) => void;
+  onSubmit: (payload: SubmitForQaPayload) => void;
   submitting: boolean;
   initialMileage?: string | null;
+  /** Show Pricing valuations toggle when electronics_pricing is allowed. */
+  allowElectronicsPricing?: boolean;
+  /** Show Art valuations toggle when art_valuation is allowed. */
+  allowArtValuation?: boolean;
+  /** True while allowed-task-types are loading. */
+  loadingAllowedTypes?: boolean;
 }
 
 export default function SubmitForQaModal({
@@ -63,34 +88,52 @@ export default function SubmitForQaModal({
   onSubmit,
   submitting,
   initialMileage,
+  allowElectronicsPricing = false,
+  allowArtValuation = false,
+  loadingAllowedTypes = false,
 }: SubmitForQaModalProps) {
   const [mileageText, setMileageText] = useState('');
+  const [electronicsPricing, setElectronicsPricing] = useState(false);
+  const [artValuation, setArtValuation] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       setMileageText(initialMileage != null && String(initialMileage).trim() !== '' ? String(initialMileage).trim() : '');
+      setElectronicsPricing(false);
+      setArtValuation(false);
       setLocalError(null);
     }
   }, [visible, initialMileage]);
 
+  useEffect(() => {
+    if (!allowElectronicsPricing) setElectronicsPricing(false);
+    if (!allowArtValuation) setArtValuation(false);
+  }, [allowElectronicsPricing, allowArtValuation]);
+
+  const showValuationSection = allowElectronicsPricing || allowArtValuation;
+
   const handleSubmit = () => {
     setLocalError(null);
     const trimmed = mileageText.trim();
-    if (trimmed === '') {
-      onSubmit(undefined);
-      return;
+    let totalMileageKm: number | undefined;
+    if (trimmed !== '') {
+      const n = parseFloat(trimmed.replace(',', '.'));
+      if (!Number.isFinite(n)) {
+        setLocalError('Enter a valid number or leave blank.');
+        return;
+      }
+      if (n < 0) {
+        setLocalError('Mileage cannot be negative.');
+        return;
+      }
+      totalMileageKm = n;
     }
-    const n = parseFloat(trimmed.replace(',', '.'));
-    if (!Number.isFinite(n)) {
-      setLocalError('Enter a valid number or leave blank.');
-      return;
-    }
-    if (n < 0) {
-      setLocalError('Mileage cannot be negative.');
-      return;
-    }
-    onSubmit(n);
+    onSubmit({
+      totalMileageKm,
+      electronicsPricing: allowElectronicsPricing && electronicsPricing,
+      artValuation: allowArtValuation && artValuation,
+    });
   };
 
   return (
@@ -117,6 +160,36 @@ export default function SubmitForQaModal({
               dense
             />
             <Text style={styles.helper}>Optional. Stored against the main risk assessment for this order.</Text>
+
+            {showValuationSection ? (
+              <View style={styles.valuationSection}>
+                {allowElectronicsPricing ? (
+                  <Checkbox.Item
+                    label="Electronics pricing required?"
+                    status={electronicsPricing ? 'checked' : 'unchecked'}
+                    onPress={() => !submitting && setElectronicsPricing((v) => !v)}
+                    disabled={submitting || loadingAllowedTypes}
+                    position="leading"
+                    style={styles.checkboxItem}
+                    color="#674FA3"
+                  />
+                ) : null}
+                {allowArtValuation ? (
+                  <Checkbox.Item
+                    label="Art valuations required?"
+                    status={artValuation ? 'checked' : 'unchecked'}
+                    onPress={() => !submitting && setArtValuation((v) => !v)}
+                    disabled={submitting || loadingAllowedTypes}
+                    position="leading"
+                    style={styles.checkboxItem}
+                    color="#674FA3"
+                  />
+                ) : null}
+                <Text style={styles.valuationHelper}>
+                  Creates office workflow tasks for the AI agent / specialists. QA still proceeds in parallel.
+                </Text>
+              </View>
+            ) : null}
 
             {localError ? <Text style={styles.error}>{localError}</Text> : null}
 

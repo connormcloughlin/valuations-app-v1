@@ -47,6 +47,13 @@ interface CompletedSurvey {
   inviteStatus?: string;
   /** Prefill for optional mileage on Submit for QA (first non–template-5 master, else first). */
   qaMileagePrefill?: string;
+  /**
+   * Risk_Assessment_Master id for Inventory assessment only (name contains "inventory").
+   * Used for workflow allowed-types + create Pricing/Art tasks. Null if order has no Inventory master.
+   */
+  qaWorkflowAssessmentId?: number | null;
+  /** True when an Inventory assessment master exists on this order. */
+  hasInventoryAssessment?: boolean;
 }
 
 export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: string) {
@@ -268,6 +275,20 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
             ? String(mileageTargetMaster.prefillTotalMileage).trim()
             : '';
 
+        const numericMasters = assessmentTypeSummaries.filter((at) => {
+          if (at.id === 'fallback') return false;
+          const n = Number(at.id);
+          return Number.isFinite(n) && n > 0;
+        });
+        const isInventoryAssessment = (name: string) =>
+          String(name ?? '')
+            .toUpperCase()
+            .includes('INVENTORY');
+        const inventoryMaster = numericMasters.find((at) => isInventoryAssessment(at.name));
+        const qaWorkflowAssessmentId =
+          inventoryMaster != null ? Number(inventoryMaster.id) : null;
+        const hasInventoryAssessment = qaWorkflowAssessmentId != null;
+
         // 3. Map data to CompletedSurvey interface
         const completedSurvey: CompletedSurvey = {
           id: surveyId,
@@ -285,6 +306,8 @@ export function useSurveySummaryData(surveyId: string, orderNumberFromParams?: s
           notes: appointmentData.notes || '',
           inviteStatus: appointmentData.inviteStatus || 'Unknown',
           qaMileagePrefill,
+          qaWorkflowAssessmentId,
+          hasInventoryAssessment,
         };
 
         setSurvey(completedSurvey);

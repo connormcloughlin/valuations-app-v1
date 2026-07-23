@@ -1,10 +1,41 @@
 import transportClient from '../core/transport/transportClient';
 
+/** Workflow task type codes the AI agent polls. */
+export const ELECTRONICS_PRICING_TASK_CODE = 'electronics_pricing';
+export const ART_VALUATION_TASK_CODE = 'art_valuation';
+
 export interface TaskType {
   id: number;
   code: string;
   name: string;
   assignedToRole: string;
+}
+
+export interface CreateWorkflowTaskItem {
+  assessmentId: number;
+  taskTypeCode: string;
+  assignedToRole: string;
+  appointmentId?: number | null;
+  dueAt?: string | null;
+  notes?: string | null;
+}
+
+export interface CreateWorkflowTasksBody {
+  orderId: number;
+  tasks: CreateWorkflowTaskItem[];
+  createdByUserId?: string | null;
+}
+
+export interface CreateWorkflowTasksResult {
+  success: boolean;
+  data?: WorkflowTask[];
+  message?: string;
+}
+
+export interface GetAllowedTaskTypesResult {
+  success: boolean;
+  data?: TaskType[];
+  message?: string;
 }
 
 export interface WorkflowTask {
@@ -71,6 +102,92 @@ export async function getWorkflowTaskTypes(): Promise<GetTaskTypesResult> {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch task types';
     console.error('Error fetching workflow task types:', error);
+    return { success: false, message };
+  }
+}
+
+/**
+ * Allowed workflow task types for an assessment (template matrix).
+ * Used by Submit for QA to show Pricing / Art toggles only when allowed.
+ */
+export async function getAllowedWorkflowTaskTypes(
+  assessmentId: number
+): Promise<GetAllowedTaskTypesResult> {
+  try {
+    const response = await transportClient.get<{ data: TaskType[] } | TaskType[] | null>(
+      'workflow.allowed-task-types',
+      '/workflow/allowed-task-types',
+      { assessmentId }
+    );
+
+    if (response == null) {
+      return { success: true, data: [] };
+    }
+
+    if (Array.isArray(response)) {
+      return { success: true, data: response };
+    }
+
+    if (typeof response === 'object' && response !== null && 'data' in response) {
+      return {
+        success: true,
+        data: Array.isArray(response.data) ? response.data : [],
+      };
+    }
+
+    return { success: false, message: 'Invalid response from allowed-task-types API' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch allowed task types';
+    console.error('Error fetching allowed workflow task types:', error);
+    return { success: false, message };
+  }
+}
+
+/**
+ * Create workflow task(s) — bulk “Send to workflow” for AI agent pickup.
+ */
+export async function createWorkflowTasks(
+  body: CreateWorkflowTasksBody
+): Promise<CreateWorkflowTasksResult> {
+  try {
+    if (!body.orderId || !Array.isArray(body.tasks) || body.tasks.length === 0) {
+      return { success: false, message: 'orderId and at least one task are required' };
+    }
+
+    const raw = await transportClient.post<{ data: WorkflowTask | WorkflowTask[] } | WorkflowTask[] | null>(
+      'workflow.tasks.create',
+      '/workflow/tasks',
+      body
+    );
+
+    if (raw == null) {
+      return { success: false, message: 'Empty response from create workflow tasks API' };
+    }
+
+    if (Array.isArray(raw)) {
+      return { success: true, data: raw };
+    }
+
+    if (typeof raw === 'object' && raw !== null && 'data' in raw) {
+      const data = raw.data;
+      if (Array.isArray(data)) {
+        return { success: true, data };
+      }
+      if (data && typeof data === 'object') {
+        return { success: true, data: [data as WorkflowTask] };
+      }
+    }
+
+    return { success: false, message: 'Invalid response from create workflow tasks API' };
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { error?: { message?: string } | string; message?: string } }; message?: string };
+    const data = err.response?.data;
+    const serverMessage =
+      (typeof data?.error === 'object' && data?.error?.message) ||
+      data?.message ||
+      (typeof data?.error === 'string' ? data.error : null);
+    const message = serverMessage || err.message || 'Failed to create workflow tasks';
+    console.error('Error creating workflow tasks:', error);
     return { success: false, message };
   }
 }

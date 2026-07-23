@@ -256,6 +256,35 @@ export const policies = new Map<string, TransportPolicy>([
     interpretEmptyPolicyKey: 'risk_assessment_empty'
   }],
 
+  // Workflow endpoints
+  ['workflow.tasks', {
+    timeoutMs: 20000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 0,
+    interpretEmptyPolicyKey: 'default_empty'
+  }],
+
+  ['workflow.task-types', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 30 * 60 * 1000,
+    interpretEmptyPolicyKey: 'default_empty'
+  }],
+
+  ['workflow.allowed-task-types', {
+    timeoutMs: 15000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 5 * 60 * 1000,
+    interpretEmptyPolicyKey: 'default_empty'
+  }],
+
+  ['workflow.tasks.create', {
+    timeoutMs: 30000,
+    retry: { attempts: 2, strategy: 'exponential' },
+    cacheTTL: 0,
+    interpretEmptyPolicyKey: 'default_empty'
+  }],
+
   // Default policy for unknown endpoints
   ['default', {
     timeoutMs: 10000,
